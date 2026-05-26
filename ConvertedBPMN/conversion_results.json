@@ -1,0 +1,1020 @@
+{
+  "success": 169,
+  "failed": 0,
+  "files": [
+    {
+      "source": "Microsoft_Visio_Drawing.vsdx",
+      "output": "Microsoft_Visio_Drawing.bpmn",
+      "shapes": 17,
+      "connections": 9
+    },
+    {
+      "source": "Microsoft_Visio_Drawing1.vsdx",
+      "output": "Microsoft_Visio_Drawing1.bpmn",
+      "shapes": 36,
+      "connections": 27
+    },
+    {
+      "source": "Microsoft_Visio_Drawing10.vsdx",
+      "output": "Microsoft_Visio_Drawing10.bpmn",
+      "shapes": 16,
+      "connections": 9
+    },
+    {
+      "source": "Microsoft_Visio_Drawing100.vsdx",
+      "output": "Microsoft_Visio_Drawing100.bpmn",
+      "shapes": 37,
+      "connections": 20
+    },
+    {
+      "source": "Microsoft_Visio_Drawing101.vsdx",
+      "output": "Microsoft_Visio_Drawing101.bpmn",
+      "shapes": 31,
+      "connections": 17
+    },
+    {
+      "source": "Microsoft_Visio_Drawing102.vsdx",
+      "output": "Microsoft_Visio_Drawing102.bpmn",
+      "shapes": 29,
+      "connections": 15
+    },
+    {
+      "source": "Microsoft_Visio_Drawing103.vsdx",
+      "output": "Microsoft_Visio_Drawing103.bpmn",
+      "shapes": 43,
+      "connections": 29
+    },
+    {
+      "source": "Microsoft_Visio_Drawing104.vsdx",
+      "output": "Microsoft_Visio_Drawing104.bpmn",
+      "shapes": 30,
+      "connections": 11
+    },
+    {
+      "source": "Microsoft_Visio_Drawing105.vsdx",
+      "output": "Microsoft_Visio_Drawing105.bpmn",
+      "shapes": 30,
+      "connections": 20
+    },
+    {
+      "source": "Microsoft_Visio_Drawing106.vsdx",
+      "output": "Microsoft_Visio_Drawing106.bpmn",
+      "shapes": 36,
+      "connections": 29
+    },
+    {
+      "source": "Microsoft_Visio_Drawing107.vsdx",
+      "output": "Microsoft_Visio_Drawing107.bpmn",
+      "shapes": 55,
+      "connections": 42
+    },
+    {
+      "source": "Microsoft_Visio_Drawing108.vsdx",
+      "output": "Microsoft_Visio_Drawing108.bpmn",
+      "shapes": 28,
+      "connections": 20
+    },
+    {
+      "source": "Microsoft_Visio_Drawing109.vsdx",
+      "output": "Microsoft_Visio_Drawing109.bpmn",
+      "shapes": 16,
+      "connections": 8
+    },
+    {
+      "source": "Microsoft_Visio_Drawing11.vsdx",
+      "output": "Microsoft_Visio_Drawing11.bpmn",
+      "shapes": 38,
+      "connections": 30
+    },
+    {
+      "source": "Microsoft_Visio_Drawing110.vsdx",
+      "output": "Microsoft_Visio_Drawing110.bpmn",
+      "shapes": 19,
+      "connections": 13
+    },
+    {
+      "source": "Microsoft_Visio_Drawing111.vsdx",
+      "output": "Microsoft_Visio_Drawing111.bpmn",
+      "shapes": 56,
+      "connections": 47
+    },
+    {
+      "source": "Microsoft_Visio_Drawing112.vsdx",
+      "output": "Microsoft_Visio_Drawing112.bpmn",
+      "shapes": 44,
+      "connections": 36
+    },
+    {
+      "source": "Microsoft_Visio_Drawing113.vsdx",
+      "output": "Microsoft_Visio_Drawing113.bpmn",
+      "shapes": 25,
+      "connections": 15
+    },
+    {
+      "source": "Microsoft_Visio_Drawing114.vsdx",
+      "output": "Microsoft_Visio_Drawing114.bpmn",
+      "shapes": 37,
+      "connections": 28
+    },
+    {
+      "source": "Microsoft_Visio_Drawing115.vsdx",
+      "output": "Microsoft_Visio_Drawing115.bpmn",
+      "shapes": 19,
+      "connections": 11
+    },
+    {
+      "source": "Microsoft_Visio_Drawing116.vsdx",
+      "output": "Microsoft_Visio_Drawing116.bpmn",
+      "shapes": 62,
+      "connections": 47
+    },
+    {
+      "source": "Microsoft_Visio_Drawing117.vsdx",
+      "output": "Microsoft_Visio_Drawing117.bpmn",
+      "shapes": 71,
+      "connections": 51
+    },
+    {
+      "source": "Microsoft_Visio_Drawing118.vsdx",
+      "output": "Microsoft_Visio_Drawing118.bpmn",
+      "shapes": 56,
+      "connections": 38
+    },
+    {
+      "source": "Microsoft_Visio_Drawing119.vsdx",
+      "output": "Microsoft_Visio_Drawing119.bpmn",
+      "shapes": 27,
+      "connections": 15
+    },
+    {
+      "source": "Microsoft_Visio_Drawing12.vsdx",
+      "output": "Microsoft_Visio_Drawing12.bpmn",
+      "shapes": 22,
+      "connections": 15
+    },
+    {
+      "source": "Microsoft_Visio_Drawing120.vsdx",
+      "output": "Microsoft_Visio_Drawing120.bpmn",
+      "shapes": 34,
+      "connections": 24
+    },
+    {
+      "source": "Microsoft_Visio_Drawing121.vsdx",
+      "output": "Microsoft_Visio_Drawing121.bpmn",
+      "shapes": 21,
+      "connections": 16
+    },
+    {
+      "source": "Microsoft_Visio_Drawing122.vsdx",
+      "output": "Microsoft_Visio_Drawing122.bpmn",
+      "shapes": 23,
+      "connections": 15
+    },
+    {
+      "source": "Microsoft_Visio_Drawing123.vsdx",
+      "output": "Microsoft_Visio_Drawing123.bpmn",
+      "shapes": 42,
+      "connections": 35
+    },
+    {
+      "source": "Microsoft_Visio_Drawing124.vsdx",
+      "output": "Microsoft_Visio_Drawing124.bpmn",
+      "shapes": 51,
+      "connections": 42
+    },
+    {
+      "source": "Microsoft_Visio_Drawing125.vsdx",
+      "output": "Microsoft_Visio_Drawing125.bpmn",
+      "shapes": 30,
+      "connections": 22
+    },
+    {
+      "source": "Microsoft_Visio_Drawing126.vsdx",
+      "output": "Microsoft_Visio_Drawing126.bpmn",
+      "shapes": 15,
+      "connections": 7
+    },
+    {
+      "source": "Microsoft_Visio_Drawing127.vsdx",
+      "output": "Microsoft_Visio_Drawing127.bpmn",
+      "shapes": 24,
+      "connections": 14
+    },
+    {
+      "source": "Microsoft_Visio_Drawing128.vsdx",
+      "output": "Microsoft_Visio_Drawing128.bpmn",
+      "shapes": 23,
+      "connections": 14
+    },
+    {
+      "source": "Microsoft_Visio_Drawing129.vsdx",
+      "output": "Microsoft_Visio_Drawing129.bpmn",
+      "shapes": 28,
+      "connections": 18
+    },
+    {
+      "source": "Microsoft_Visio_Drawing13.vsdx",
+      "output": "Microsoft_Visio_Drawing13.bpmn",
+      "shapes": 40,
+      "connections": 31
+    },
+    {
+      "source": "Microsoft_Visio_Drawing130.vsdx",
+      "output": "Microsoft_Visio_Drawing130.bpmn",
+      "shapes": 49,
+      "connections": 37
+    },
+    {
+      "source": "Microsoft_Visio_Drawing131.vsdx",
+      "output": "Microsoft_Visio_Drawing131.bpmn",
+      "shapes": 51,
+      "connections": 40
+    },
+    {
+      "source": "Microsoft_Visio_Drawing132.vsdx",
+      "output": "Microsoft_Visio_Drawing132.bpmn",
+      "shapes": 15,
+      "connections": 8
+    },
+    {
+      "source": "Microsoft_Visio_Drawing133.vsdx",
+      "output": "Microsoft_Visio_Drawing133.bpmn",
+      "shapes": 44,
+      "connections": 33
+    },
+    {
+      "source": "Microsoft_Visio_Drawing134.vsdx",
+      "output": "Microsoft_Visio_Drawing134.bpmn",
+      "shapes": 24,
+      "connections": 18
+    },
+    {
+      "source": "Microsoft_Visio_Drawing135.vsdx",
+      "output": "Microsoft_Visio_Drawing135.bpmn",
+      "shapes": 35,
+      "connections": 25
+    },
+    {
+      "source": "Microsoft_Visio_Drawing136.vsdx",
+      "output": "Microsoft_Visio_Drawing136.bpmn",
+      "shapes": 21,
+      "connections": 10
+    },
+    {
+      "source": "Microsoft_Visio_Drawing137.vsdx",
+      "output": "Microsoft_Visio_Drawing137.bpmn",
+      "shapes": 24,
+      "connections": 17
+    },
+    {
+      "source": "Microsoft_Visio_Drawing138.vsdx",
+      "output": "Microsoft_Visio_Drawing138.bpmn",
+      "shapes": 25,
+      "connections": 16
+    },
+    {
+      "source": "Microsoft_Visio_Drawing139.vsdx",
+      "output": "Microsoft_Visio_Drawing139.bpmn",
+      "shapes": 19,
+      "connections": 10
+    },
+    {
+      "source": "Microsoft_Visio_Drawing14.vsdx",
+      "output": "Microsoft_Visio_Drawing14.bpmn",
+      "shapes": 43,
+      "connections": 31
+    },
+    {
+      "source": "Microsoft_Visio_Drawing140.vsdx",
+      "output": "Microsoft_Visio_Drawing140.bpmn",
+      "shapes": 16,
+      "connections": 8
+    },
+    {
+      "source": "Microsoft_Visio_Drawing141.vsdx",
+      "output": "Microsoft_Visio_Drawing141.bpmn",
+      "shapes": 24,
+      "connections": 15
+    },
+    {
+      "source": "Microsoft_Visio_Drawing142.vsdx",
+      "output": "Microsoft_Visio_Drawing142.bpmn",
+      "shapes": 18,
+      "connections": 9
+    },
+    {
+      "source": "Microsoft_Visio_Drawing143.vsdx",
+      "output": "Microsoft_Visio_Drawing143.bpmn",
+      "shapes": 18,
+      "connections": 10
+    },
+    {
+      "source": "Microsoft_Visio_Drawing144.vsdx",
+      "output": "Microsoft_Visio_Drawing144.bpmn",
+      "shapes": 18,
+      "connections": 12
+    },
+    {
+      "source": "Microsoft_Visio_Drawing145.vsdx",
+      "output": "Microsoft_Visio_Drawing145.bpmn",
+      "shapes": 35,
+      "connections": 28
+    },
+    {
+      "source": "Microsoft_Visio_Drawing146.vsdx",
+      "output": "Microsoft_Visio_Drawing146.bpmn",
+      "shapes": 50,
+      "connections": 45
+    },
+    {
+      "source": "Microsoft_Visio_Drawing147.vsdx",
+      "output": "Microsoft_Visio_Drawing147.bpmn",
+      "shapes": 33,
+      "connections": 19
+    },
+    {
+      "source": "Microsoft_Visio_Drawing148.vsdx",
+      "output": "Microsoft_Visio_Drawing148.bpmn",
+      "shapes": 8,
+      "connections": 7
+    },
+    {
+      "source": "Microsoft_Visio_Drawing149.vsdx",
+      "output": "Microsoft_Visio_Drawing149.bpmn",
+      "shapes": 28,
+      "connections": 22
+    },
+    {
+      "source": "Microsoft_Visio_Drawing15.vsdx",
+      "output": "Microsoft_Visio_Drawing15.bpmn",
+      "shapes": 19,
+      "connections": 15
+    },
+    {
+      "source": "Microsoft_Visio_Drawing150.vsdx",
+      "output": "Microsoft_Visio_Drawing150.bpmn",
+      "shapes": 11,
+      "connections": 5
+    },
+    {
+      "source": "Microsoft_Visio_Drawing151.vsdx",
+      "output": "Microsoft_Visio_Drawing151.bpmn",
+      "shapes": 39,
+      "connections": 32
+    },
+    {
+      "source": "Microsoft_Visio_Drawing152.vsdx",
+      "output": "Microsoft_Visio_Drawing152.bpmn",
+      "shapes": 36,
+      "connections": 22
+    },
+    {
+      "source": "Microsoft_Visio_Drawing153.vsdx",
+      "output": "Microsoft_Visio_Drawing153.bpmn",
+      "shapes": 33,
+      "connections": 22
+    },
+    {
+      "source": "Microsoft_Visio_Drawing154.vsdx",
+      "output": "Microsoft_Visio_Drawing154.bpmn",
+      "shapes": 31,
+      "connections": 19
+    },
+    {
+      "source": "Microsoft_Visio_Drawing155.vsdx",
+      "output": "Microsoft_Visio_Drawing155.bpmn",
+      "shapes": 25,
+      "connections": 20
+    },
+    {
+      "source": "Microsoft_Visio_Drawing156.vsdx",
+      "output": "Microsoft_Visio_Drawing156.bpmn",
+      "shapes": 21,
+      "connections": 17
+    },
+    {
+      "source": "Microsoft_Visio_Drawing157.vsdx",
+      "output": "Microsoft_Visio_Drawing157.bpmn",
+      "shapes": 34,
+      "connections": 25
+    },
+    {
+      "source": "Microsoft_Visio_Drawing158.vsdx",
+      "output": "Microsoft_Visio_Drawing158.bpmn",
+      "shapes": 24,
+      "connections": 15
+    },
+    {
+      "source": "Microsoft_Visio_Drawing159.vsdx",
+      "output": "Microsoft_Visio_Drawing159.bpmn",
+      "shapes": 20,
+      "connections": 14
+    },
+    {
+      "source": "Microsoft_Visio_Drawing16.vsdx",
+      "output": "Microsoft_Visio_Drawing16.bpmn",
+      "shapes": 28,
+      "connections": 15
+    },
+    {
+      "source": "Microsoft_Visio_Drawing160.vsdx",
+      "output": "Microsoft_Visio_Drawing160.bpmn",
+      "shapes": 36,
+      "connections": 33
+    },
+    {
+      "source": "Microsoft_Visio_Drawing161.vsdx",
+      "output": "Microsoft_Visio_Drawing161.bpmn",
+      "shapes": 22,
+      "connections": 15
+    },
+    {
+      "source": "Microsoft_Visio_Drawing162.vsdx",
+      "output": "Microsoft_Visio_Drawing162.bpmn",
+      "shapes": 39,
+      "connections": 32
+    },
+    {
+      "source": "Microsoft_Visio_Drawing163.vsdx",
+      "output": "Microsoft_Visio_Drawing163.bpmn",
+      "shapes": 19,
+      "connections": 11
+    },
+    {
+      "source": "Microsoft_Visio_Drawing164.vsdx",
+      "output": "Microsoft_Visio_Drawing164.bpmn",
+      "shapes": 27,
+      "connections": 20
+    },
+    {
+      "source": "Microsoft_Visio_Drawing165.vsdx",
+      "output": "Microsoft_Visio_Drawing165.bpmn",
+      "shapes": 25,
+      "connections": 16
+    },
+    {
+      "source": "Microsoft_Visio_Drawing166.vsdx",
+      "output": "Microsoft_Visio_Drawing166.bpmn",
+      "shapes": 20,
+      "connections": 14
+    },
+    {
+      "source": "Microsoft_Visio_Drawing167.vsdx",
+      "output": "Microsoft_Visio_Drawing167.bpmn",
+      "shapes": 20,
+      "connections": 12
+    },
+    {
+      "source": "Microsoft_Visio_Drawing168.vsdx",
+      "output": "Microsoft_Visio_Drawing168.bpmn",
+      "shapes": 29,
+      "connections": 21
+    },
+    {
+      "source": "Microsoft_Visio_Drawing17.vsdx",
+      "output": "Microsoft_Visio_Drawing17.bpmn",
+      "shapes": 51,
+      "connections": 42
+    },
+    {
+      "source": "Microsoft_Visio_Drawing18.vsdx",
+      "output": "Microsoft_Visio_Drawing18.bpmn",
+      "shapes": 34,
+      "connections": 17
+    },
+    {
+      "source": "Microsoft_Visio_Drawing19.vsdx",
+      "output": "Microsoft_Visio_Drawing19.bpmn",
+      "shapes": 57,
+      "connections": 31
+    },
+    {
+      "source": "Microsoft_Visio_Drawing2.vsdx",
+      "output": "Microsoft_Visio_Drawing2.bpmn",
+      "shapes": 28,
+      "connections": 20
+    },
+    {
+      "source": "Microsoft_Visio_Drawing20.vsdx",
+      "output": "Microsoft_Visio_Drawing20.bpmn",
+      "shapes": 27,
+      "connections": 13
+    },
+    {
+      "source": "Microsoft_Visio_Drawing21.vsdx",
+      "output": "Microsoft_Visio_Drawing21.bpmn",
+      "shapes": 40,
+      "connections": 12
+    },
+    {
+      "source": "Microsoft_Visio_Drawing22.vsdx",
+      "output": "Microsoft_Visio_Drawing22.bpmn",
+      "shapes": 23,
+      "connections": 12
+    },
+    {
+      "source": "Microsoft_Visio_Drawing23.vsdx",
+      "output": "Microsoft_Visio_Drawing23.bpmn",
+      "shapes": 30,
+      "connections": 14
+    },
+    {
+      "source": "Microsoft_Visio_Drawing24.vsdx",
+      "output": "Microsoft_Visio_Drawing24.bpmn",
+      "shapes": 47,
+      "connections": 20
+    },
+    {
+      "source": "Microsoft_Visio_Drawing25.vsdx",
+      "output": "Microsoft_Visio_Drawing25.bpmn",
+      "shapes": 22,
+      "connections": 15
+    },
+    {
+      "source": "Microsoft_Visio_Drawing26.vsdx",
+      "output": "Microsoft_Visio_Drawing26.bpmn",
+      "shapes": 30,
+      "connections": 22
+    },
+    {
+      "source": "Microsoft_Visio_Drawing27.vsdx",
+      "output": "Microsoft_Visio_Drawing27.bpmn",
+      "shapes": 50,
+      "connections": 40
+    },
+    {
+      "source": "Microsoft_Visio_Drawing28.vsdx",
+      "output": "Microsoft_Visio_Drawing28.bpmn",
+      "shapes": 34,
+      "connections": 24
+    },
+    {
+      "source": "Microsoft_Visio_Drawing29.vsdx",
+      "output": "Microsoft_Visio_Drawing29.bpmn",
+      "shapes": 58,
+      "connections": 40
+    },
+    {
+      "source": "Microsoft_Visio_Drawing3.vsdx",
+      "output": "Microsoft_Visio_Drawing3.bpmn",
+      "shapes": 22,
+      "connections": 14
+    },
+    {
+      "source": "Microsoft_Visio_Drawing30.vsdx",
+      "output": "Microsoft_Visio_Drawing30.bpmn",
+      "shapes": 23,
+      "connections": 15
+    },
+    {
+      "source": "Microsoft_Visio_Drawing31.vsdx",
+      "output": "Microsoft_Visio_Drawing31.bpmn",
+      "shapes": 30,
+      "connections": 21
+    },
+    {
+      "source": "Microsoft_Visio_Drawing32.vsdx",
+      "output": "Microsoft_Visio_Drawing32.bpmn",
+      "shapes": 19,
+      "connections": 15
+    },
+    {
+      "source": "Microsoft_Visio_Drawing33.vsdx",
+      "output": "Microsoft_Visio_Drawing33.bpmn",
+      "shapes": 18,
+      "connections": 11
+    },
+    {
+      "source": "Microsoft_Visio_Drawing34.vsdx",
+      "output": "Microsoft_Visio_Drawing34.bpmn",
+      "shapes": 19,
+      "connections": 13
+    },
+    {
+      "source": "Microsoft_Visio_Drawing35.vsdx",
+      "output": "Microsoft_Visio_Drawing35.bpmn",
+      "shapes": 24,
+      "connections": 18
+    },
+    {
+      "source": "Microsoft_Visio_Drawing36.vsdx",
+      "output": "Microsoft_Visio_Drawing36.bpmn",
+      "shapes": 24,
+      "connections": 18
+    },
+    {
+      "source": "Microsoft_Visio_Drawing37.vsdx",
+      "output": "Microsoft_Visio_Drawing37.bpmn",
+      "shapes": 15,
+      "connections": 9
+    },
+    {
+      "source": "Microsoft_Visio_Drawing38.vsdx",
+      "output": "Microsoft_Visio_Drawing38.bpmn",
+      "shapes": 22,
+      "connections": 17
+    },
+    {
+      "source": "Microsoft_Visio_Drawing39.vsdx",
+      "output": "Microsoft_Visio_Drawing39.bpmn",
+      "shapes": 15,
+      "connections": 9
+    },
+    {
+      "source": "Microsoft_Visio_Drawing4.vsdx",
+      "output": "Microsoft_Visio_Drawing4.bpmn",
+      "shapes": 29,
+      "connections": 23
+    },
+    {
+      "source": "Microsoft_Visio_Drawing40.vsdx",
+      "output": "Microsoft_Visio_Drawing40.bpmn",
+      "shapes": 32,
+      "connections": 47
+    },
+    {
+      "source": "Microsoft_Visio_Drawing41.vsdx",
+      "output": "Microsoft_Visio_Drawing41.bpmn",
+      "shapes": 27,
+      "connections": 23
+    },
+    {
+      "source": "Microsoft_Visio_Drawing42.vsdx",
+      "output": "Microsoft_Visio_Drawing42.bpmn",
+      "shapes": 37,
+      "connections": 34
+    },
+    {
+      "source": "Microsoft_Visio_Drawing43.vsdx",
+      "output": "Microsoft_Visio_Drawing43.bpmn",
+      "shapes": 18,
+      "connections": 13
+    },
+    {
+      "source": "Microsoft_Visio_Drawing44.vsdx",
+      "output": "Microsoft_Visio_Drawing44.bpmn",
+      "shapes": 21,
+      "connections": 17
+    },
+    {
+      "source": "Microsoft_Visio_Drawing45.vsdx",
+      "output": "Microsoft_Visio_Drawing45.bpmn",
+      "shapes": 34,
+      "connections": 25
+    },
+    {
+      "source": "Microsoft_Visio_Drawing46.vsdx",
+      "output": "Microsoft_Visio_Drawing46.bpmn",
+      "shapes": 19,
+      "connections": 13
+    },
+    {
+      "source": "Microsoft_Visio_Drawing47.vsdx",
+      "output": "Microsoft_Visio_Drawing47.bpmn",
+      "shapes": 19,
+      "connections": 14
+    },
+    {
+      "source": "Microsoft_Visio_Drawing48.vsdx",
+      "output": "Microsoft_Visio_Drawing48.bpmn",
+      "shapes": 20,
+      "connections": 15
+    },
+    {
+      "source": "Microsoft_Visio_Drawing49.vsdx",
+      "output": "Microsoft_Visio_Drawing49.bpmn",
+      "shapes": 44,
+      "connections": 36
+    },
+    {
+      "source": "Microsoft_Visio_Drawing5.vsdx",
+      "output": "Microsoft_Visio_Drawing5.bpmn",
+      "shapes": 36,
+      "connections": 24
+    },
+    {
+      "source": "Microsoft_Visio_Drawing50.vsdx",
+      "output": "Microsoft_Visio_Drawing50.bpmn",
+      "shapes": 26,
+      "connections": 19
+    },
+    {
+      "source": "Microsoft_Visio_Drawing51.vsdx",
+      "output": "Microsoft_Visio_Drawing51.bpmn",
+      "shapes": 19,
+      "connections": 11
+    },
+    {
+      "source": "Microsoft_Visio_Drawing52.vsdx",
+      "output": "Microsoft_Visio_Drawing52.bpmn",
+      "shapes": 44,
+      "connections": 34
+    },
+    {
+      "source": "Microsoft_Visio_Drawing53.vsdx",
+      "output": "Microsoft_Visio_Drawing53.bpmn",
+      "shapes": 61,
+      "connections": 49
+    },
+    {
+      "source": "Microsoft_Visio_Drawing54.vsdx",
+      "output": "Microsoft_Visio_Drawing54.bpmn",
+      "shapes": 40,
+      "connections": 30
+    },
+    {
+      "source": "Microsoft_Visio_Drawing55.vsdx",
+      "output": "Microsoft_Visio_Drawing55.bpmn",
+      "shapes": 35,
+      "connections": 29
+    },
+    {
+      "source": "Microsoft_Visio_Drawing56.vsdx",
+      "output": "Microsoft_Visio_Drawing56.bpmn",
+      "shapes": 21,
+      "connections": 16
+    },
+    {
+      "source": "Microsoft_Visio_Drawing57.vsdx",
+      "output": "Microsoft_Visio_Drawing57.bpmn",
+      "shapes": 19,
+      "connections": 13
+    },
+    {
+      "source": "Microsoft_Visio_Drawing58.vsdx",
+      "output": "Microsoft_Visio_Drawing58.bpmn",
+      "shapes": 19,
+      "connections": 13
+    },
+    {
+      "source": "Microsoft_Visio_Drawing59.vsdx",
+      "output": "Microsoft_Visio_Drawing59.bpmn",
+      "shapes": 21,
+      "connections": 9
+    },
+    {
+      "source": "Microsoft_Visio_Drawing6.vsdx",
+      "output": "Microsoft_Visio_Drawing6.bpmn",
+      "shapes": 29,
+      "connections": 16
+    },
+    {
+      "source": "Microsoft_Visio_Drawing60.vsdx",
+      "output": "Microsoft_Visio_Drawing60.bpmn",
+      "shapes": 16,
+      "connections": 8
+    },
+    {
+      "source": "Microsoft_Visio_Drawing61.vsdx",
+      "output": "Microsoft_Visio_Drawing61.bpmn",
+      "shapes": 16,
+      "connections": 7
+    },
+    {
+      "source": "Microsoft_Visio_Drawing62.vsdx",
+      "output": "Microsoft_Visio_Drawing62.bpmn",
+      "shapes": 33,
+      "connections": 25
+    },
+    {
+      "source": "Microsoft_Visio_Drawing63.vsdx",
+      "output": "Microsoft_Visio_Drawing63.bpmn",
+      "shapes": 32,
+      "connections": 24
+    },
+    {
+      "source": "Microsoft_Visio_Drawing64.vsdx",
+      "output": "Microsoft_Visio_Drawing64.bpmn",
+      "shapes": 35,
+      "connections": 30
+    },
+    {
+      "source": "Microsoft_Visio_Drawing65.vsdx",
+      "output": "Microsoft_Visio_Drawing65.bpmn",
+      "shapes": 22,
+      "connections": 16
+    },
+    {
+      "source": "Microsoft_Visio_Drawing66.vsdx",
+      "output": "Microsoft_Visio_Drawing66.bpmn",
+      "shapes": 30,
+      "connections": 22
+    },
+    {
+      "source": "Microsoft_Visio_Drawing67.vsdx",
+      "output": "Microsoft_Visio_Drawing67.bpmn",
+      "shapes": 23,
+      "connections": 16
+    },
+    {
+      "source": "Microsoft_Visio_Drawing68.vsdx",
+      "output": "Microsoft_Visio_Drawing68.bpmn",
+      "shapes": 31,
+      "connections": 23
+    },
+    {
+      "source": "Microsoft_Visio_Drawing69.vsdx",
+      "output": "Microsoft_Visio_Drawing69.bpmn",
+      "shapes": 17,
+      "connections": 10
+    },
+    {
+      "source": "Microsoft_Visio_Drawing7.vsdx",
+      "output": "Microsoft_Visio_Drawing7.bpmn",
+      "shapes": 20,
+      "connections": 14
+    },
+    {
+      "source": "Microsoft_Visio_Drawing70.vsdx",
+      "output": "Microsoft_Visio_Drawing70.bpmn",
+      "shapes": 18,
+      "connections": 10
+    },
+    {
+      "source": "Microsoft_Visio_Drawing71.vsdx",
+      "output": "Microsoft_Visio_Drawing71.bpmn",
+      "shapes": 25,
+      "connections": 17
+    },
+    {
+      "source": "Microsoft_Visio_Drawing72.vsdx",
+      "output": "Microsoft_Visio_Drawing72.bpmn",
+      "shapes": 18,
+      "connections": 9
+    },
+    {
+      "source": "Microsoft_Visio_Drawing73.vsdx",
+      "output": "Microsoft_Visio_Drawing73.bpmn",
+      "shapes": 32,
+      "connections": 18
+    },
+    {
+      "source": "Microsoft_Visio_Drawing74.vsdx",
+      "output": "Microsoft_Visio_Drawing74.bpmn",
+      "shapes": 28,
+      "connections": 13
+    },
+    {
+      "source": "Microsoft_Visio_Drawing75.vsdx",
+      "output": "Microsoft_Visio_Drawing75.bpmn",
+      "shapes": 26,
+      "connections": 14
+    },
+    {
+      "source": "Microsoft_Visio_Drawing76.vsdx",
+      "output": "Microsoft_Visio_Drawing76.bpmn",
+      "shapes": 34,
+      "connections": 24
+    },
+    {
+      "source": "Microsoft_Visio_Drawing77.vsdx",
+      "output": "Microsoft_Visio_Drawing77.bpmn",
+      "shapes": 19,
+      "connections": 16
+    },
+    {
+      "source": "Microsoft_Visio_Drawing78.vsdx",
+      "output": "Microsoft_Visio_Drawing78.bpmn",
+      "shapes": 15,
+      "connections": 10
+    },
+    {
+      "source": "Microsoft_Visio_Drawing79.vsdx",
+      "output": "Microsoft_Visio_Drawing79.bpmn",
+      "shapes": 17,
+      "connections": 10
+    },
+    {
+      "source": "Microsoft_Visio_Drawing8.vsdx",
+      "output": "Microsoft_Visio_Drawing8.bpmn",
+      "shapes": 18,
+      "connections": 9
+    },
+    {
+      "source": "Microsoft_Visio_Drawing80.vsdx",
+      "output": "Microsoft_Visio_Drawing80.bpmn",
+      "shapes": 15,
+      "connections": 10
+    },
+    {
+      "source": "Microsoft_Visio_Drawing81.vsdx",
+      "output": "Microsoft_Visio_Drawing81.bpmn",
+      "shapes": 12,
+      "connections": 6
+    },
+    {
+      "source": "Microsoft_Visio_Drawing82.vsdx",
+      "output": "Microsoft_Visio_Drawing82.bpmn",
+      "shapes": 25,
+      "connections": 18
+    },
+    {
+      "source": "Microsoft_Visio_Drawing83.vsdx",
+      "output": "Microsoft_Visio_Drawing83.bpmn",
+      "shapes": 15,
+      "connections": 9
+    },
+    {
+      "source": "Microsoft_Visio_Drawing84.vsdx",
+      "output": "Microsoft_Visio_Drawing84.bpmn",
+      "shapes": 23,
+      "connections": 14
+    },
+    {
+      "source": "Microsoft_Visio_Drawing85.vsdx",
+      "output": "Microsoft_Visio_Drawing85.bpmn",
+      "shapes": 18,
+      "connections": 9
+    },
+    {
+      "source": "Microsoft_Visio_Drawing86.vsdx",
+      "output": "Microsoft_Visio_Drawing86.bpmn",
+      "shapes": 23,
+      "connections": 15
+    },
+    {
+      "source": "Microsoft_Visio_Drawing87.vsdx",
+      "output": "Microsoft_Visio_Drawing87.bpmn",
+      "shapes": 24,
+      "connections": 17
+    },
+    {
+      "source": "Microsoft_Visio_Drawing88.vsdx",
+      "output": "Microsoft_Visio_Drawing88.bpmn",
+      "shapes": 32,
+      "connections": 26
+    },
+    {
+      "source": "Microsoft_Visio_Drawing89.vsdx",
+      "output": "Microsoft_Visio_Drawing89.bpmn",
+      "shapes": 24,
+      "connections": 20
+    },
+    {
+      "source": "Microsoft_Visio_Drawing9.vsdx",
+      "output": "Microsoft_Visio_Drawing9.bpmn",
+      "shapes": 17,
+      "connections": 10
+    },
+    {
+      "source": "Microsoft_Visio_Drawing90.vsdx",
+      "output": "Microsoft_Visio_Drawing90.bpmn",
+      "shapes": 17,
+      "connections": 12
+    },
+    {
+      "source": "Microsoft_Visio_Drawing91.vsdx",
+      "output": "Microsoft_Visio_Drawing91.bpmn",
+      "shapes": 20,
+      "connections": 13
+    },
+    {
+      "source": "Microsoft_Visio_Drawing92.vsdx",
+      "output": "Microsoft_Visio_Drawing92.bpmn",
+      "shapes": 15,
+      "connections": 10
+    },
+    {
+      "source": "Microsoft_Visio_Drawing93.vsdx",
+      "output": "Microsoft_Visio_Drawing93.bpmn",
+      "shapes": 43,
+      "connections": 33
+    },
+    {
+      "source": "Microsoft_Visio_Drawing94.vsdx",
+      "output": "Microsoft_Visio_Drawing94.bpmn",
+      "shapes": 26,
+      "connections": 15
+    },
+    {
+      "source": "Microsoft_Visio_Drawing95.vsdx",
+      "output": "Microsoft_Visio_Drawing95.bpmn",
+      "shapes": 23,
+      "connections": 13
+    },
+    {
+      "source": "Microsoft_Visio_Drawing96.vsdx",
+      "output": "Microsoft_Visio_Drawing96.bpmn",
+      "shapes": 21,
+      "connections": 14
+    },
+    {
+      "source": "Microsoft_Visio_Drawing97.vsdx",
+      "output": "Microsoft_Visio_Drawing97.bpmn",
+      "shapes": 28,
+      "connections": 18
+    },
+    {
+      "source": "Microsoft_Visio_Drawing98.vsdx",
+      "output": "Microsoft_Visio_Drawing98.bpmn",
+      "shapes": 40,
+      "connections": 21
+    },
+    {
+      "source": "Microsoft_Visio_Drawing99.vsdx",
+      "output": "Microsoft_Visio_Drawing99.bpmn",
+      "shapes": 39,
+      "connections": 19
+    }
+  ]
+}

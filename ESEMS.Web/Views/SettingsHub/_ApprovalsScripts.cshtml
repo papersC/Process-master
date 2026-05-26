@@ -1,0 +1,206 @@
+@inject IStringLocalizer<SharedResource> Shared
+<script nonce="@Context.CspNonce()">
+window.ApprovalHub = (function() {
+    var USERS = JSON.parse(document.getElementById('hubUsers').textContent || '[]');
+    var RULES = JSON.parse(document.getElementById('hubRules').textContent || '[]');
+    var isRtl = document.documentElement.getAttribute('dir') === 'rtl';
+
+    function setUserBadge(prefix, userId, userName) {
+        var badge = document.getElementById(prefix + 'Badge');
+        var inp = document.getElementById(prefix + 'Search');
+        var hid = document.getElementById(prefix + 'UserId');
+        hid.value = userId || '';
+        if (userId) {
+            inp.style.display = 'none';
+            badge.innerHTML = '<span class="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-100 text-blue-800 rounded-lg text-sm font-semibold">' +
+                '<i data-lucide="user" class="w-3.5 h-3.5"></i>' +
+                '<span>' + (userName || (isRtl ? 'مستخدم ' : 'User ') + userId) + '</span>' +
+                '<button type="button" class="hover:text-red-600" onclick="ApprovalHub.clearPicker(\'' + prefix + '\')">' +
+                '<i data-lucide="x" class="w-3.5 h-3.5"></i></button></span>';
+            badge.classList.remove('hidden');
+            if (window.lucide) lucide.createIcons();
+        } else {
+            inp.style.display = '';
+            inp.value = '';
+            badge.innerHTML = '';
+            badge.classList.add('hidden');
+        }
+    }
+
+    function clearPicker(prefix) { setUserBadge(prefix, null, null); }
+
+    function initSearch(prefix) {
+        var inp = document.getElementById(prefix + 'Search');
+        var dd = document.getElementById(prefix + 'Dropdown');
+        if (!inp || !dd) return;
+        inp.addEventListener('input', function() {
+            var q = this.value.toLowerCase().trim();
+            if (q.length < 1) { dd.classList.add('hidden'); return; }
+            var filtered = USERS.filter(function(u) {
+                return (u.FullNameEn || '').toLowerCase().includes(q) ||
+                       (u.FullNameAr || '').toLowerCase().includes(q) ||
+                       (u.Email || '').toLowerCase().includes(q) ||
+                       (u.DeptEn || '').toLowerCase().includes(q);
+            }).slice(0, 8);
+            if (!filtered.length) { dd.classList.add('hidden'); return; }
+            dd.innerHTML = filtered.map(function(u) {
+                var nm = isRtl ? (u.FullNameAr || u.FullNameEn) : (u.FullNameEn || u.FullNameAr);
+                return '<button type="button" class="w-full text-start px-3 py-2 hover:bg-blue-50 border-b border-gray-100 last:border-0" data-id="' + u.Id + '" data-name="' + nm.replace(/"/g, '&quot;') + '">' +
+                    '<div class="font-semibold text-sm text-gray-900">' + nm + '</div>' +
+                    '<div class="text-xs text-gray-500">' + (u.Email || '') + (u.DeptEn ? ' · ' + u.DeptEn : '') + '</div>' +
+                    '</button>';
+            }).join('');
+            dd.classList.remove('hidden');
+        });
+        dd.addEventListener('click', function(e) {
+            var btn = e.target.closest('button[data-id]');
+            if (!btn) return;
+            setUserBadge(prefix, btn.dataset.id, btn.dataset.name);
+            dd.classList.add('hidden');
+        });
+        document.addEventListener('click', function(e) {
+            if (!inp.contains(e.target) && !dd.contains(e.target)) dd.classList.add('hidden');
+        });
+    }
+
+    function openRuleEditor(entityType, ruleId) {
+        document.getElementById('ruleEntityType').value = entityType;
+        document.getElementById('ruleId').value = ruleId || '';
+        document.getElementById('ruleModalEntity').textContent = entityType;
+
+        var existing = ruleId ? RULES.find(function(r) { return r.Id === ruleId; }) : null;
+        var titleEl = document.getElementById('ruleModalTitle');
+        titleEl.textContent = existing
+            ? ('@Html.Raw(Shared["Heading_EditRule"].Value)')
+            : ('@Html.Raw(Shared["Heading_AddRule"].Value)');
+
+        document.getElementById('ruleName').value = existing?.RuleName || '';
+        document.getElementById('rulePriority').value = existing?.Priority || 100;
+        document.getElementById('ruleMinCost').value = existing?.MinCostSavings || '';
+        document.getElementById('ruleMaxCost').value = existing?.MaxCostSavings || '';
+        document.getElementById('ruleMinImpact').value = existing?.MinImpactScore || '';
+        document.getElementById('ruleMaxImpact').value = existing?.MaxImpactScore || '';
+        document.getElementById('ruleMinDuration').value = existing?.MinDurationDays || '';
+        document.getElementById('ruleMaxDuration').value = existing?.MaxDurationDays || '';
+        document.getElementById('ruleHorizon').value = existing?.Horizon || '';
+        document.getElementById('ruleInnovation').value = existing?.InnovationType || '';
+
+        var l1Type = existing?.Level1ApproverType || 'SpecificUser';
+        document.querySelector('input[name=ruleL1Type][value=' + l1Type + ']').checked = true;
+        setUserBadge('ruleL1', existing?.Level1ApproverUserId || null, existing?.Level1ApproverName || null);
+
+        var l2Enabled = existing?.Level2Required || false;
+        document.getElementById('ruleL2Enabled').checked = l2Enabled;
+        document.getElementById('ruleL2Body').classList.toggle('hidden', !l2Enabled);
+        var ph = document.getElementById('ruleL2Placeholder');
+        if (ph) ph.classList.toggle('hidden', l2Enabled);
+        var l2Type = existing?.Level2ApproverType || 'SpecificUser';
+        document.querySelector('input[name=ruleL2Type][value=' + l2Type + ']').checked = true;
+        setUserBadge('ruleL2', existing?.Level2ApproverUserId || null, existing?.Level2ApproverName || null);
+
+        // SLA + escalation block
+        document.getElementById('ruleL1Sla').value = existing?.Level1SlaHours || '';
+        document.getElementById('ruleL2Sla').value = existing?.Level2SlaHours || '';
+        setUserBadge('ruleEsc', existing?.EscalationUserId || null, existing?.EscalationUserName || null);
+
+        var m = document.getElementById('ruleModal');
+        m.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function closeRuleEditor() {
+        var m = document.getElementById('ruleModal');
+        m.classList.add('hidden');
+        document.body.style.overflow = '';
+    }
+
+    async function saveRule() {
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', ShubToken());
+        fd.append('Id', document.getElementById('ruleId').value);
+        fd.append('EntityType', document.getElementById('ruleEntityType').value);
+        fd.append('RuleName', document.getElementById('ruleName').value);
+        fd.append('Priority', document.getElementById('rulePriority').value || '100');
+        fd.append('MinCostSavings', document.getElementById('ruleMinCost').value);
+        fd.append('MaxCostSavings', document.getElementById('ruleMaxCost').value);
+        fd.append('MinImpactScore', document.getElementById('ruleMinImpact').value);
+        fd.append('MaxImpactScore', document.getElementById('ruleMaxImpact').value);
+        fd.append('MinDurationDays', document.getElementById('ruleMinDuration').value);
+        fd.append('MaxDurationDays', document.getElementById('ruleMaxDuration').value);
+        fd.append('Horizon', document.getElementById('ruleHorizon').value);
+        fd.append('InnovationType', document.getElementById('ruleInnovation').value);
+        fd.append('Level1ApproverType', document.querySelector('input[name=ruleL1Type]:checked').value);
+        fd.append('Level1ApproverUserId', document.getElementById('ruleL1UserId').value);
+        fd.append('Level2Required', document.getElementById('ruleL2Enabled').checked);
+        fd.append('Level2ApproverType', document.querySelector('input[name=ruleL2Type]:checked').value);
+        fd.append('Level2ApproverUserId', document.getElementById('ruleL2UserId').value);
+        fd.append('Level1SlaHours', document.getElementById('ruleL1Sla').value);
+        fd.append('Level2SlaHours', document.getElementById('ruleL2Sla').value);
+        fd.append('EscalationUserId', document.getElementById('ruleEscUserId').value);
+
+        try {
+            var r = await fetch('/SettingsHub/SaveRule', { method: 'POST', body: fd });
+            var data = await r.json();
+            if (data.success) {
+                ShubToast('success', '@Html.Raw(Shared["Toast_SavedSuccess"].Value)');
+                setTimeout(function() { location.reload(); }, 700);
+            } else {
+                ShubToast('error', data.error || '@Html.Raw(Shared["Toast_SaveFailed"].Value)');
+            }
+        } catch (ex) {
+            ShubToast('error', ex.message || '@Html.Raw(Shared["Toast_SaveFailed"].Value)');
+        }
+    }
+
+    async function deleteRule(ruleId) {
+        const r0 = await Swal.fire({
+            icon: 'warning',
+            title: '@Html.Raw(Shared["Confirm_DeleteRule"].Value)',
+            showCancelButton: true,
+            confirmButtonText: '@Html.Raw(Shared["Label_Yes"].Value)', cancelButtonText: '@Html.Raw(Shared["Button_Cancel"].Value)',
+            confirmButtonColor: '#dc2626', cancelButtonColor: '#64748b'
+        });
+        if (!r0.isConfirmed) return;
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', ShubToken());
+        fd.append('id', ruleId);
+        try {
+            var r = await fetch('/SettingsHub/DeleteRule', { method: 'POST', body: fd });
+            var data = await r.json();
+            if (data.success) {
+                ShubToast('success', '@Html.Raw(Shared["Toast_DeletedSuccess"].Value)');
+                setTimeout(function() { location.reload(); }, 700);
+            } else {
+                ShubToast('error', data.error || '@Html.Raw(Shared["Toast_SaveFailed"].Value)');
+            }
+        } catch (ex) {
+            ShubToast('error', ex.message || '@Html.Raw(Shared["Toast_SaveFailed"].Value)');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        var l2Cb = document.getElementById('ruleL2Enabled');
+        if (l2Cb) {
+            l2Cb.addEventListener('change', function() {
+                document.getElementById('ruleL2Body').classList.toggle('hidden', !this.checked);
+                var ph = document.getElementById('ruleL2Placeholder');
+                if (ph) ph.classList.toggle('hidden', this.checked);
+            });
+        }
+        initSearch('ruleL1');
+        initSearch('ruleL2');
+        initSearch('ruleEsc');
+    });
+
+    return {
+        openRuleEditor: openRuleEditor,
+        closeRuleEditor: closeRuleEditor,
+        saveRule: saveRule,
+        deleteRule: deleteRule,
+        clearPicker: clearPicker
+    };
+})();
+
+if (window.lucide) lucide.createIcons();
+</script>

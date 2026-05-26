@@ -1,0 +1,136 @@
+@model ESEMS.Web.Models.CustomUser
+@inject IStringLocalizer<SharedResource> Shared
+@{
+    ViewData["Title"] = Shared["Title_UserDetails"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+}
+
+<!-- Modern Banner -->
+<partial name="_ModuleBanner" model='new { icon = "user", title = Shared["Title_UserDetails"].Value, subtitle = Shared["Text_ViewUserInfoRoles"].Value }' />
+
+<div class="container mx-auto px-4 py-8">
+    <div class="bg-white rounded-2xl shadow-lg p-8">
+        
+        <!-- User Information -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">@Shared["Label_UserId"]</label>
+                <p class="text-lg font-semibold text-gray-900">@Model.UserId</p>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">@Shared["Label_Username"]</label>
+                <p class="text-lg font-semibold text-gray-900">@Model.Username</p>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">@Shared["Label_EmployeeNumber"]</label>
+                <p class="text-lg font-semibold text-gray-900">@(Model.EmployeeNumber ?? Shared["Value_NotAvailable"].Value)</p>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">@Shared["Label_EmployeeNameEnglish"]</label>
+                <p class="text-lg font-semibold text-gray-900">@(Model.EmployeeName ?? Shared["Value_NotAvailable"].Value)</p>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">@Shared["Label_EmployeeNameArabic"]</label>
+                <p class="text-lg font-semibold text-gray-900">@(Model.EmployeeNameAr ?? Shared["Value_NotAvailable"].Value)</p>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">@Shared["Label_Email"]</label>
+                <p class="text-lg font-semibold text-gray-900">@(Model.EmailAddress ?? Shared["Value_NotAvailable"].Value)</p>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">@Shared["Label_JobTitleEnglish"]</label>
+                <p class="text-lg font-semibold text-gray-900">@(Model.JobName ?? Shared["Value_NotAvailable"].Value)</p>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">@Shared["Label_JobTitleArabic"]</label>
+                <p class="text-lg font-semibold text-gray-900">@(Model.JobNameAr ?? Shared["Value_NotAvailable"].Value)</p>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">@Shared["Label_OrganizationUnit"]</label>
+                <p class="text-lg font-semibold text-gray-900">@(Model.OrganizationUnit?.Name ?? Shared["Value_NotAvailable"].Value)</p>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">@Shared["Label_DirectManager"]</label>
+                <p class="text-lg font-semibold text-gray-900">@(Model.Manager?.DisplayName ?? Shared["Value_NotAvailable"].Value)</p>
+            </div>
+        </div>
+
+        <!-- Assigned Roles -->
+        <div class="mb-8">
+            <h3 class="text-xl font-bold text-gray-900 mb-4">@Shared["Label_Roles"]</h3>
+            <div class="flex flex-wrap gap-2">
+                @if (ViewBag.UserRoles != null && ((List<string>)ViewBag.UserRoles).Any())
+                {
+                    @foreach (var role in (List<string>)ViewBag.UserRoles)
+                    {
+                        <span class="px-4 py-2 bg-blue-100 text-blue-800 rounded-lg font-medium">@role</span>
+                    }
+                }
+                else
+                {
+                    <p class="text-gray-500">@Shared["Text_NoRolesAssigned"]</p>
+                }
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex items-center gap-4">
+            <a asp-action="Edit" asp-route-id="@Model.UserId" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
+                <i data-lucide="edit" class="w-5 h-5"></i>
+                @Shared["Button_EditUser"]
+            </a>
+            <a asp-action="Index" class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors flex items-center gap-2">
+                <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" class="w-5 h-5"></i>
+                @Shared["Button_BackToList"]
+            </a>
+            <button type="button" onclick="confirmDelete(@Model.UserId)" class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2">
+                <i data-lucide="user-x" class="w-5 h-5"></i>
+                @(isRtl ? "إلغاء تفعيل المستخدم" : "Deactivate User")
+            </button>
+        </div>
+    </div>
+</div>
+
+<form id="deleteForm" asp-action="Delete" method="post" style="display: none;">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="id" id="deleteId" />
+</form>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        lucide.createIcons();
+
+        // Deactivate (soft-delete): the user row + its assignment history
+        // are preserved; the user just can't sign in until an admin
+        // re-enables them via Edit. Wording reflects that.
+        function confirmDelete(userId) {
+            Swal.fire({
+                title: @Json.Serialize(isRtl ? "إلغاء تفعيل المستخدم؟" : "Deactivate user?"),
+                text: @Json.Serialize(isRtl
+                    ? "لن يتمكن المستخدم من تسجيل الدخول. سجلّه وتعييناته محفوظة، ويمكنك إعادة تفعيله لاحقاً من شاشة التعديل."
+                    : "The user will no longer be able to sign in. Their history and role-group assignments are preserved — you can reactivate them later via Edit."),
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
+                cancelButtonColor: '#6b7280',
+                confirmButtonText: @Json.Serialize(isRtl ? "إلغاء التفعيل" : "Deactivate"),
+                cancelButtonText: '@Shared["Button_Cancel"]'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('deleteId').value = userId;
+                    document.getElementById('deleteForm').submit();
+                }
+            });
+        }
+    </script>
+}
+

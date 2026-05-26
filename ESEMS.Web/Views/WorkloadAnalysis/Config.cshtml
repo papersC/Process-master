@@ -1,0 +1,354 @@
+@model WorkloadConfig
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = isRtl ? "إعدادات حجم العمل" : "Workload Configuration";
+
+    var orgUnits = ViewBag.OrgUnits as List<SelectListItem> ?? new List<SelectListItem>();
+    var selectedUnit = ViewBag.SelectedUnitId as string;
+
+    // Field tooltips — kept as concise as possible. Long help belongs in /Help.
+    var tipHours      = isRtl ? "الساعات اليومية المعتادة قبل الإجازات والاستراحات (UAE: 7.5)" : "Standard daily hours before leave/breaks (UAE: 7.5)";
+    var tipDaysWeek   = isRtl ? "أيام العمل في الأسبوع (الإمارات: 5)" : "Working days per week (UAE: 5, Mon–Fri)";
+    var tipFyStart    = isRtl ? "الشهر الذي تبدأ به السنة المالية (1 = يناير)" : "Fiscal year start month (1 = January)";
+    var tipHolidays   = isRtl ? "عدد أيام العطل الرسمية في السنة (UAE: ~12)" : "Official public holidays per year (UAE: ~12)";
+    var tipAnnual     = isRtl ? "استحقاق الإجازة السنوية بأيام العمل (UAE: 22)" : "Annual leave entitlement in working days (UAE: 22)";
+    var tipSick       = isRtl ? "متوسط أيام الإجازة المرضية المستخدمة" : "Average sick leave used per year";
+    var tipTraining   = isRtl ? "أيام التدريب والتطوير المهني (FAHR)" : "Training/development days per year (FAHR mandate)";
+    var tipAdmin      = isRtl ? "نسبة الوقت على الاجتماعات والبريد والمهام غير المباشرة (0–99)" : "Time share on meetings, email, non-case work (0–99)";
+    var tipUtil       = isRtl ? "معدل الاستغلال المستهدف (0.80 = استخدام 80٪ من الوقت المتاح)" : "Target utilization (0.80 = 80% of available time)";
+    var tipSup        = isRtl ? "عدد الموظفين لكل مشرف واحد (1:8 يعني مشرف لكل ٨)" : "Direct reports per supervisor (1:8 = one supervisor per 8 staff)";
+
+    var editingGlobal = string.IsNullOrEmpty(selectedUnit);
+    var scopeBadge = editingGlobal
+        ? (isRtl ? "الافتراضي العام" : "Global Default")
+        : (orgUnits.FirstOrDefault(u => u.Value == selectedUnit)?.Text ?? (isRtl ? "وحدة" : "Unit"));
+
+    var arrowBack = isRtl ? "arrow-right" : "arrow-left";
+}
+
+<partial name="_WaStyles" />
+
+<div class="wa-page">
+    <div class="wa-pageheader">
+        <div>
+            <h1 class="wa-pagetitle"><i data-lucide="settings" aria-hidden="true"></i>@(isRtl ? "إعدادات تحليل حجم العمل" : "Workload Configuration")</h1>
+            <p class="wa-pagesub">@(isRtl ? "معايير حساب الموارد البشرية بمعايير حكومة الإمارات" : "UAE Government FTE calculation parameters")</p>
+        </div>
+        <div class="wa-actions">
+            <a asp-action="Dashboard" class="wa-btn wa-btn-outline"><i data-lucide="layout-dashboard" class="w-4 h-4"></i>@(isRtl ? "نظرة عامة" : "Overview")</a>
+            <a asp-action="Index" class="wa-btn wa-btn-outline"><i data-lucide="@arrowBack" class="w-4 h-4"></i>@(isRtl ? "رجوع" : "Back")</a>
+        </div>
+    </div>
+
+    @* Scope picker — the same form/control surface as before, but in a wa-card. *@
+    <div class="wa-card">
+        <div class="wa-card-body" style="padding:.75rem 1rem;">
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:.65rem;">
+                <form method="get" id="scopeForm" style="flex:1 1 320px;display:flex;align-items:center;gap:.5rem;min-width:260px;">
+                    <label for="scopePicker" style="font-size: var(--fs-xs);font-weight:600;color:#374151;white-space:nowrap;">@(isRtl ? "الإعدادات لـ:" : "Configuration for:")</label>
+                    <select name="unitId" id="scopePicker" class="wa-filter" style="flex:1;">
+                        <option value="">@(isRtl ? "الافتراضي العام (كل الوحدات)" : "Global Default (All Units)")</option>
+                        @foreach (var u in orgUnits)
+                        {
+                            <option value="@u.Value" selected="@(selectedUnit == u.Value)">@u.Text</option>
+                        }
+                    </select>
+                </form>
+                @if (editingGlobal)
+                {
+                    <span style="display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .65rem;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:1rem;font-size: var(--fs-xs);font-weight:700;">
+                        <i data-lucide="globe" class="w-3.5 h-3.5"></i>@scopeBadge
+                    </span>
+                }
+                else
+                {
+                    <span style="display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .65rem;background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;border-radius:1rem;font-size: var(--fs-xs);font-weight:700;">
+                        <i data-lucide="building" class="w-3.5 h-3.5"></i>@(isRtl ? "تخصيص: " : "Override for: ")@scopeBadge
+                    </span>
+                }
+            </div>
+            @if (!editingGlobal)
+            {
+                <p style="margin:.55rem 0 0;font-size: var(--fs-xs);color:#6b7280;display:flex;align-items:flex-start;gap:.35rem;">
+                    <i data-lucide="info" class="w-3.5 h-3.5" style="flex-shrink:0;margin-top:.1rem;"></i>
+                    <span>@(isRtl
+                        ? "تخصيص هذه القيم يتجاوز الإعدادات العامة لسيناريوهات هذه الوحدة فقط."
+                        : "These values override the global defaults — only for scenarios using this unit's config.")</span>
+                </p>
+            }
+        </div>
+    </div>
+
+    @* Settings + live formula in 2-up layout: form on left, computed reveal on right.
+       Mobile collapses to single column. *@
+    <form asp-action="SaveConfig" method="post" id="configForm">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="Id" />
+        <input type="hidden" asp-for="OrganizationUnitId" />
+        <input type="hidden" asp-for="NameEn" />
+        <input type="hidden" asp-for="NameAr" />
+
+        <div asp-validation-summary="ModelOnly" style="margin-bottom:.6rem;padding:.55rem .8rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.375rem;color:#b91c1c;font-size: var(--fs-xs);"></div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1.6fr) 320px;gap:.6rem;align-items:start;">
+            <div style="display:flex;flex-direction:column;gap:.6rem;">
+                @* Working Hours panel *@
+                <div class="wa-card">
+                    <div class="wa-card-head">
+                        <div class="wa-card-title"><i data-lucide="clock" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "ساعات العمل" : "Working Hours")</div>
+                    </div>
+                    <div class="wa-card-body">
+                        <div class="wa-form-grid wa-form-grid-3">
+                            <div>
+                                <label class="wa-label">@(isRtl ? "ساعات العمل / يوم" : "Working Hours / Day") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tipHours"></i></label>
+                                <input asp-for="WorkingHoursPerDay" type="number" step="0.5" min="0.5" max="24" lang="en" inputmode="decimal" class="config-input wa-input" />
+                                <span asp-validation-for="WorkingHoursPerDay" class="wa-err"></span>
+                            </div>
+                            <div>
+                                <label class="wa-label">@(isRtl ? "أيام العمل / أسبوع" : "Working Days / Week") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tipDaysWeek"></i></label>
+                                <input asp-for="WorkingDaysPerWeek" type="number" min="1" max="7" lang="en" inputmode="numeric" class="config-input wa-input" />
+                                <span asp-validation-for="WorkingDaysPerWeek" class="wa-err"></span>
+                            </div>
+                            <div>
+                                <label class="wa-label">@(isRtl ? "بداية السنة المالية" : "Fiscal Year Start") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tipFyStart"></i></label>
+                                <input asp-for="FiscalYearStart" type="number" min="1" max="12" lang="en" inputmode="numeric" class="wa-input" />
+                                <span asp-validation-for="FiscalYearStart" class="wa-err"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @* Leave & Absence panel *@
+                <div class="wa-card">
+                    <div class="wa-card-head">
+                        <div class="wa-card-title"><i data-lucide="calendar-off" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "الإجازات والغياب" : "Leave & Absence")</div>
+                    </div>
+                    <div class="wa-card-body">
+                        <div class="wa-form-grid wa-form-grid-4">
+                            <div>
+                                <label class="wa-label">@(isRtl ? "العطل / سنة" : "Holidays / Year") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tipHolidays"></i></label>
+                                <input asp-for="PublicHolidaysPerYear" type="number" min="0" max="365" lang="en" inputmode="numeric" class="config-input wa-input" />
+                                <span asp-validation-for="PublicHolidaysPerYear" class="wa-err"></span>
+                            </div>
+                            <div>
+                                <label class="wa-label">@(isRtl ? "إجازة سنوية" : "Annual Leave") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tipAnnual"></i></label>
+                                <input asp-for="AnnualLeaveDays" type="number" min="0" max="365" lang="en" inputmode="numeric" class="config-input wa-input" />
+                                <span asp-validation-for="AnnualLeaveDays" class="wa-err"></span>
+                            </div>
+                            <div>
+                                <label class="wa-label">@(isRtl ? "متوسط أيام المرض" : "Avg Sick Days") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tipSick"></i></label>
+                                <input asp-for="AverageSickDays" type="number" min="0" max="365" lang="en" inputmode="numeric" class="config-input wa-input" />
+                                <span asp-validation-for="AverageSickDays" class="wa-err"></span>
+                            </div>
+                            <div>
+                                <label class="wa-label">@(isRtl ? "تدريب / سنة" : "Training / Year") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tipTraining"></i></label>
+                                <input asp-for="TrainingDaysPerYear" type="number" min="0" max="365" lang="en" inputmode="numeric" class="config-input wa-input" />
+                                <span asp-validation-for="TrainingDaysPerYear" class="wa-err"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @* Efficiency panel *@
+                <div class="wa-card">
+                    <div class="wa-card-head">
+                        <div class="wa-card-title"><i data-lucide="gauge" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "معايير الكفاءة" : "Efficiency Parameters")</div>
+                    </div>
+                    <div class="wa-card-body">
+                        <div class="wa-form-grid wa-form-grid-3">
+                            <div>
+                                <label class="wa-label">@(isRtl ? "نسبة الأعباء الإدارية %" : "Admin Overhead %") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tipAdmin"></i></label>
+                                <input asp-for="AdminOverheadPercent" type="number" step="0.5" min="0" max="99" lang="en" inputmode="decimal" class="config-input wa-input" />
+                                <div class="wa-help">@(isRtl ? "اجتماعات، بريد، مهام غير مباشرة" : "Meetings, email, non-case work")</div>
+                                <span asp-validation-for="AdminOverheadPercent" class="wa-err"></span>
+                            </div>
+                            <div>
+                                <label class="wa-label">@(isRtl ? "معدل الاستغلال" : "Target Utilization") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tipUtil"></i></label>
+                                <input asp-for="TargetUtilizationRate" type="number" step="0.01" min="0.01" max="1.0" lang="en" inputmode="decimal" class="config-input wa-input" />
+                                <div class="wa-help">@(isRtl ? "0.80 = 80% من الوقت المتاح" : "0.80 = 80% of available time")</div>
+                                <span asp-validation-for="TargetUtilizationRate" class="wa-err"></span>
+                            </div>
+                            <div>
+                                <label class="wa-label">@(isRtl ? "نسبة الإشراف (1:N)" : "Supervisory Ratio (1:N)") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tipSup"></i></label>
+                                <input asp-for="SupervisoryRatio" type="number" min="1" max="100" lang="en" inputmode="numeric" class="wa-input" />
+                                <div class="wa-help">@(isRtl ? "مشرف لكل N موظف" : "1 supervisor per N staff")</div>
+                                <span asp-validation-for="SupervisoryRatio" class="wa-err"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* LIVE FORMULA REVEAL — sticky right column. Recalculates as fields change. *@
+            <aside style="position:sticky;top:1rem;display:flex;flex-direction:column;gap:.5rem;">
+                <div class="wa-card" style="margin-bottom:0;">
+                    <div class="wa-card-head">
+                        <div class="wa-card-title"><i data-lucide="calculator" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "الناتج الحي" : "Live Result")</div>
+                    </div>
+                    <div class="wa-card-body" style="padding:0;">
+                        <div class="wa-formula">
+                            <div class="wa-formula-result" id="netHoursBig">@Model.NetAvailableHoursPerFTE.ToString("N0")</div>
+                            <div style="font-size: var(--fs-xs);color:#6b7280;font-weight:600;margin-top:.15rem;">@(isRtl ? "ساعات صافية / موظف / سنة" : "Net Hours / FTE / Year")</div>
+                        </div>
+                        <div class="wa-formula-expr" id="formulaExpr">
+                            <span class="wa-formula-label">@(isRtl ? "أيام العمل" : "Work Days")</span><span class="wa-formula-val" id="fGross">@Model.GrossWorkingDaysPerYear</span>
+                            <span class="wa-formula-op">−</span>
+                            <span class="wa-formula-label">@(isRtl ? "غياب" : "Absence")</span><span class="wa-formula-val" id="fAbs">—</span>
+                            <span class="wa-formula-op">=</span>
+                            <span class="wa-formula-label">@(isRtl ? "صافي الأيام" : "Net Days")</span><span class="wa-formula-val" id="fNet">@Model.NetWorkingDaysPerYear</span>
+                            <span class="wa-formula-op">×</span>
+                            <span class="wa-formula-label">@(isRtl ? "ساعات/يوم" : "Hrs/Day")</span><span class="wa-formula-val" id="fHpd">@Model.WorkingHoursPerDay.ToString("0.#")</span>
+                            <span class="wa-formula-op">×</span>
+                            <span class="wa-formula-label">(1 − @(isRtl ? "إداري" : "Admin"))</span><span class="wa-formula-val" id="fOh">—</span>
+                            <span class="wa-formula-op">×</span>
+                            <span class="wa-formula-label">@(isRtl ? "استغلال" : "Util")</span><span class="wa-formula-val" id="fUtil">—</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="wa-card" style="margin-bottom:0;">
+                    <div class="wa-card-head">
+                        <div class="wa-card-title" style="font-size: var(--fs-xs);"><i data-lucide="bar-chart-3" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "تفصيل" : "Breakdown")</div>
+                    </div>
+                    <div class="wa-card-body" style="padding:.6rem .85rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;font-size: var(--fs-xs);color:#374151;border-bottom:1px dashed #f1f5f9;">
+                            <span>@(isRtl ? "أيام العمل الإجمالية" : "Gross Working Days")</span>
+                            <span style="font-weight:700;color:#111827;" id="grossDays">@Model.GrossWorkingDaysPerYear</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;font-size: var(--fs-xs);color:#374151;border-bottom:1px dashed #f1f5f9;">
+                            <span>@(isRtl ? "أيام العمل الصافية" : "Net Working Days")</span>
+                            <span style="font-weight:700;color:#111827;" id="netDays">@Model.NetWorkingDaysPerYear</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;font-size: var(--fs-xs);color:#374151;border-bottom:1px dashed #f1f5f9;">
+                            <span>@(isRtl ? "ساعات إجمالية / سنة" : "Gross Annual Hours")</span>
+                            <span style="font-weight:700;color:#111827;" id="grossHours">@Model.GrossAnnualHours.ToString("N0")</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;font-size: var(--fs-xs);color:#374151;">
+                            <span style="color:#005B99;font-weight:700;">@(isRtl ? "صافية / موظف / سنة" : "Net / FTE / Year")</span>
+                            <span style="font-weight:700;color:#005B99;" id="netHours">@Model.NetAvailableHoursPerFTE.ToString("N0")</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:.35rem;">
+                    <button type="submit" id="btnSaveConfig" class="wa-btn wa-btn-primary" style="justify-content:center;padding:.55rem .85rem;">
+                        <i data-lucide="save" class="w-4 h-4"></i><span id="btnSaveText">@(isRtl ? "حفظ الإعدادات" : "Save Configuration")</span>
+                    </button>
+                    <button type="button" id="btnResetDefaults" class="wa-btn wa-btn-outline" style="justify-content:center;padding:.5rem .85rem;">
+                        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>@(isRtl ? "قيم الإمارات الافتراضية" : "UAE Defaults")
+                    </button>
+                    <a asp-action="Dashboard" class="wa-btn wa-btn-ghost" style="justify-content:center;padding:.5rem .85rem;">@(isRtl ? "إلغاء" : "Cancel")</a>
+                </div>
+            </aside>
+        </div>
+    </form>
+</div>
+
+<style>
+    @@media (max-width: 992px) {
+        form#configForm > div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
+        aside[style*="sticky"] { position: static !important; }
+    }
+</style>
+
+@section Scripts {
+<script nonce="@Context.CspNonce()">
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.lucide) lucide.createIcons();
+    const isRtl = @(isRtl ? "true" : "false");
+    const form = document.getElementById('configForm');
+    const fmt = n => Math.round(n).toLocaleString('en-US');
+
+    function recalc() {
+        const hpd = parseFloat(document.querySelector('[name="WorkingHoursPerDay"]').value) || 7.5;
+        const dpw = parseInt(document.querySelector('[name="WorkingDaysPerWeek"]').value) || 5;
+        const holidays = parseInt(document.querySelector('[name="PublicHolidaysPerYear"]').value) || 0;
+        const leave = parseInt(document.querySelector('[name="AnnualLeaveDays"]').value) || 0;
+        const sick = parseInt(document.querySelector('[name="AverageSickDays"]').value) || 0;
+        const training = parseInt(document.querySelector('[name="TrainingDaysPerYear"]').value) || 0;
+        const overhead = parseFloat(document.querySelector('[name="AdminOverheadPercent"]').value) || 0;
+        const util = parseFloat(document.querySelector('[name="TargetUtilizationRate"]').value) || 0.80;
+
+        const grossDays = (dpw * 52) - holidays;
+        const absence = leave + sick + training;
+        const netDays = grossDays - absence;
+        const grossHours = grossDays * hpd;
+        const netHours = netDays * hpd * (1 - overhead / 100) * util;
+
+        document.getElementById('grossDays').textContent = grossDays;
+        document.getElementById('netDays').textContent = netDays;
+        document.getElementById('grossHours').textContent = fmt(grossHours);
+        document.getElementById('netHours').textContent = fmt(netHours);
+        document.getElementById('netHoursBig').textContent = fmt(netHours);
+
+        document.getElementById('fGross').textContent = grossDays;
+        document.getElementById('fAbs').textContent = absence;
+        document.getElementById('fNet').textContent = netDays;
+        document.getElementById('fHpd').textContent = hpd;
+        document.getElementById('fOh').textContent = '(1 − ' + overhead + '%)';
+        document.getElementById('fUtil').textContent = util;
+    }
+    document.querySelectorAll('.config-input').forEach(input => input.addEventListener('input', () => { recalc(); markDirty(); }));
+    recalc();
+
+    let dirty = false;
+    function markDirty() { dirty = true; }
+    form.querySelectorAll('input, select, textarea').forEach(el => el.addEventListener('change', markDirty));
+
+    const scopePicker = document.getElementById('scopePicker');
+    scopePicker?.addEventListener('change', async function() {
+        if (!dirty) { document.getElementById('scopeForm').submit(); return; }
+        const r = await Swal.fire({
+            icon: 'warning',
+            title: isRtl ? 'تغييرات غير محفوظة' : 'Unsaved changes',
+            text:  isRtl ? 'سيتم فقدان التغييرات إذا تابعت.' : 'Switching scope will discard your changes.',
+            showCancelButton: true,
+            confirmButtonText: isRtl ? 'تجاهل وتبديل' : 'Discard and switch',
+            cancelButtonText:  isRtl ? 'البقاء' : 'Stay',
+            confirmButtonColor: '#dc2626', cancelButtonColor:  '#64748b'
+        });
+        if (r.isConfirmed) { dirty = false; document.getElementById('scopeForm').submit(); }
+        else { scopePicker.value = '@(selectedUnit ?? "")'; }
+    });
+
+    const UAE_DEFAULTS = {
+        WorkingHoursPerDay: 7.5, WorkingDaysPerWeek: 5, FiscalYearStart: 1,
+        PublicHolidaysPerYear: 12, AnnualLeaveDays: 22, AverageSickDays: 7,
+        TrainingDaysPerYear: 7, AdminOverheadPercent: 15,
+        TargetUtilizationRate: 0.80, SupervisoryRatio: 8
+    };
+    document.getElementById('btnResetDefaults')?.addEventListener('click', async function() {
+        const r = await Swal.fire({
+            icon: 'question',
+            title: isRtl ? 'إعادة إلى القيم الافتراضية؟' : 'Reset to UAE Government values?',
+            text:  isRtl ? 'سيتم تعبئة الحقول. لن يتم الحفظ تلقائياً.' : 'Fields will be filled. Nothing is saved until you click Save.',
+            showCancelButton: true,
+            confirmButtonText: isRtl ? 'تعبئة' : 'Fill in',
+            cancelButtonText:  isRtl ? 'إلغاء' : 'Cancel',
+            confirmButtonColor: '#005B99', cancelButtonColor:  '#64748b'
+        });
+        if (!r.isConfirmed) return;
+        Object.entries(UAE_DEFAULTS).forEach(([k, v]) => { const el = form.querySelector(`[name="${k}"]`); if (el) el.value = v; });
+        recalc(); markDirty();
+    });
+
+    form.addEventListener('submit', function() {
+        const btn = document.getElementById('btnSaveConfig');
+        const text = document.getElementById('btnSaveText');
+        if (btn) {
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
+            btn.style.cursor = 'wait';
+            if (text) text.textContent = isRtl ? 'جاري الحفظ…' : 'Saving…';
+        }
+        dirty = false;
+    });
+
+    window.addEventListener('beforeunload', function(e) {
+        if (!dirty) return;
+        e.preventDefault();
+        e.returnValue = '';
+    });
+});
+</script>
+}

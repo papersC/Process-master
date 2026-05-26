@@ -1,0 +1,688 @@
+@using ESEMS.Web.Models.Enums
+@model List<ESEMS.Web.Models.Workflow.WorkflowInstance>
+@{
+    ViewData["Title"] = Shared["Title_PendingApprovals"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+
+    // Improvement rows get an extra "Re-rank…" button that opens the shared
+    // modal pre-filled with the current Quadrant + Horizon. The controller
+    // pre-fetches the linked initiatives so we don't N+1 query in the view.
+    var improvementsById = ViewBag.ImprovementsById as Dictionary<string, ESEMS.Web.Models.Improvement.ImprovementInitiative>
+                          ?? new Dictionary<string, ESEMS.Web.Models.Improvement.ImprovementInitiative>();
+
+    var quadrantOptions = Enum.GetValues<ImprovementQuadrant>()
+        .Select(q => new { Value = q, Label = Shared[$"ImprovementQuadrant_{q}"].Value })
+        .ToList();
+    var horizonOptions = Enum.GetValues<ImprovementHorizon>()
+        .Select(h => new { Value = h, Label = Shared[$"Option_{h}"].Value })
+        .ToList();
+}
+
+@*
+    Approval inbox — master-detail layout.
+    Left pane: scrollable list of pending items (compact rows). Right pane:
+    selected item's full details + inline Approve / Reject / Delegate.
+
+    Drop-in compatible with the original:
+      * Same @model (List<WorkflowInstance>)
+      * Same POST targets: ProcessAction (Approved/Rejected) + Delegate
+      * Keeps .btn-delegate[data-workflow-id] hook so the existing Swal flow
+        in @section Scripts works unchanged
+      * Replaces 100 per-item Reject modals with a single shared modal whose
+        workflowId hidden field is filled when the Reject button is clicked
+*@
+
+<style>
+    .ap-shell { display: flex; flex-direction: column; gap: .6rem; height: calc(100vh - 140px); min-height: 600px; }
+    .ap-header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .25rem 0 .5rem; border-bottom: 1px solid #e5e7eb; flex: 0 0 auto; }
+    .ap-title { display: flex; align-items: center; gap: .5rem; }
+    .ap-title h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; }
+    .ap-count-badge { background: #eff6ff; color: #005B99; font-size: var(--fs-xs); font-weight: 600; padding: .2rem .55rem; border-radius: 999px; }
+    .ap-filters { display: flex; gap: .35rem; align-items: center; flex-wrap: wrap; }
+    .ap-filter-group { display: flex; gap: .25rem; align-items: center; flex-wrap: wrap; }
+    .ap-filter-label { font-size: var(--fs-xs); color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin-inline-end: .15rem; }
+    .ap-chip { background: #f8fafc; border: 1px solid #e2e8f0; color: #475569; font-size: var(--fs-xs); padding: .25rem .65rem; border-radius: 999px; cursor: pointer; transition: all .15s; user-select: none; }
+    .ap-chip:hover { background: #eff6ff; color: #005B99; border-color: #005B99; }
+    .ap-chip.active { background: #005B99; color: #fff; border-color: #005B99; }
+    .ap-btn-comment { background: #fff; color: #6366f1; border: 1px solid #6366f1; }
+    .ap-btn-comment:hover { background: #6366f1; color: #fff; }
+
+    .ap-main { display: grid; grid-template-columns: minmax(280px, 38%) 1fr; gap: .6rem; flex: 1 1 0; min-height: 0; }
+    @@media (max-width: 900px) { .ap-main { grid-template-columns: 1fr; } .ap-main > .ap-detail.empty { display: none; } }
+
+    .ap-list { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .ap-list-search { padding: .55rem .65rem; border-bottom: 1px solid #f1f5f9; flex: 0 0 auto; }
+    .ap-list-search input { width: 100%; padding: .35rem .65rem; border: 1px solid #d1d5db; border-radius: .35rem; font-size: var(--fs-xs); }
+    .ap-list-search input:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .ap-list-body { flex: 1 1 0; min-height: 0; overflow-y: auto; }
+    .ap-item { display: flex; flex-direction: column; gap: .2rem; padding: .65rem .85rem; border-bottom: 1px solid #f1f5f9; cursor: pointer; border-inline-start: 3px solid transparent; transition: background .15s, border-color .15s; background: transparent; width: 100%; box-sizing: border-box; border-top: none; border-inline-end: none; border-bottom: 1px solid #f1f5f9; text-align: start; font: inherit; }
+    .ap-item:hover { background: #f8fafc; }
+    .ap-item.active { background: #eff6ff; border-inline-start-color: #005B99; }
+    .ap-item-row1 { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+    .ap-item-type { background: #ecfeff; color: #0e7490; font-size: var(--fs-xs); font-weight: 600; padding: .12rem .45rem; border-radius: .35rem; flex-shrink: 0; }
+    .ap-item-age { font-size: var(--fs-xs); color: #64748b; flex-shrink: 0; }
+    .ap-item-name { font-size: var(--fs-sm); font-weight: 600; color: #111827; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ap-item-meta { font-size: var(--fs-xs); color: #6b7280; line-height: 1.3; display: flex; gap: .5rem; align-items: center; }
+    .ap-item-level { background: #f1f5f9; color: #475569; font-size: var(--fs-xs); padding: .08rem .4rem; border-radius: .25rem; }
+
+    .ap-detail { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .ap-detail.empty { align-items: center; justify-content: center; color: #94a3b8; }
+    .ap-detail-empty-inner { text-align: center; padding: 1.5rem; }
+    .ap-detail-empty-inner h3 { font-size: var(--fs-sm); font-weight: 600; color: #475569; margin: .85rem 0 .25rem; }
+    .ap-detail-empty-inner p { font-size: var(--fs-sm); color: #64748b; margin: 0; max-width: 320px; }
+    .ap-detail-head { padding: .85rem 1.1rem; border-bottom: 1px solid #f1f5f9; flex: 0 0 auto; }
+    .ap-detail-head .ap-type-badge { background: #ecfeff; color: #0e7490; font-size: var(--fs-xs); font-weight: 600; padding: .2rem .55rem; border-radius: .35rem; display: inline-flex; align-items: center; gap: .35rem; }
+    .ap-detail-head h2 { margin: .55rem 0 .15rem; font-size: var(--fs-base); font-weight: 600; color: #111827; }
+    .ap-detail-head code { font-family: 'Segoe UI', monospace; font-size: var(--fs-xs); color: #6b7280; background: #f8fafc; padding: .12rem .4rem; border-radius: .25rem; }
+    .ap-detail-body { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 1rem 1.1rem; }
+    .ap-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .85rem 1.5rem; margin-bottom: 1rem; }
+    .ap-meta-item dt { font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; margin: 0 0 .15rem; }
+    .ap-meta-item dd { margin: 0; font-size: var(--fs-sm); color: #111827; font-weight: 500; }
+    .ap-status-row { display: flex; gap: .35rem; flex-wrap: wrap; }
+    .ap-status-badge { background: #fef3c7; color: #92400e; font-size: var(--fs-xs); font-weight: 600; padding: .25rem .55rem; border-radius: .35rem; display: inline-flex; align-items: center; gap: .3rem; }
+    .ap-detail-actions { padding: .85rem 1.1rem; border-top: 1px solid #f1f5f9; display: flex; gap: .5rem; flex: 0 0 auto; }
+    .ap-btn { border: none; border-radius: .375rem; padding: .5rem 1rem; font-size: var(--fs-sm); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: .4rem; transition: filter .15s; flex: 1; justify-content: center; }
+    .ap-btn:hover { filter: brightness(.92); }
+    .ap-btn-approve { background: #34C38F; color: #fff; }
+    .ap-btn-reject { background: #fff; color: #F46A6A; border: 1px solid #F46A6A; }
+    .ap-btn-reject:hover { background: #F46A6A; color: #fff; }
+    .ap-btn-delegate { background: #fff; color: #005B99; border: 1px solid #005B99; }
+    .ap-btn-delegate:hover { background: #005B99; color: #fff; }
+    .ap-btn-rerank { background: #fff; color: #B45309; border: 1px solid #B45309; }
+    .ap-btn-rerank:hover { background: #B45309; color: #fff; }
+
+    .ap-empty-all { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4rem 2rem; color: #6b7280; }
+    .ap-empty-all .ap-empty-icon { width: 64px; height: 64px; border-radius: 50%; background: #ecfdf5; color: #10b981; display: flex; align-items: center; justify-content: center; margin-bottom: 1rem; }
+    .ap-empty-all h3 { margin: 0 0 .35rem; font-size: var(--fs-base); font-weight: 600; color: #111827; }
+    .ap-empty-all p { margin: 0; font-size: var(--fs-sm); color: #6b7280; }
+
+    .ap-no-match { padding: 2rem; text-align: center; font-size: var(--fs-sm); color: #94a3b8; }
+    .ap-list-item-hidden { display: none; }
+</style>
+
+<div class="ap-shell">
+
+    @* ─────────── Header: title, count, filters ─────────── *@
+    <div class="ap-header">
+        <div class="ap-title">
+            <i data-lucide="clipboard-check" class="w-5 h-5" style="color:#F1B44C;" aria-hidden="true"></i>
+            <h1>@ViewData["Title"]</h1>
+            <span class="ap-count-badge" id="apCountBadge">@string.Format(Shared["Badge_NPending"].Value, Model.Count)</span>
+        </div>
+        @if (Model.Any())
+        {
+            var distinctLevels = Model.Select(m => m.CurrentLevel).Distinct().OrderBy(l => l).ToList();
+            <div class="ap-filters" role="toolbar" aria-label="@Shared["Col_Type"]">
+                <div class="ap-filter-group" data-ap-group="type">
+                    <span class="ap-filter-label">@(isRtl ? "النوع" : "Type")</span>
+                    <span class="ap-chip active" data-ap-type="">@(isRtl ? "الكل" : "All")</span>
+                    @foreach (var type in Model.Select(m => m.EntityType).Distinct().OrderBy(t => t))
+                    {
+                        <span class="ap-chip" data-ap-type="@type">@Shared[$"EntityType_{type}"].Value</span>
+                    }
+                </div>
+                @if (distinctLevels.Count > 1)
+                {
+                    <div class="ap-filter-group" data-ap-group="level">
+                        <span class="ap-filter-label">@(isRtl ? "المستوى" : "Level")</span>
+                        <span class="ap-chip active" data-ap-level="">@(isRtl ? "الكل" : "All")</span>
+                        @foreach (var lvl in distinctLevels)
+                        {
+                            <span class="ap-chip" data-ap-level="@lvl">L@lvl</span>
+                        }
+                    </div>
+                }
+                <div class="ap-filter-group" data-ap-group="age">
+                    <span class="ap-filter-label">@(isRtl ? "العمر" : "Age")</span>
+                    <span class="ap-chip active" data-ap-age="">@(isRtl ? "الكل" : "All")</span>
+                    <span class="ap-chip" data-ap-age="today">@(isRtl ? "اليوم" : "Today")</span>
+                    <span class="ap-chip" data-ap-age="1-3d">1–3d</span>
+                    <span class="ap-chip" data-ap-age="3-7d">3–7d</span>
+                    <span class="ap-chip" data-ap-age="7+d">7+d</span>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (!Model.Any())
+    {
+        @* All caught up — single big empty state, no split *@
+        <div class="ap-empty-all" style="flex:1;">
+            <div class="ap-empty-icon">
+                <i data-lucide="check-circle" class="w-10 h-10" aria-hidden="true"></i>
+            </div>
+            <h3>@Shared["Text_NoPendingApprovals"]</h3>
+            <p>@Shared["Text_AllCaughtUp"]</p>
+        </div>
+    }
+    else
+    {
+        @* ─────────── Master-detail body ─────────── *@
+        <div class="ap-main">
+
+            @* Left: list of pending items *@
+            <div class="ap-list" aria-label="@Shared["Title_PendingApprovals"]">
+                <div class="ap-list-search">
+                    <input type="text" id="apSearchInput"
+                           placeholder="@(isRtl ? "ابحث..." : "Search by submitter or id...")"
+                           aria-label="@(isRtl ? "بحث" : "Search pending approvals")" />
+                </div>
+                <div class="ap-list-body" id="apListBody">
+                    @{ bool first = true; }
+                    @foreach (var item in Model)
+                    {
+                        var idShort = item.EntityId[..Math.Min(8, item.EntityId.Length)];
+                        var submitted = item.SubmittedAt?.ToDubaiString("MMM dd, HH:mm") ?? "-";
+                        var ageHours = item.SubmittedAt.HasValue ? (DateTime.UtcNow - item.SubmittedAt.Value).TotalHours : 0d;
+                        var ageDays = ageHours / 24d;
+                        var ageBucket = ageDays < 1 ? "today"
+                                      : ageDays < 3 ? "1-3d"
+                                      : ageDays < 7 ? "3-7d"
+                                      : "7+d";
+                        var ageLabel = ageHours < 1 ? $"{(int)(ageHours * 60)}m"
+                                     : ageHours < 24 ? $"{(int)ageHours}h"
+                                     : $"{(int)ageDays}d";
+                        <button type="button" class="ap-item @(first ? "active" : "")"
+                                data-ap-id="@item.Id"
+                                data-ap-type="@item.EntityType"
+                                data-ap-level="@item.CurrentLevel"
+                                data-ap-age="@ageBucket"
+                                data-ap-search="@(item.SubmitterName ?? "") @item.EntityId">
+                            <div class="ap-item-row1">
+                                <span class="ap-item-type">@Shared[$"EntityType_{item.EntityType}"].Value</span>
+                                <span class="ap-item-age">@ageLabel</span>
+                            </div>
+                            <div class="ap-item-name">@(item.SubmitterName ?? "—")</div>
+                            <div class="ap-item-meta">
+                                <code style="font-size: var(--fs-xs);">@idShort</code>
+                                <span class="ap-item-level">@string.Format(Shared["Badge_LevelOfMax"].Value, item.CurrentLevel, item.MaxLevel)</span>
+                            </div>
+                        </button>
+                        first = false;
+                    }
+                    <div id="apNoMatch" class="ap-no-match" style="display:none;">@(isRtl ? "لا توجد نتائج" : "No matches")</div>
+                </div>
+            </div>
+
+            @* Right: detail pane — one section per item, only the active one shown *@
+            <div class="ap-detail">
+                @{ bool firstDetail = true; }
+                @foreach (var item in Model)
+                {
+                    var idShort = item.EntityId[..Math.Min(8, item.EntityId.Length)];
+                    <div class="ap-detail-content" data-ap-id="@item.Id" style="@(firstDetail ? "" : "display:none;") flex:1;display:@(firstDetail ? "flex" : "none");flex-direction:column;min-height:0;">
+                        <div class="ap-detail-head">
+                            <span class="ap-type-badge">
+                                <i data-lucide="layers" class="w-3 h-3" aria-hidden="true"></i>
+                                @Shared[$"EntityType_{item.EntityType}"].Value
+                            </span>
+                            <h2>@(item.SubmitterName ?? "—") · @Shared[$"EntityType_{item.EntityType}"].Value</h2>
+                            <code>@item.EntityId</code>
+                        </div>
+                        <div class="ap-detail-body">
+                            <dl class="ap-meta-grid">
+                                <div class="ap-meta-item">
+                                    <dt>@Shared["Col_SubmittedBy"]</dt>
+                                    <dd>@(item.SubmitterName ?? "—")</dd>
+                                </div>
+                                <div class="ap-meta-item">
+                                    <dt>@Shared["Col_SubmittedAt"]</dt>
+                                    <dd>@(item.SubmittedAt?.ToDubaiString("MMM dd, yyyy HH:mm") ?? "—")</dd>
+                                </div>
+                                <div class="ap-meta-item">
+                                    <dt>@Shared["Col_Level"]</dt>
+                                    <dd>@string.Format(Shared["Badge_LevelOfMax"].Value, item.CurrentLevel, item.MaxLevel)</dd>
+                                </div>
+                                <div class="ap-meta-item">
+                                    <dt>@Shared["Col_Status"]</dt>
+                                    <dd><span class="ap-status-badge">@Shared[$"WorkflowStatus_{item.Status}"].Value</span></dd>
+                                </div>
+                            </dl>
+
+                            @if (!string.IsNullOrWhiteSpace(item.Notes))
+                            {
+                                <div style="margin-top:1rem;">
+                                    <dt style="font-size: var(--fs-xs);font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;margin-bottom:.35rem;">@(isRtl ? "ملاحظات المُرسل" : "Submitter notes")</dt>
+                                    <dd style="margin:0;font-size: var(--fs-sm);color:#374151;background:#f8fafc;padding:.65rem .85rem;border-radius:.35rem;border-inline-start:3px solid #cbd5e1;">@item.Notes</dd>
+                                </div>
+                            }
+                        </div>
+
+                        @* ─────────── Action bar ─────────── *@
+                        @{
+                            var isImprovement = string.Equals(item.EntityType, "Improvement", StringComparison.OrdinalIgnoreCase);
+                            ESEMS.Web.Models.Improvement.ImprovementInitiative? linkedImp = null;
+                            if (isImprovement) improvementsById.TryGetValue(item.EntityId, out linkedImp);
+                        }
+                        <div class="ap-detail-actions">
+                            <form method="post" asp-action="ProcessAction" style="flex:1;">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="workflowId" value="@item.Id" />
+                                <input type="hidden" name="action" value="Approved" />
+                                <button type="submit" class="ap-btn ap-btn-approve" style="width:100%;">
+                                    <i data-lucide="check" class="w-4 h-4" aria-hidden="true"></i>
+                                    @Shared["Button_Approve"]
+                                </button>
+                            </form>
+                            @if (isImprovement && linkedImp != null)
+                            {
+                                <button type="button" class="ap-btn ap-btn-rerank"
+                                        data-ap-rerank="@linkedImp.Id"
+                                        data-ap-quadrant="@linkedImp.Quadrant"
+                                        data-ap-horizon="@(linkedImp.Horizon?.ToString() ?? "")"
+                                        title="@(isRtl ? "أعد تصنيف الرباعي/الأفق قبل الاعتماد" : "Re-classify Quadrant / Horizon before approving")">
+                                    <i data-lucide="list-ordered" class="w-4 h-4" aria-hidden="true"></i>
+                                    @(isRtl ? "إعادة تصنيف…" : "Re-rank…")
+                                </button>
+                            }
+                            <button type="button" class="ap-btn ap-btn-reject" data-ap-reject="@item.Id">
+                                <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
+                                @Shared["Button_Reject"]
+                            </button>
+                            <button type="button" class="ap-btn ap-btn-comment" data-ap-comment="@item.Id">
+                                <i data-lucide="message-square" class="w-4 h-4" aria-hidden="true"></i>
+                                @(isRtl ? "تعليق" : "Comment")
+                            </button>
+                            <button type="button" class="ap-btn ap-btn-delegate btn-delegate" data-workflow-id="@item.Id">
+                                <i data-lucide="share-2" class="w-4 h-4" aria-hidden="true"></i>
+                                @Shared["Delegate_Confirm"]
+                            </button>
+                        </div>
+                    </div>
+                    firstDetail = false;
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@if (Model.Any())
+{
+    @* ─────────── Shared Comment modal — POSTs to AddComment without changing state ─────────── *@
+    <div class="modal fade" id="apCommentModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form method="post" asp-action="AddComment" id="apCommentForm">
+                    @Html.AntiForgeryToken()
+                    <div class="modal-header">
+                        <h5 class="modal-title">@(isRtl ? "إضافة تعليق" : "Add Comment")</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="@Shared["Button_Cancel"]"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="workflowId" id="apCommentWorkflowId" />
+                        <div class="mb-3">
+                            <label class="form-label" for="apCommentText">@(isRtl ? "تعليقك" : "Your comment")</label>
+                            <textarea name="comment" id="apCommentText" class="form-control" rows="3" required></textarea>
+                            <div class="form-text">@(isRtl ? "لا يُغيّر حالة الموافقة — يُضاف إلى السجل فقط." : "Does not change approval state — added to history only.")</div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">@Shared["Button_Cancel"]</button>
+                        <button type="submit" class="btn btn-primary">@(isRtl ? "إضافة" : "Add")</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    @* ─────────── Shared Re-rank modal — opens for Improvement rows only,
+       posts straight to /Improvements/Approve/{id} so the audit trail
+       captures Quadrant + Horizon overrides under the existing endpoint. *@
+    <div class="modal fade" id="apRerankModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form method="post" id="apRerankForm">
+                    @Html.AntiForgeryToken()
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i data-lucide="list-ordered" class="w-4 h-4 inline-block" aria-hidden="true"></i>
+                            @(isRtl ? "إعادة التصنيف والاعتماد" : "Re-rank & Approve")
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="@Shared["Button_Cancel"]"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted small mb-3">
+                            @(isRtl
+                                ? "غيّر الرباعي والأفق إذا كان حكم اللجنة يخالف القيم المحسوبة تلقائياً. كل تغيير يُسجَّل في سجل التدقيق."
+                                : "Override the auto-calculated Quadrant or Horizon when committee judgment differs. Every change is captured in the audit log.")
+                        </p>
+                        <div class="mb-3">
+                            <label class="form-label" for="apRerankQuadrant">@(isRtl ? "الرباعي" : "Quadrant")</label>
+                            <select name="quadrant" id="apRerankQuadrant" class="form-select">
+                                @foreach (var q in quadrantOptions)
+                                {
+                                    <option value="@q.Value">@q.Label</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="apRerankHorizon">@(isRtl ? "الأفق" : "Horizon")</label>
+                            <select name="horizon" id="apRerankHorizon" class="form-select">
+                                <option value="">@(isRtl ? "(غير محدد)" : "(unset)")</option>
+                                @foreach (var h in horizonOptions)
+                                {
+                                    <option value="@h.Value">@h.Label</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label" for="apRerankComments">@(isRtl ? "ملاحظات (اختيارية)" : "Comments (optional)")</label>
+                            <textarea name="comments" id="apRerankComments" class="form-control" rows="2"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">@Shared["Button_Cancel"]</button>
+                        <button type="submit" class="btn btn-success">
+                            <i data-lucide="check" class="w-3.5 h-3.5 inline-block" aria-hidden="true"></i>
+                            @(isRtl ? "إعادة تصنيف واعتماد" : "Re-rank & Approve")
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    @* ─────────── One shared Reject modal — replaces N per-item modals ─────────── *@
+    <div class="modal fade" id="apRejectModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form method="post" asp-action="ProcessAction" id="apRejectForm">
+                    @Html.AntiForgeryToken()
+                    <div class="modal-header">
+                        <h5 class="modal-title">@Shared["Heading_RejectRequest"]</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="@Shared["Button_Cancel"]"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="workflowId" id="apRejectWorkflowId" />
+                        <input type="hidden" name="action" value="Rejected" />
+                        <div class="mb-3">
+                            <label class="form-label" for="apRejectComments">@Shared["Label_ReasonForRejection"]</label>
+                            <textarea name="comments" id="apRejectComments" class="form-control" rows="3" required></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">@Shared["Button_Cancel"]</button>
+                        <button type="submit" class="btn btn-danger">@Shared["Button_Reject"]</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+}
+
+@* Shared delegate form — exact same shape as before so the existing JS works. *@
+<form id="delegateForm" method="post" asp-action="Delegate" class="d-none">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="workflowId" id="delegateWorkflowId" />
+    <input type="hidden" name="targetUserId" id="delegateTargetUserId" />
+    <input type="hidden" name="reason" id="delegateReason" />
+    <input type="hidden" name="expiresAt" id="delegateExpiresAt" />
+</form>
+
+@section Scripts {
+<script nonce="@Context.CspNonce()">
+// ── Master-detail wiring + filter chips + search + Reject modal bridge ──
+(function () {
+    var listBody = document.getElementById('apListBody');
+    if (!listBody) return;
+    var items = Array.from(listBody.querySelectorAll('.ap-item'));
+    var details = Array.from(document.querySelectorAll('.ap-detail-content'));
+    var search = document.getElementById('apSearchInput');
+    var noMatch = document.getElementById('apNoMatch');
+    var countBadge = document.getElementById('apCountBadge');
+    var totalCount = items.length;
+
+    // Active state is tracked per filter group. Each chip carries one of
+    // data-ap-type / data-ap-level / data-ap-age — the attribute name
+    // doubles as the group key.
+    var FILTER_ATTRS = ['data-ap-type', 'data-ap-level', 'data-ap-age'];
+
+    function selectItem(id) {
+        items.forEach(function (it) { it.classList.toggle('active', it.dataset.apId === id); });
+        details.forEach(function (d) { d.style.display = d.dataset.apId === id ? 'flex' : 'none'; });
+    }
+
+    listBody.addEventListener('click', function (e) {
+        var btn = e.target.closest('.ap-item');
+        if (btn) selectItem(btn.dataset.apId);
+    });
+
+    function getActiveValue(attr) {
+        var active = document.querySelector('.ap-chip.active[' + attr + ']');
+        return active ? (active.getAttribute(attr) || '') : '';
+    }
+
+    function applyFilters() {
+        var activeType = getActiveValue('data-ap-type');
+        var activeLevel = getActiveValue('data-ap-level');
+        var activeAge = getActiveValue('data-ap-age');
+        var q = (search && search.value || '').toLowerCase().trim();
+        var visible = 0;
+        var firstVisible = null;
+        items.forEach(function (it) {
+            var typeOk = !activeType || it.dataset.apType === activeType;
+            var levelOk = !activeLevel || it.dataset.apLevel === activeLevel;
+            var ageOk = !activeAge || it.dataset.apAge === activeAge;
+            var searchOk = !q || (it.dataset.apSearch || '').toLowerCase().includes(q);
+            var show = typeOk && levelOk && ageOk && searchOk;
+            it.classList.toggle('ap-list-item-hidden', !show);
+            if (show) { visible++; if (!firstVisible) firstVisible = it; }
+        });
+        noMatch.style.display = visible === 0 ? '' : 'none';
+        if (countBadge) countBadge.textContent = visible === totalCount ? countBadge.textContent.replace(/\d+/, totalCount) : (visible + ' / ' + totalCount);
+        var activeItem = items.find(function (it) { return it.classList.contains('active'); });
+        if (activeItem && activeItem.classList.contains('ap-list-item-hidden') && firstVisible) {
+            selectItem(firstVisible.dataset.apId);
+        }
+    }
+
+    // One chip active per attribute group. Clicking a chip clears siblings.
+    FILTER_ATTRS.forEach(function (attr) {
+        var chips = Array.from(document.querySelectorAll('.ap-chip[' + attr + ']'));
+        chips.forEach(function (chip) {
+            chip.addEventListener('click', function () {
+                chips.forEach(function (c) { c.classList.toggle('active', c === chip); });
+                applyFilters();
+            });
+        });
+    });
+    if (search) search.addEventListener('input', applyFilters);
+
+    // Reject button → fill shared modal's hidden workflowId, then open it.
+    document.querySelectorAll('[data-ap-reject]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('apRejectWorkflowId').value = btn.getAttribute('data-ap-reject');
+            document.getElementById('apRejectComments').value = '';
+            new bootstrap.Modal(document.getElementById('apRejectModal')).show();
+        });
+    });
+
+    // Comment button → fill shared modal's workflowId, open Comment modal.
+    document.querySelectorAll('[data-ap-comment]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('apCommentWorkflowId').value = btn.getAttribute('data-ap-comment');
+            document.getElementById('apCommentText').value = '';
+            new bootstrap.Modal(document.getElementById('apCommentModal')).show();
+        });
+    });
+
+    // Re-rank button → point the shared form at /Improvements/Approve/{id},
+    // pre-select the row's current Quadrant + Horizon, then show the modal.
+    var rerankForm = document.getElementById('apRerankForm');
+    document.querySelectorAll('[data-ap-rerank]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var impId = btn.getAttribute('data-ap-rerank');
+            rerankForm.action = '/Improvements/Approve/' + encodeURIComponent(impId);
+            document.getElementById('apRerankQuadrant').value = btn.getAttribute('data-ap-quadrant') || '';
+            document.getElementById('apRerankHorizon').value  = btn.getAttribute('data-ap-horizon')  || '';
+            document.getElementById('apRerankComments').value = '';
+            new bootstrap.Modal(document.getElementById('apRerankModal')).show();
+        });
+    });
+})();
+</script>
+
+@* Original Delegate Swal flow — unchanged, reads .btn-delegate[data-workflow-id]. *@
+<script nonce="@Context.CspNonce()">
+(function() {
+    const L = {
+        title:       @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Delegate_Title"].Value)),
+        forwardTo:   @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Delegate_ForwardTo"].Value)),
+        pickUser:    @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Delegate_PickUser"].Value)),
+        returnsOn:   @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Delegate_ReturnsOn"].Value)),
+        hint:        @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Delegate_Hint"].Value)),
+        reason:      @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Delegate_Reason"].Value)),
+        placeholder: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Delegate_ReasonPlaceholder"].Value)),
+        confirm:     @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Delegate_Confirm"].Value)),
+        cancel:      @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Button_Cancel"].Value)),
+        validate:    @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Delegate_ValidatePickUser"].Value)),
+        search:      @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Delegate_SearchPlaceholder"].Value)),
+        noResults:   @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Delegate_NoResults"].Value)),
+        change:      @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Delegate_Change"].Value))
+    };
+    const IS_RTL = document.documentElement.dir === 'rtl';
+
+    function esc(s) { return (s || '').toString().replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+    function displayName(u) {
+        return IS_RTL ? (u.fullNameAr || u.fullNameEn || u.fullName || u.username || '')
+                      : (u.fullNameEn || u.fullNameAr || u.fullName || u.username || '');
+    }
+    function displayDept(u) {
+        return IS_RTL ? (u.deptAr || u.deptEn || '') : (u.deptEn || u.deptAr || '');
+    }
+
+    let usersPromise = null;
+    async function loadUsers() {
+        if (usersPromise) return usersPromise;
+        usersPromise = fetch('/api/users/active', { credentials: 'include' })
+            .then(r => r.ok ? r.json() : [])
+            .catch(() => []);
+        return usersPromise;
+    }
+
+    function filterUsers(users, q) {
+        q = (q || '').toLowerCase().trim();
+        if (!q) return [];
+        return users.filter(u =>
+            (u.fullNameEn || '').toLowerCase().includes(q) ||
+            (u.fullNameAr || '').includes(q) ||
+            (u.fullName || '').toLowerCase().includes(q) ||
+            (u.username || '').toLowerCase().includes(q) ||
+            (u.email || '').toLowerCase().includes(q)
+        ).slice(0, 10);
+    }
+
+    function renderDropdown(dd, matches) {
+        if (!matches.length) {
+            dd.innerHTML = `<div class="list-group-item text-muted text-center py-2 small">${esc(L.noResults)}</div>`;
+            return;
+        }
+        dd.innerHTML = matches.map(u => {
+            const nm = esc(displayName(u));
+            const dept = esc(displayDept(u));
+            const em = esc(u.email || '');
+            const sub = [em, dept].filter(Boolean).join(' · ');
+            return `<button type="button" class="list-group-item list-group-item-action" data-uid="${u.userId}" data-name="${nm}">
+                        <div class="fw-semibold small">${nm}</div>
+                        ${sub ? `<div class="text-muted" style="font-size: var(--fs-xs)">${sub}</div>` : ''}
+                    </button>`;
+        }).join('');
+    }
+
+    function wireSearch(users) {
+        const input = document.getElementById('swalDelegateSearch');
+        const dd    = document.getElementById('swalDelegateDropdown');
+        const hid   = document.getElementById('swalDelegateTarget');
+        const badge = document.getElementById('swalDelegateSelected');
+
+        function selectUser(id, name) {
+            hid.value = id || '';
+            if (id) {
+                input.classList.add('d-none');
+                dd.style.display = 'none';
+                badge.innerHTML = `<span class="badge rounded-pill text-bg-primary d-inline-flex align-items-center gap-2 px-3 py-2" style="font-size: var(--fs-sm)">
+                    <span>${esc(name)}</span>
+                    <button type="button" class="btn btn-link btn-sm text-white p-0 m-0 text-decoration-underline" id="swalDelegateChange" style="font-size: var(--fs-xs)">${esc(L.change)}</button>
+                </span>`;
+                badge.classList.remove('d-none');
+                document.getElementById('swalDelegateChange').addEventListener('click', () => selectUser(null, null));
+            } else {
+                badge.classList.add('d-none');
+                badge.innerHTML = '';
+                input.classList.remove('d-none');
+                input.value = '';
+                dd.style.display = 'none';
+                input.focus();
+            }
+        }
+
+        input.addEventListener('input', () => {
+            const matches = filterUsers(users, input.value);
+            if (input.value.trim().length === 0) { dd.style.display = 'none'; return; }
+            renderDropdown(dd, matches);
+            dd.style.display = '';
+        });
+        input.addEventListener('focus', () => {
+            if (input.value.trim().length > 0) dd.style.display = '';
+        });
+        dd.addEventListener('mousedown', (e) => {
+            const btn = e.target.closest('button[data-uid]');
+            if (!btn) return;
+            e.preventDefault();
+            selectUser(btn.dataset.uid, btn.dataset.name);
+        });
+        document.addEventListener('click', (e) => {
+            if (!input.contains(e.target) && !dd.contains(e.target)) dd.style.display = 'none';
+        });
+    }
+
+    document.querySelectorAll('.btn-delegate').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const workflowId = btn.dataset.workflowId;
+            const users = await loadUsers();
+            const { value: form } = await Swal.fire({
+                title: L.title,
+                html: `
+                    <div class="text-start">
+                        <label class="form-label small">${L.forwardTo}</label>
+                        <div class="position-relative mb-3">
+                            <div id="swalDelegateSelected" class="d-none mb-2"></div>
+                            <input type="text" id="swalDelegateSearch" class="form-control" placeholder="${esc(L.search)}" autocomplete="off" />
+                            <div id="swalDelegateDropdown" class="list-group position-absolute w-100 shadow-sm" style="top:100%;${IS_RTL ? 'right' : 'left'}:0;z-index:2000;max-height:240px;overflow:auto;display:none;"></div>
+                            <input type="hidden" id="swalDelegateTarget" />
+                        </div>
+                        <label class="form-label small">${L.returnsOn}</label>
+                        <input type="datetime-local" id="swalDelegateExpires" class="form-control mb-2" />
+                        <div class="form-text mb-3">${L.hint}</div>
+                        <label class="form-label small">${L.reason}</label>
+                        <textarea id="swalDelegateReason" class="form-control" rows="2" placeholder="${esc(L.placeholder)}"></textarea>
+                    </div>`,
+                showCancelButton: true,
+                confirmButtonText: L.confirm,
+                cancelButtonText: L.cancel,
+                confirmButtonColor: '#005B99',
+                cancelButtonColor: '#64748b',
+                didOpen: () => wireSearch(users),
+                preConfirm: () => {
+                    const t = document.getElementById('swalDelegateTarget').value;
+                    if (!t) { Swal.showValidationMessage(L.validate); return false; }
+                    return {
+                        targetUserId: t,
+                        reason: document.getElementById('swalDelegateReason').value || '',
+                        expiresAt: document.getElementById('swalDelegateExpires').value || ''
+                    };
+                }
+            });
+            if (!form) return;
+            document.getElementById('delegateWorkflowId').value = workflowId;
+            document.getElementById('delegateTargetUserId').value = form.targetUserId;
+            document.getElementById('delegateReason').value = form.reason;
+            document.getElementById('delegateExpiresAt').value = form.expiresAt;
+            document.getElementById('delegateForm').submit();
+        });
+    });
+})();
+</script>
+<script nonce="@Context.CspNonce()">if (window.lucide) lucide.createIcons();</script>
+}

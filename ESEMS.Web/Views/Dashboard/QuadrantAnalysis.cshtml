@@ -1,0 +1,401 @@
+@model QuadrantAnalysisViewModel
+@{
+    ViewData["Title"] = Shared["Title_ImpactEffortMatrix"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+
+    // Cut-off used by ImprovementInitiative.CalculateQuadrant — pull the
+    // active PrioritizationConfig if available, fall back to the historical 6.
+    // We expose them to the chart so the colored 2x2 background bands line
+    // up with the same numbers the model uses to bucket initiatives.
+    var impactCutoff = (int)(ViewBag.ImpactCutoff ?? 6);
+    var effortCutoff = (int)(ViewBag.EffortCutoff ?? 6);
+
+    // Combine all 4 quadrants into a single rendering list — the chart
+    // doesn't care which quadrant they "belong" to (their (x,y) coords
+    // place them in the right cell automatically). Same flat list also
+    // drives the right-rail and the count chips.
+    var all = Model.QuickWins
+        .Concat(Model.MajorProjects)
+        .Concat(Model.FillIns)
+        .Concat(Model.ThanklessTasks)
+        .ToList();
+
+    string Title(ImprovementInitiative i) => isRtl ? (i.TitleAr ?? i.TitleEn) : (i.TitleEn ?? i.TitleAr);
+
+    string StatusLabel(ImprovementStatus s) => s switch
+    {
+        ImprovementStatus.Proposed    => Shared["Status_Identified"].Value,
+        ImprovementStatus.InProgress  => Shared["Status_InProgress"].Value,
+        ImprovementStatus.UnderReview => Shared["Status_UnderReview"].Value,
+        ImprovementStatus.Approved    => Shared["Status_Approved"].Value,
+        ImprovementStatus.Completed   => Shared["Status_Implemented"].Value,
+        ImprovementStatus.Closed      => Shared["Status_Closed"].Value,
+        _                              => s.ToString()
+    };
+
+    // Quadrant code → palette used by both the chart background bands
+    // and the right-rail row tag. Picked to match the existing CSS vars.
+    string QuadColor(string code) => code switch
+    {
+        "QuickWins"      => "#16a34a",   // green  (high impact, low effort)
+        "MajorProjects"  => "#005B99",   // blue   (high impact, high effort)
+        "FillIns"        => "#d97706",   // amber  (low impact, low effort)
+        "ThanklessTasks" => "#dc2626",   // red    (low impact, high effort)
+        _                 => "#64748b"
+    };
+
+    string QuadLabel(string code) => code switch
+    {
+        "QuickWins"      => Shared["Label_QuickWins"].Value,
+        "MajorProjects"  => Shared["Label_MajorProjects"].Value,
+        "FillIns"        => Shared["Label_FillIns"].Value,
+        "ThanklessTasks" => Shared["ImprovementQuadrant_ThanklessTasks"].Value,
+        _                 => code
+    };
+
+    // Pre-build the JSON payload that drives the chart + right-rail.
+    // (Anonymous + JsonSerializer so we don't have to introduce a DTO.)
+    var chartData = all.Select(i => new
+    {
+        id       = i.Id,
+        title    = Title(i),
+        status   = StatusLabel(i.Status),
+        impact   = i.ImpactScore,
+        effort   = i.EffortScore,
+        quadrant = i.Quadrant.ToString(),
+        url      = Url.Action("Details", "Improvements", new { id = i.Id })
+    }).ToList();
+    var chartJson = System.Text.Json.JsonSerializer.Serialize(chartData);
+}
+
+@*  Interactive scatter: x = Effort, y = Impact. Background coloured by the
+    same Impact/Effort cut-offs the model uses to bucket initiatives, so the
+    chart visually agrees with how Quadrant is computed server-side.    *@
+
+<style>
+    .qa-shell { display: flex; flex-direction: column; gap: .65rem; }
+    .qa-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; flex-wrap: wrap; }
+    .qa-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .qa-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .qa-btn { display: inline-flex; align-items: center; gap: .35rem; padding: .42rem .85rem; border-radius: 6px; font-size: var(--fs-xs); font-weight: 600; text-decoration: none; border: 1px solid #cbd5e1; background: #fff; color: #1f2937; }
+    .qa-btn:hover { background: #f1f5f9; color: #1f2937; }
+    .qa-btn-primary { background: #005B99; color: #fff; border-color: #005B99; }
+    .qa-btn-primary:hover { background: #003d6b; color: #fff; }
+
+    /* KPI strip — 5 small stat tiles. */
+    .qa-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: .5rem; }
+    @@media (max-width: 1023px) { .qa-kpis { grid-template-columns: repeat(3, 1fr); } }
+    @@media (max-width: 600px)  { .qa-kpis { grid-template-columns: 1fr 1fr; } }
+    .qa-kpi { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: .5rem .65rem; display: flex; align-items: center; gap: .5rem; cursor: pointer; transition: border-color .12s, background .12s; user-select: none; }
+    .qa-kpi:hover { background: #f8fafc; border-color: #94a3b8; }
+    .qa-kpi.active { border-color: #005B99; background: #f0f7fc; box-shadow: inset 0 0 0 1px #005B99; }
+    .qa-kpi-icon { width: 28px; height: 28px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff; }
+    .qa-kpi-icon i { width: 14px; height: 14px; }
+    .qa-kpi-text { display: flex; flex-direction: column; min-width: 0; }
+    .qa-kpi-label { font-size: 11px; color: #6b7280; line-height: 1.1; }
+    .qa-kpi-value { font-size: var(--fs-base); font-weight: 700; color: #111827; line-height: 1.1; }
+
+    /* Body — scatter chart on the left, list on the right. */
+    .qa-body { display: grid; grid-template-columns: 1fr 320px; gap: .75rem; align-items: start; }
+    @@media (max-width: 1023px) { .qa-body { grid-template-columns: 1fr; } }
+
+    .qa-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: .85rem 1rem; }
+    .qa-card-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding-bottom: .65rem; margin-bottom: .65rem; border-bottom: 1px solid #f1f5f9; }
+    .qa-card-title { font-size: var(--fs-sm); font-weight: 700; color: #111827; display: flex; align-items: center; gap: .4rem; }
+    .qa-card-title i { color: #005B99; width: 16px; height: 16px; }
+    .qa-card-sub { font-size: var(--fs-xs); color: #6b7280; }
+
+    .qa-chart-wrap { position: relative; height: 460px; }
+    @@media (max-width: 767px) { .qa-chart-wrap { height: 360px; } }
+
+    /* Right-rail list. */
+    .qa-list { max-height: 460px; overflow-y: auto; }
+    .qa-list-item { display: block; padding: .55rem .65rem; border-radius: 6px; text-decoration: none; color: #1f2937; transition: background .12s; }
+    .qa-list-item + .qa-list-item { margin-top: .25rem; }
+    .qa-list-item:hover { background: #f8fafc; color: #005B99; }
+    .qa-list-item.is-hidden { display: none; }
+    .qa-list-row1 { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+    .qa-list-title { font-size: var(--fs-xs); font-weight: 600; color: #111827; line-height: 1.3; flex: 1; min-width: 0; }
+    .qa-q-pill { display: inline-flex; align-items: center; padding: .05rem .45rem; border-radius: 999px; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+    .qa-list-row2 { display: flex; align-items: center; gap: .55rem; margin-top: .2rem; }
+    .qa-list-status { font-size: 10px; color: #94a3b8; flex: 1; }
+    .qa-list-stat { font-size: 10px; color: #475569; font-weight: 600; }
+
+    .qa-empty { padding: 2rem 1rem; text-align: center; color: #94a3b8; font-size: var(--fs-xs); }
+    .qa-empty i { display: block; margin: 0 auto .65rem; opacity: .4; }
+
+    /* Custom Chart.js tooltip styling — matches the rest of the app. */
+    #qaChartTooltip { position: absolute; pointer-events: none; background: #1f2937; color: #fff; padding: .45rem .6rem; border-radius: 5px; font-size: 11px; line-height: 1.4; opacity: 0; transition: opacity .12s; z-index: 5; max-width: 220px; }
+    #qaChartTooltip strong { display: block; font-weight: 700; margin-bottom: 2px; }
+    #qaChartTooltip .qa-tt-meta { color: #cbd5e1; }
+</style>
+
+<div class="qa-shell">
+    <div class="qa-header">
+        <div>
+            <h1>
+                <i data-lucide="grid-2x2" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>
+                @Shared["Title_ImpactEffortMatrix"]
+            </h1>
+            <p>@Shared["Text_QuadrantAnalysis_Subtitle"]</p>
+        </div>
+        <a asp-controller="Improvements" asp-action="Index" class="qa-btn qa-btn-primary">
+            <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            @Shared["Button_ImprovementInitiatives"]
+        </a>
+    </div>
+
+    @* KPI strip — also doubles as the quadrant filter. Click a tile to filter
+       both the chart and the right-rail to that quadrant. Click again to
+       clear. The "Total" tile is the always-on reset. *@
+    <div class="qa-kpis" id="qaKpis">
+        <div class="qa-kpi active" data-quad="">
+            <span class="qa-kpi-icon" style="background:#1f2937;"><i data-lucide="layers" aria-hidden="true"></i></span>
+            <span class="qa-kpi-text"><span class="qa-kpi-label">@(isRtl ? "الإجمالي" : "Total")</span><span class="qa-kpi-value">@all.Count</span></span>
+        </div>
+        <div class="qa-kpi" data-quad="QuickWins">
+            <span class="qa-kpi-icon" style="background:@QuadColor("QuickWins");"><i data-lucide="zap" aria-hidden="true"></i></span>
+            <span class="qa-kpi-text"><span class="qa-kpi-label">@QuadLabel("QuickWins")</span><span class="qa-kpi-value">@Model.QuickWins.Count</span></span>
+        </div>
+        <div class="qa-kpi" data-quad="MajorProjects">
+            <span class="qa-kpi-icon" style="background:@QuadColor("MajorProjects");"><i data-lucide="briefcase" aria-hidden="true"></i></span>
+            <span class="qa-kpi-text"><span class="qa-kpi-label">@QuadLabel("MajorProjects")</span><span class="qa-kpi-value">@Model.MajorProjects.Count</span></span>
+        </div>
+        <div class="qa-kpi" data-quad="FillIns">
+            <span class="qa-kpi-icon" style="background:@QuadColor("FillIns");"><i data-lucide="list-checks" aria-hidden="true"></i></span>
+            <span class="qa-kpi-text"><span class="qa-kpi-label">@QuadLabel("FillIns")</span><span class="qa-kpi-value">@Model.FillIns.Count</span></span>
+        </div>
+        <div class="qa-kpi" data-quad="ThanklessTasks">
+            <span class="qa-kpi-icon" style="background:@QuadColor("ThanklessTasks");"><i data-lucide="alert-triangle" aria-hidden="true"></i></span>
+            <span class="qa-kpi-text"><span class="qa-kpi-label">@QuadLabel("ThanklessTasks")</span><span class="qa-kpi-value">@Model.ThanklessTasks.Count</span></span>
+        </div>
+    </div>
+
+    <div class="qa-body">
+
+        @* ── Scatter chart ──────────────────────────── *@
+        <section class="qa-card">
+            <div class="qa-card-head">
+                <span class="qa-card-title">
+                    <i data-lucide="scatter-chart" aria-hidden="true"></i>
+                    @(isRtl ? "خريطة الأثر مقابل الجهد" : "Impact vs. Effort Matrix")
+                </span>
+                <span class="qa-card-sub">@(isRtl ? $"الحدود: أثر ≥ {impactCutoff} · جهد ≥ {effortCutoff}" : $"Cut-offs: Impact ≥ {impactCutoff} · Effort ≥ {effortCutoff}")</span>
+            </div>
+            <div class="qa-chart-wrap">
+                <canvas id="qaChart"></canvas>
+                <div id="qaChartTooltip" role="tooltip"></div>
+            </div>
+        </section>
+
+        @* ── Right-rail filterable list ─────────────── *@
+        <aside class="qa-card">
+            <div class="qa-card-head">
+                <span class="qa-card-title">
+                    <i data-lucide="list" aria-hidden="true"></i>
+                    @(isRtl ? "المبادرات" : "Initiatives")
+                </span>
+                <span class="qa-card-sub" id="qaListCount">@all.Count</span>
+            </div>
+            <div class="qa-list" id="qaList">
+                @if (!all.Any())
+                {
+                    <div class="qa-empty">
+                        <i data-lucide="inbox" class="w-8 h-8" aria-hidden="true"></i>
+                        <p style="margin:0;">@Shared["Text_NoInitiativesInQuadrant"]</p>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var i in all.OrderByDescending(x => x.ImpactScore * x.EffortScore))
+                    {
+                        var q = i.Quadrant.ToString();
+                        var clr = QuadColor(q);
+                        <a class="qa-list-item" data-quad="@q" data-id="@i.Id"
+                           href="@Url.Action("Details", "Improvements", new { id = i.Id })">
+                            <div class="qa-list-row1">
+                                <span class="qa-list-title" title="@Title(i)">@Title(i)</span>
+                                <span class="qa-q-pill" style="background:@(clr)1a;color:@clr;">
+                                    @QuadLabel(q)
+                                </span>
+                            </div>
+                            <div class="qa-list-row2">
+                                <span class="qa-list-status">@StatusLabel(i.Status)</span>
+                                <span class="qa-list-stat" style="color:@clr;">@Shared["Label_Impact"] @i.ImpactScore</span>
+                                <span class="qa-list-stat">·</span>
+                                <span class="qa-list-stat">@Shared["Label_Effort"] @i.EffortScore</span>
+                            </div>
+                        </a>
+                    }
+                }
+            </div>
+        </aside>
+
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+
+        const isRtl        = @Html.Raw(isRtl ? "true" : "false");
+        const items        = @Html.Raw(chartJson);
+        const impactCutoff = @impactCutoff;
+        const effortCutoff = @effortCutoff;
+
+        const QUAD = {
+            QuickWins:      { color: '#16a34a', label: '@QuadLabel("QuickWins")'      },
+            MajorProjects:  { color: '#005B99', label: '@QuadLabel("MajorProjects")'  },
+            FillIns:        { color: '#d97706', label: '@QuadLabel("FillIns")'        },
+            ThanklessTasks: { color: '#dc2626', label: '@QuadLabel("ThanklessTasks")' }
+        };
+
+        // Group points by quadrant so each becomes its own dataset (legend
+        // controls + filter both work on dataset names).
+        function buildDatasets(activeQuad) {
+            const grouped = { QuickWins: [], MajorProjects: [], FillIns: [], ThanklessTasks: [] };
+            items.forEach(it => {
+                if (grouped[it.quadrant]) grouped[it.quadrant].push({ x: it.effort, y: it.impact, raw: it });
+            });
+            return Object.entries(grouped).map(([q, pts]) => ({
+                label: QUAD[q]?.label || q,
+                data: pts,
+                backgroundColor: (activeQuad && activeQuad !== q)
+                    ? (QUAD[q]?.color || '#64748b') + '33'
+                    : (QUAD[q]?.color || '#64748b'),
+                borderColor: '#fff',
+                borderWidth: 2,
+                pointRadius: 8,
+                pointHoverRadius: 11,
+                quadKey: q
+            }));
+        }
+
+        // Plugin: paint the 4 quadrant background bands using the Impact /
+        // Effort cut-offs the model uses. Drawn behind every dataset.
+        const quadrantBg = {
+            id: 'qaQuadrantBg',
+            beforeDraw(chart) {
+                const { ctx, chartArea, scales: { x, y } } = chart;
+                if (!chartArea) return;
+                const xCut = x.getPixelForValue(effortCutoff);
+                const yCut = y.getPixelForValue(impactCutoff);
+                ctx.save();
+                // High Impact, Low Effort → QuickWins (top-left in LTR, top-right in RTL)
+                ctx.fillStyle = QUAD.QuickWins.color + '12';
+                ctx.fillRect(chartArea.left, chartArea.top, xCut - chartArea.left, yCut - chartArea.top);
+                // High Impact, High Effort → MajorProjects (top-right in LTR)
+                ctx.fillStyle = QUAD.MajorProjects.color + '12';
+                ctx.fillRect(xCut, chartArea.top, chartArea.right - xCut, yCut - chartArea.top);
+                // Low Impact, Low Effort → FillIns (bottom-left)
+                ctx.fillStyle = QUAD.FillIns.color + '12';
+                ctx.fillRect(chartArea.left, yCut, xCut - chartArea.left, chartArea.bottom - yCut);
+                // Low Impact, High Effort → ThanklessTasks (bottom-right)
+                ctx.fillStyle = QUAD.ThanklessTasks.color + '12';
+                ctx.fillRect(xCut, yCut, chartArea.right - xCut, chartArea.bottom - yCut);
+                // Cut-off guide lines.
+                ctx.strokeStyle = '#cbd5e1';
+                ctx.setLineDash([4, 4]);
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(xCut, chartArea.top);    ctx.lineTo(xCut, chartArea.bottom);
+                ctx.moveTo(chartArea.left, yCut);    ctx.lineTo(chartArea.right, yCut);
+                ctx.stroke();
+                ctx.restore();
+            }
+        };
+
+        const ctx = document.getElementById('qaChart').getContext('2d');
+        const tooltip = document.getElementById('qaChartTooltip');
+
+        const chart = new Chart(ctx, {
+            type: 'scatter',
+            data: { datasets: buildDatasets(null) },
+            plugins: [quadrantBg],
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 250 },
+                scales: {
+                    x: {
+                        type: 'linear',
+                        min: 0, max: 11,
+                        ticks: { stepSize: 1, color: '#6b7280', font: { size: 10 } },
+                        title: { display: true, text: isRtl ? 'الجهد →' : 'Effort →', color: '#374151', font: { size: 11, weight: 600 } },
+                        grid: { color: '#f1f5f9' },
+                        reverse: isRtl
+                    },
+                    y: {
+                        type: 'linear',
+                        min: 0, max: 11,
+                        ticks: { stepSize: 1, color: '#6b7280', font: { size: 10 } },
+                        title: { display: true, text: isRtl ? 'الأثر ↑' : 'Impact ↑', color: '#374151', font: { size: 11, weight: 600 } },
+                        grid: { color: '#f1f5f9' }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { font: { size: 11 }, boxWidth: 10, boxHeight: 10, color: '#374151' }
+                    },
+                    tooltip: { enabled: false, external: ctxArgs => {
+                        const tt = ctxArgs.tooltip;
+                        if (tt.opacity === 0) { tooltip.style.opacity = 0; return; }
+                        const dp = tt.dataPoints?.[0];
+                        if (!dp) return;
+                        const r = dp.raw.raw;
+                        tooltip.innerHTML =
+                            '<strong>' + (r.title || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) + '</strong>' +
+                            '<div class="qa-tt-meta">' + (QUAD[r.quadrant]?.label || r.quadrant) + ' · ' + r.status + '</div>' +
+                            '<div class="qa-tt-meta">' + (isRtl ? 'الأثر' : 'Impact') + ' ' + r.impact + ' · ' + (isRtl ? 'الجهد' : 'Effort') + ' ' + r.effort + '</div>';
+                        const parent = ctxArgs.chart.canvas.parentNode.getBoundingClientRect();
+                        tooltip.style.left = (tt.caretX + 12) + 'px';
+                        tooltip.style.top  = (tt.caretY + 12) + 'px';
+                        tooltip.style.opacity = 1;
+                    } }
+                },
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    const r = els[0].element.$context.raw.raw;
+                    if (r?.url) window.location.href = r.url;
+                },
+                onHover: (evt, els) => {
+                    evt.native.target.style.cursor = els.length ? 'pointer' : 'default';
+                }
+            }
+        });
+
+        // ── KPI tile = quadrant filter ────────────────────────────────
+        const tiles = document.querySelectorAll('#qaKpis .qa-kpi');
+        const listItems = Array.from(document.querySelectorAll('#qaList .qa-list-item'));
+        const listCount = document.getElementById('qaListCount');
+        let activeQuad = '';
+
+        function applyFilter(quad) {
+            activeQuad = quad;
+            tiles.forEach(t => t.classList.toggle('active', (t.dataset.quad || '') === quad));
+            // Filter the right-rail.
+            let visible = 0;
+            listItems.forEach(li => {
+                const ok = !quad || li.dataset.quad === quad;
+                li.classList.toggle('is-hidden', !ok);
+                if (ok) visible++;
+            });
+            if (listCount) listCount.textContent = visible;
+            // Re-paint the chart with non-matching quadrants dimmed.
+            chart.data.datasets = buildDatasets(quad || null);
+            chart.update();
+        }
+
+        tiles.forEach(t => t.addEventListener('click', () => {
+            const q = t.dataset.quad || '';
+            // Click the active tile again → reset to "all".
+            applyFilter(q === activeQuad && q !== '' ? '' : q);
+        }));
+
+        // Shrink the chart's tooltip on touch — finger covers the dot otherwise.
+        document.getElementById('qaChart').addEventListener('touchend', () => {
+            setTimeout(() => { tooltip.style.opacity = 0; }, 1200);
+        });
+    </script>
+}

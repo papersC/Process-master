@@ -1,0 +1,160 @@
+@model IEnumerable<ESEMS.Web.Models.Services.Service>
+@inject IStringLocalizer<SharedResource> Shared
+
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = Shared["Title_ServiceOverview"].Value;
+}
+
+@*  Compact dashboard: inline .lt-header (no _ModuleBanner), 6-counter
+    .lt-kpi-strip in one row (Total / Internal / External / Total Incidents
+    / Open Incidents / Total Problems), and a clean Recent Services table
+    with sticky header and brand-color pills. Same .lt-* design system
+    used by Processes/Categories/ProcessGroups Index pages. *@
+
+<style>
+    .lt-shell { display: flex; flex-direction: column; gap: .6rem; }
+    .lt-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; flex: 0 0 auto; }
+    .lt-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .lt-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .lt-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; }
+    .lt-btn-primary { background: #005B99; color: #fff; border: none; } .lt-btn-primary:hover { background: #003d6b; color: #fff; }
+    .lt-btn-outline { background: #fff; color: #005B99; border: 1px solid #cbd5e1; } .lt-btn-outline:hover { background: #f1f5f9; }
+    .lt-kpi-strip { display: flex; align-items: stretch; gap: .5rem; padding: .55rem .65rem; background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; flex-wrap: wrap; }
+    .lt-kpi { display: flex; align-items: center; gap: .55rem; padding: .25rem .65rem; flex: 1 1 140px; min-width: 130px; border-inline-end: 1px dashed #e5e7eb; }
+    .lt-kpi:last-child { border-inline-end: none; }
+    .lt-kpi-icon { width: 34px; height: 34px; border-radius: .375rem; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .lt-kpi-icon.kpi-blue   { background: #eff6ff; color: #005B99; }
+    .lt-kpi-icon.kpi-green  { background: #ecfdf5; color: #047857; }
+    .lt-kpi-icon.kpi-purple { background: #f5f3ff; color: #7c3aed; }
+    .lt-kpi-icon.kpi-orange { background: #fff7ed; color: #c2410c; }
+    .lt-kpi-icon.kpi-red    { background: #fef2f2; color: #dc2626; }
+    .lt-kpi-icon.kpi-yellow { background: #fefce8; color: #a16207; }
+    .lt-kpi-num { font-size: var(--fs-base); font-weight: 700; color: #111827; line-height: 1; }
+    .lt-kpi-label { font-size: var(--fs-xs); color: #6b7280; margin-top: .15rem; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+    @@media (max-width: 768px) { .lt-kpi { flex: 1 1 45%; border-inline-end: none; } }
+
+    .lt-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; display: flex; flex-direction: column; overflow: hidden; }
+    .lt-card-h { display: flex; align-items: center; gap: .5rem; padding: .65rem .85rem; border-bottom: 1px solid #f1f5f9; }
+    .lt-card-h h2 { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .45rem; }
+    .lt-card-h .lt-card-sub { font-size: var(--fs-xs); color: #6b7280; margin-inline-start: auto; }
+    .lt-table-wrap { overflow: auto; max-height: 60vh; }
+    .lt-table-wrap table { width: 100%; font-size: var(--fs-sm); border-collapse: collapse; }
+    .lt-table-wrap thead { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
+    .lt-table-wrap th { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; padding: .55rem .75rem; text-align: start; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+    .lt-table-wrap td { padding: .5rem .75rem; border-bottom: 1px solid #f3f4f6; color: #374151; }
+    .lt-table-wrap tbody tr:hover td { background: #f9fafb; }
+    .lt-pill { display: inline-block; padding: .15rem .5rem; font-size: var(--fs-xs); font-weight: 600; border-radius: .25rem; }
+    .lt-pill-internal { background: #ecfdf5; color: #047857; }
+    .lt-pill-external { background: #f5f3ff; color: #6d28d9; }
+    .lt-pill-code { background: #eff6ff; color: #1d4ed8; }
+    .lt-link { color: #005B99; font-weight: 600; text-decoration: none; }
+    .lt-link:hover { text-decoration: underline; color: #003d6b; }
+</style>
+
+<div class="lt-shell">
+    <div class="lt-header">
+        <div>
+            <h1><i data-lucide="layout-dashboard" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>@ViewData["Title"]</h1>
+            <p>@Shared["Text_AnalyticsInsights"]</p>
+        </div>
+        <a asp-action="Index" class="lt-btn lt-btn-primary">
+            <i data-lucide="list" class="w-4 h-4" aria-hidden="true"></i>@Shared["Button_ViewAllServices"]
+        </a>
+    </div>
+
+    <div class="lt-kpi-strip">
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-blue"><i data-lucide="concierge-bell" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div>
+                <div class="lt-kpi-num">@ViewBag.TotalServices</div>
+                <div class="lt-kpi-label">@Shared["Label_TotalServices"]</div>
+            </div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-green"><i data-lucide="building" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div>
+                <div class="lt-kpi-num">@ViewBag.InternalServices</div>
+                <div class="lt-kpi-label">@Shared["Label_InternalServices"]</div>
+            </div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-purple"><i data-lucide="users" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div>
+                <div class="lt-kpi-num">@ViewBag.ExternalServices</div>
+                <div class="lt-kpi-label">@Shared["Label_ExternalServices"]</div>
+            </div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-orange"><i data-lucide="alert-circle" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div>
+                <div class="lt-kpi-num">@ViewBag.TotalIncidents</div>
+                <div class="lt-kpi-label">@Shared["Label_TotalIncidents"]</div>
+            </div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-red"><i data-lucide="alert-triangle" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div>
+                <div class="lt-kpi-num">@ViewBag.OpenIncidents</div>
+                <div class="lt-kpi-label">@Shared["Label_OpenIncidents"]</div>
+            </div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-yellow"><i data-lucide="search" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div>
+                <div class="lt-kpi-num">@ViewBag.TotalProblems</div>
+                <div class="lt-kpi-label">@Shared["Label_TotalProblems"]</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="lt-card">
+        <div class="lt-card-h">
+            <h2><i data-lucide="clock" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@(isRtl ? "آخر الخدمات" : "Recent Services")</h2>
+            <span class="lt-card-sub">@Model.Count() @(isRtl ? "خدمة" : "shown")</span>
+        </div>
+        <div class="lt-table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>@Shared["Column_Code"]</th>
+                        <th>@Shared["Column_Name"]</th>
+                        <th>@Shared["Column_Type"]</th>
+                        <th>@Shared["Column_OwningUnit"]</th>
+                        <th>@Shared["Column_LastUpdated"]</th>
+                        <th style="text-align:end;">@Shared["Column_Actions"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var service in Model)
+                    {
+                        var isInternal = service.ServiceType == ESEMS.Web.Models.Enums.ServiceType.Internal;
+                        <tr>
+                            <td><span class="lt-pill lt-pill-code">@service.Code</span></td>
+                            <td style="font-weight:600;color:#111827;">@(isRtl ? service.NameAr : service.NameEn)</td>
+                            <td><span class="lt-pill @(isInternal ? "lt-pill-internal" : "lt-pill-external")">@Shared[$"ServiceType_{service.ServiceType}"]</span></td>
+                            <td style="color:#6b7280;">@(isRtl ? service.OwningUnit?.NameAr : service.OwningUnit?.NameEn)</td>
+                            <td style="color:#6b7280;white-space:nowrap;">@service.UpdatedAt.ToDubaiString("MMM dd, yyyy")</td>
+                            <td style="text-align:end;">
+                                <a asp-action="Details" asp-route-id="@service.Id" class="lt-link">@Shared["Button_View"]</a>
+                            </td>
+                        </tr>
+                    }
+                    @if (!Model.Any())
+                    {
+                        <tr><td colspan="6" style="padding:3rem 1rem;text-align:center;color:#94a3b8;">
+                            <i data-lucide="inbox" class="w-10 h-10" aria-hidden="true" style="margin:0 auto .5rem;display:block;color:#cbd5e1;"></i>
+                            <div style="font-weight:500;">@(isRtl ? "لا توجد خدمات بعد" : "No services yet")</div>
+                        </td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+    </script>
+}

@@ -1,0 +1,251 @@
+@model ESEMS.Web.Models.CustomUser
+@inject IStringLocalizer<SharedResource> Shared
+
+@{
+    ViewData["Title"] = Shared["Title_CreateUser"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+}
+
+@*  Single form, three named groups (Identity · Contact & Job · Access).
+    Drops the loud gradient header. Field bindings (asp-for, name="selectedRoles")
+    preserved so the controller signature is unchanged.   *@
+
+<style>
+    .uc-shell { display: flex; flex-direction: column; gap: .75rem; }
+    .uc-header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .25rem 0 .5rem; border-bottom: 1px solid #e5e7eb; flex-wrap: wrap; }
+    .uc-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .uc-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .uc-back { display: inline-flex; align-items: center; gap: .35rem; padding: .35rem .65rem; border-radius: .375rem; font-size: var(--fs-xs); font-weight: 600; text-decoration: none; border: 1px solid #cbd5e1; background: #fff; color: #1f2937; }
+    .uc-back:hover { background: #f1f5f9; color: #1f2937; }
+
+    .uc-form { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem 1.1rem; }
+
+    .uc-validation { margin-bottom: .85rem; padding: .55rem .8rem; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 6px; font-size: var(--fs-xs); }
+    .uc-validation:empty { display: none; }
+
+    .uc-group { padding: .85rem 0; border-top: 1px dashed #e5e7eb; }
+    .uc-group:first-of-type { border-top: none; padding-top: 0; }
+    .uc-group-head { display: flex; align-items: center; gap: .45rem; margin-bottom: .65rem; }
+    .uc-group-head i { color: #005B99; }
+    .uc-group-title { font-size: var(--fs-sm); font-weight: 700; color: #111827; }
+    .uc-group-sub { font-size: var(--fs-xs); color: #6b7280; margin-inline-start: .35rem; }
+
+    .uc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem .9rem; }
+    @@media (max-width: 767px) { .uc-grid { grid-template-columns: 1fr; } }
+
+    .uc-field { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
+    .uc-field label { font-size: var(--fs-xs); font-weight: 600; color: #374151; }
+    .uc-req { color: #dc2626; }
+    .uc-field input, .uc-field select { font-size: var(--fs-sm); padding: .42rem .6rem; border: 1px solid #d1d5db; border-radius: 5px; background: #fff; color: #1f2937; }
+    .uc-field input:focus, .uc-field select:focus { outline: 2px solid #005B99; outline-offset: -1px; border-color: transparent; }
+    .uc-field .text-danger, .uc-field .field-validation-error { font-size: 11px; color: #b91c1c; }
+
+    /* Role chips — clickable cards instead of a flat checkbox list. */
+    .uc-roles { display: grid; grid-template-columns: repeat(3, 1fr); gap: .4rem; }
+    @@media (max-width: 1023px) { .uc-roles { grid-template-columns: repeat(2, 1fr); } }
+    @@media (max-width: 600px)  { .uc-roles { grid-template-columns: 1fr; } }
+    .uc-role { display: flex; align-items: center; gap: .5rem; padding: .5rem .65rem; border: 1px solid #e5e7eb; border-radius: 6px; cursor: pointer; background: #fff; transition: border-color .12s, background .12s; }
+    .uc-role:hover { border-color: #94a3b8; background: #f8fafc; }
+    .uc-role input { margin: 0; }
+    .uc-role:has(input:checked) { border-color: #005B99; background: #f0f7fc; }
+    .uc-role-name { font-size: var(--fs-xs); font-weight: 600; color: #1f2937; }
+
+    /* Active toggle row. */
+    .uc-toggle { display: flex; align-items: center; gap: .55rem; padding: .55rem .65rem; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 6px; cursor: pointer; }
+    .uc-toggle input { margin: 0; }
+    .uc-toggle-text { font-size: var(--fs-xs); color: #1f2937; font-weight: 600; }
+    .uc-toggle-help { font-size: 11px; color: #6b7280; }
+
+    /* Footer. */
+    .uc-footer { display: flex; justify-content: flex-end; gap: .4rem; padding-top: .85rem; margin-top: 1rem; border-top: 1px solid #f1f5f9; }
+    .uc-btn { display: inline-flex; align-items: center; gap: .4rem; padding: .5rem 1rem; border-radius: 6px; font-size: var(--fs-sm); font-weight: 600; cursor: pointer; text-decoration: none; border: 1px solid transparent; }
+    .uc-btn-primary { background: #005B99; color: #fff; border-color: #005B99; }
+    .uc-btn-primary:hover { background: #003d6b; color: #fff; }
+    .uc-btn-ghost { background: #fff; color: #374151; border-color: #d1d5db; }
+    .uc-btn-ghost:hover { background: #f1f5f9; color: #1f2937; }
+</style>
+
+<div class="uc-shell">
+    <div class="uc-header">
+        <div>
+            <h1>
+                <i data-lucide="user-plus" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>
+                @Shared["Button_CreateNewUser"]
+            </h1>
+            <p>@(isRtl ? "أنشئ مستخدماً جديداً وعيّن صلاحياته" : "Create a new user and assign their access")</p>
+        </div>
+        <a asp-action="Index" class="uc-back">
+            <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            @Shared["Text_BackToUsers"]
+        </a>
+    </div>
+
+    <form asp-action="Create" method="post" class="uc-form" data-guard-unsaved>
+        @Html.AntiForgeryToken()
+
+        @* Only render the validation block when there's actually an error —
+           asp-validation-summary always emits a <ul> child, so .uc-validation:empty
+           in the stylesheet doesn't hide it on a clean GET. *@
+        @if (!ViewData.ModelState.IsValid)
+        {
+            <div asp-validation-summary="ModelOnly" class="uc-validation"></div>
+        }
+
+        @*  DGEP-004 — UAE PDPL Art. 14 notice. Internal admin-creates-employee
+            flow is processed under "performance of contract / legitimate
+            interest" (PDPL Art. 5) rather than consent, so no checkbox — the
+            data subject is not the one filling the form. A plain notice is
+            still required so staff know what is collected, why, and what
+            rights they have. *@
+        <div class="pc-consent" role="note" aria-labelledby="uc-pdpl-title"
+             style="margin-bottom:.85rem;padding:.55rem .8rem;background:#f0f7fc;border:1px solid #bfdbfe;border-radius:6px;font-size:var(--fs-xs);color:#1e3a8a;">
+            <strong id="uc-pdpl-title">
+                <i data-lucide="shield-check" style="width:14px;height:14px;vertical-align:-2px;"></i>
+                @(isRtl ? "إشعار خصوصية البيانات" : "Data privacy notice")
+            </strong>
+            <div style="margin-top:.35rem;color:#1f2937;">
+                @(isRtl
+                    ? "تُجمع بيانات الموظف (الاسم، البريد الإلكتروني، الرقم الوظيفي، الجهة، الصلاحيات) لأغراض إدارة الحسابات والتفويض والمراجعة فقط، وتُعالج وفق قانون حماية البيانات الشخصية الاتحادي (مرسوم بقانون اتحادي 45/2021) وقانون بيانات دبي. للموظف الحق في الاطلاع على بياناته أو تصحيحها."
+                    : "Employee data (name, email, employee number, organizational unit, role assignments) is collected solely for account management, authorization, and audit purposes, and is processed under the UAE Federal PDPL (Decree-Law 45/2021) and Dubai Data Law. The employee may request access to or correction of their data.")
+            </div>
+        </div>
+
+        @* ── Group 1: Identity ───────────────────────────── *@
+        <section class="uc-group">
+            <div class="uc-group-head">
+                <i data-lucide="id-card" class="w-4 h-4" aria-hidden="true"></i>
+                <span class="uc-group-title">@(isRtl ? "الهوية" : "Identity")</span>
+                <span class="uc-group-sub">@(isRtl ? "المعرّف، الاسم، رقم الموظف" : "Username, name, employee number")</span>
+            </div>
+            <div class="uc-grid">
+                <div class="uc-field">
+                    <label asp-for="Username">@Shared["Label_Username"] <span class="uc-req">*</span></label>
+                    <input asp-for="Username" />
+                    <span asp-validation-for="Username" class="text-danger"></span>
+                </div>
+                <div class="uc-field">
+                    @* Posts as `newPassword` (NOT bound to CustomUser.Password)
+                       — Create POST hashes it server-side and explicitly clobbers
+                       any form-bound user.Password to defend against a crafted
+                       POST that sneaks a plaintext password in. *@
+                    <label for="newPassword">
+                        @(isRtl ? "كلمة المرور الأولية" : "Initial Password")
+                        <span class="uc-req">*</span>
+                    </label>
+                    <input type="password" id="newPassword" name="newPassword"
+                           autocomplete="new-password" minlength="8" maxlength="128" required />
+                    @* Server-side ModelState errors for `newPassword` (set by
+                       UsersController.Create when the password is missing /
+                       too short / too long) render here. asp-validation-for
+                       can't be used because the key isn't a property on the
+                       bound model — Html.ValidationMessage takes the raw key. *@
+                    @Html.ValidationMessage("newPassword", new { @class = "text-danger" })
+                    <small style="font-size:11px;color:#6b7280;">
+                        @(isRtl
+                            ? "8 أحرف على الأقل. سيتمكن المستخدم من تغييرها بعد أول تسجيل دخول."
+                            : "At least 8 characters. The user can change it after first sign-in.")
+                    </small>
+                </div>
+                <div class="uc-field">
+                    <label asp-for="EmployeeNumber">@Shared["Label_EmployeeNumber"]</label>
+                    <input asp-for="EmployeeNumber" />
+                    <span asp-validation-for="EmployeeNumber" class="text-danger"></span>
+                </div>
+                <div class="uc-field">
+                    <label asp-for="EmployeeName">@Shared["Label_EmployeeNameEnglish"]</label>
+                    <input asp-for="EmployeeName" />
+                    <span asp-validation-for="EmployeeName" class="text-danger"></span>
+                </div>
+                <div class="uc-field">
+                    <label asp-for="EmployeeNameAr">@Shared["Label_EmployeeNameArabic"]</label>
+                    <input asp-for="EmployeeNameAr" dir="rtl" />
+                    <span asp-validation-for="EmployeeNameAr" class="text-danger"></span>
+                </div>
+            </div>
+        </section>
+
+        @* ── Group 2: Contact & Job ──────────────────────── *@
+        <section class="uc-group">
+            <div class="uc-group-head">
+                <i data-lucide="briefcase" class="w-4 h-4" aria-hidden="true"></i>
+                <span class="uc-group-title">@(isRtl ? "الاتصال والوظيفة" : "Contact & Job")</span>
+                <span class="uc-group-sub">@(isRtl ? "البريد، المسمى الوظيفي" : "Email and job title")</span>
+            </div>
+            <div class="uc-grid">
+                <div class="uc-field">
+                    <label asp-for="EmailAddress">@Shared["Label_Email"]</label>
+                    <input asp-for="EmailAddress" type="email" />
+                    <span asp-validation-for="EmailAddress" class="text-danger"></span>
+                </div>
+                <div class="uc-field">
+                    <label asp-for="JobName">@Shared["Label_JobTitleEnglish"]</label>
+                    <input asp-for="JobName" />
+                    <span asp-validation-for="JobName" class="text-danger"></span>
+                </div>
+                <div class="uc-field">
+                    <label asp-for="JobNameAr">@Shared["Label_JobTitleArabic"]</label>
+                    <input asp-for="JobNameAr" dir="rtl" />
+                    <span asp-validation-for="JobNameAr" class="text-danger"></span>
+                </div>
+            </div>
+        </section>
+
+        @* ── Group 3: Access (Org unit + Roles + Active) ── *@
+        <section class="uc-group">
+            <div class="uc-group-head">
+                <i data-lucide="shield-check" class="w-4 h-4" aria-hidden="true"></i>
+                <span class="uc-group-title">@(isRtl ? "الصلاحيات" : "Access")</span>
+                <span class="uc-group-sub">@(isRtl ? "الوحدة، الأدوار، التفعيل" : "Org unit, roles, active state")</span>
+            </div>
+            <div class="uc-grid" style="margin-bottom:.75rem;">
+                <div class="uc-field" style="grid-column: 1 / -1;">
+                    <label asp-for="UnitId">@Shared["Label_OrganizationUnit"]</label>
+                    <select asp-for="UnitId" asp-items="ViewBag.OrganizationUnits">
+                        <option value="">@Shared["Text_SelectOrganizationUnit"]</option>
+                    </select>
+                    <span asp-validation-for="UnitId" class="text-danger"></span>
+                </div>
+            </div>
+            <div class="uc-field" style="margin-bottom:.65rem;">
+                <label>@(isRtl ? "مجموعات الصلاحيات" : "Role Groups")</label>
+                <div class="uc-roles">
+                    @if (ViewBag.AllRoleGroups != null)
+                    {
+                        @foreach (var rg in ViewBag.AllRoleGroups as List<ESEMS.Web.Models.Common.RoleGroup>)
+                        {
+                            <label class="uc-role" title="@rg.DescriptionEn">
+                                <input type="checkbox" name="selectedRoleGroups" value="@rg.Id" />
+                                <span class="uc-role-name">@rg.NameEn</span>
+                            </label>
+                        }
+                    }
+                </div>
+            </div>
+            <label class="uc-toggle">
+                <input asp-for="IsActive" type="checkbox" checked />
+                <span>
+                    <span class="uc-toggle-text">@Shared["Label_ActiveUser"]</span>
+                    <small class="uc-toggle-help">&nbsp;— @(isRtl ? "إلغاء التفعيل يمنع تسجيل الدخول لكن يحتفظ بالسجل." : "Inactive users can't sign in but their history is preserved.")</small>
+                </span>
+            </label>
+        </section>
+
+        <div class="uc-footer">
+            <a asp-action="Index" class="uc-btn uc-btn-ghost">
+                <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                @Shared["Button_Cancel"]
+            </a>
+            <button type="submit" class="uc-btn uc-btn-primary">
+                <i data-lucide="save" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                @Shared["Button_CreateUser"]
+            </button>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    @{ await Html.RenderPartialAsync("_ValidationScriptsPartial"); }
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+    </script>
+}

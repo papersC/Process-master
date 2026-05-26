@@ -1,0 +1,164 @@
+@model IEnumerable<Category>
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = Shared["Title_Categories"].Value;
+}
+
+@*  Report-style index — same shape as /Processes Index. Inline header
+    (no _ModuleBanner partial), separate toolbar card, table card fills
+    remaining viewport. Same .lt-* class names so all three APQC tiers
+    (Categories L1, ProcessGroups L2, Processes L3) share one visual
+    design. Delete handler preserved (.btn-delete-category[data-id]
+    [data-name] + #deleteForm + @section Scripts handler verbatim). *@
+
+<style>
+    .lt-shell { display: flex; flex-direction: column; gap: .6rem; height: calc(100vh - 140px); min-height: 580px; }
+    .lt-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; flex: 0 0 auto; }
+    .lt-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .lt-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .lt-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; }
+    .lt-btn-primary { background: #005B99; color: #fff; border: none; } .lt-btn-primary:hover { background: #003d6b; color: #fff; }
+    .lt-btn-outline { background: #fff; color: #005B99; border: 1px solid #cbd5e1; } .lt-btn-outline:hover { background: #f1f5f9; }
+    .lt-toolbar { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; padding: .5rem .75rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; flex: 0 0 auto; }
+    .lt-search { flex: 1 1 220px; max-width: 320px; position: relative; }
+    .lt-search input { width: 100%; padding: .42rem .7rem; padding-inline-start: 2.1rem; border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-sm); }
+    .lt-search input:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .lt-search > i, .lt-search > svg { position: absolute; top: 50%; transform: translateY(-50%); inset-inline-start: .65rem; width: 16px; height: 16px; color: #9ca3af; pointer-events: none; }
+    .lt-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .lt-table-wrap { flex: 1 1 0; min-height: 0; overflow: auto; }
+    .lt-table-wrap table { width: 100%; font-size: var(--fs-sm); border-collapse: collapse; }
+    .lt-table-wrap thead { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
+    .lt-table-wrap th { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; padding: .55rem .75rem; text-align: start; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+    .lt-table-wrap td { padding: .5rem .75rem; border-bottom: 1px solid #f3f4f6; color: #374151; }
+    .lt-table-wrap tbody tr:hover td { background: #f9fafb; }
+    .lt-pill { display: inline-block; padding: .15rem .5rem; font-size: var(--fs-xs); font-weight: 600; border-radius: .25rem; }
+    .lt-pill-code { background: #eff6ff; color: #1d4ed8; }
+    .lt-pill-groups { background: #ede9fe; color: #6d28d9; }
+    .lt-pill-procs { background: #ecfdf5; color: #047857; }
+    .lt-actions { display: inline-flex; gap: .35rem; }
+    .lt-actions a, .lt-actions button { color: #005B99; padding: .2rem; border-radius: .25rem; transition: background .15s; background: transparent; border: none; cursor: pointer; }
+    .lt-actions a:hover, .lt-actions button:hover { background: #eff6ff; }
+    .lt-actions .lt-action-danger { color: #dc2626; }
+    .lt-actions .lt-action-danger:hover { background: #fef2f2; }
+</style>
+
+<div class="lt-shell">
+    <div class="lt-header">
+        <div>
+            <h1><i data-lucide="folder-tree" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>@Shared["Heading_APQCCategories_Level1"]</h1>
+            <p>@Shared["Text_ManageProcessClassificationCategories"]</p>
+        </div>
+        <div style="display:flex;gap:.4rem;">
+            <a asp-controller="Dashboard" asp-action="ProcessArchitectureView" class="lt-btn lt-btn-outline"><i data-lucide="network" class="w-4 h-4" aria-hidden="true"></i>@Shared["Heading_ProcessArchitecture"]</a>
+            <a asp-action="Create" class="lt-btn lt-btn-primary"><i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>@Shared["Action_AddCategory"]</a>
+        </div>
+    </div>
+
+    <div class="lt-toolbar">
+        <div class="lt-search">
+            <i data-lucide="search" class="w-4 h-4" aria-hidden="true"></i>
+            <input type="text" id="searchInput" placeholder="@(isRtl ? "ابحث بالكود أو الاسم أو الوصف..." : "Search by code, name, or description...")" aria-label="@(isRtl ? "بحث" : "Search categories")" />
+        </div>
+        <span style="flex:1;"></span>
+        <button type="button" onclick="window.print()" class="lt-btn lt-btn-outline" aria-label="@Shared["Button_Export"]">
+            <i data-lucide="download" class="w-3.5 h-3.5" aria-hidden="true"></i>@Shared["Button_Export"]
+        </button>
+    </div>
+
+    <div class="lt-card">
+        <div class="lt-table-wrap">
+            <table class="esems-datatable" id="dataTable">
+                <thead>
+                    <tr>
+                        <th>@Shared["Column_Code"]</th>
+                        <th>@Shared["Column_CategoryName"]</th>
+                        <th>@Shared["Column_Description"]</th>
+                        <th style="text-align:center;">@Shared["Column_ProcessGroups"]</th>
+                        <th style="text-align:center;">@Shared["Column_TotalProcesses"]</th>
+                        <th style="text-align:end;">@Shared["Column_Actions"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model)
+                    {
+                        var totalProcessesPerCat = item.ProcessGroups.Where(pg => !pg.IsDeleted).SelectMany(pg => pg.Processes.Where(p => !p.IsDeleted)).Count();
+                        <tr>
+                            <td><span class="lt-pill lt-pill-code">@item.Code</span></td>
+                            <td>
+                                <div style="font-weight:600;color:#111827;">@(isRtl ? item.NameAr : item.NameEn)</div>
+                                <div style="font-size: var(--fs-xs);color:#6b7280;margin-top:.1rem;" dir="@(isRtl ? "ltr" : "rtl")">@(isRtl ? item.NameEn : item.NameAr)</div>
+                            </td>
+                            <td><div style="max-width:380px;color:#6b7280;">@((isRtl ? item.DescriptionAr : item.DescriptionEn) ?? (isRtl ? item.DescriptionEn : item.DescriptionAr) ?? "—")</div></td>
+                            <td style="text-align:center;"><span class="lt-pill lt-pill-groups">@item.ProcessGroups.Count(pg => !pg.IsDeleted)</span></td>
+                            <td style="text-align:center;"><span class="lt-pill lt-pill-procs">@totalProcessesPerCat</span></td>
+                            <td style="text-align:end;">
+                                <span class="lt-actions">
+                                    <a asp-action="Details" asp-route-id="@item.Id" title="@Shared["Tooltip_ViewDetails"]" aria-label="@Shared["Tooltip_ViewDetails"]"><i data-lucide="eye" class="w-4 h-4" aria-hidden="true"></i></a>
+                                    <a asp-action="Edit" asp-route-id="@item.Id" title="@Shared["Tooltip_EditRecord"]" aria-label="@Shared["Tooltip_EditRecord"]"><i data-lucide="edit" class="w-4 h-4" aria-hidden="true"></i></a>
+                                    <button type="button" class="btn-delete-category lt-action-danger" data-id="@item.Id" data-name="@item.Name" title="@Shared["Tooltip_Delete"]" aria-label="@Shared["Tooltip_Delete"]">
+                                        <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
+                                    </button>
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                    @if (!Model.Any())
+                    {
+                        <tr><td colspan="6" style="padding:3rem 1rem;text-align:center;color:#94a3b8;">
+                            <i data-lucide="inbox" class="w-10 h-10" aria-hidden="true" style="margin:0 auto .5rem;display:block;color:#cbd5e1;"></i>
+                            <div style="font-weight:500;margin-bottom:.25rem;">@Shared["Empty_NoCategories"]</div>
+                            <a asp-action="Create" style="color:#005B99;text-decoration:none;font-size: var(--fs-sm);">@Shared["Empty_CreateFirstCategory"]</a>
+                        </td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@* Delete Form — handler in @section Scripts populates #deleteId then submits. *@
+<form id="deleteForm" asp-action="Delete" method="post" style="display:none;">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="id" id="deleteId" />
+</form>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+
+        // Local search filter (mirrors /Processes Index pattern).
+        const searchInput = document.getElementById('searchInput');
+        const tableRows = Array.from(document.querySelectorAll('tbody tr'));
+        function applyFilters() {
+            const q = (searchInput?.value || '').toLowerCase().trim();
+            tableRows.forEach(row => {
+                if (row.querySelector('td[colspan]')) return;
+                const text = row.textContent.toLowerCase();
+                row.style.display = !q || text.includes(q) ? '' : 'none';
+            });
+        }
+        searchInput?.addEventListener('input', applyFilters);
+
+        const confirmTitle = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_AreYouSure"].Value));
+        const confirmDeletePrefix = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_DeleteTextPrefix"].Value));
+        const confirmYesDelete = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_YesDelete"].Value));
+        const buttonCancel = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Button_Cancel"].Value));
+
+        document.addEventListener('click', function (e) {
+            const btn = e.target.closest('.btn-delete-category');
+            if (!btn) return;
+            const id = btn.dataset.id;
+            const name = btn.dataset.name || '';
+            Swal.fire({
+                title: confirmTitle, text: confirmDeletePrefix + name, icon: 'warning',
+                showCancelButton: true, confirmButtonColor: '#005B99', cancelButtonColor: '#6b7280',
+                confirmButtonText: confirmYesDelete, cancelButtonText: buttonCancel
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('deleteId').value = id;
+                    document.getElementById('deleteForm').submit();
+                }
+            });
+        });
+    </script>
+}

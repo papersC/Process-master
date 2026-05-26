@@ -1,0 +1,167 @@
+@model IEnumerable<SLABreach>
+@{
+    ViewData["Title"] = Shared["Title_SLABreaches"].Value;
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+
+    // KPI counts pre-computed once.
+    var criticalOpen = Model.Count(b => b.Severity == 1 && !b.IsResolved);
+    var highOpen     = Model.Count(b => b.Severity == 2 && !b.IsResolved);
+    var totalOpen    = Model.Count(b => !b.IsResolved);
+    var resolved     = Model.Count(b => b.IsResolved);
+}
+
+@*  Compact KPI strip + report-style table — matches the /SLA Index
+    pattern. The .esems-datatable class is preserved so the existing
+    DataTables auto-init keeps owning search / sort / paging. *@
+<style>
+    .sl-stickyhead { position: sticky; top: 0; z-index: 30; background: #fff; border-bottom: 1px solid #e5e7eb; margin: 0 -.75rem .85rem; padding: .55rem .75rem .35rem; box-shadow: 0 1px 0 rgba(15,23,42,.04); }
+    .sl-titlerow { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+    .sl-titlemain { display: flex; align-items: center; gap: .55rem; min-width: 0; }
+    .sl-backbtn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: .375rem; color: #475569; transition: background .12s; }
+    .sl-backbtn:hover { background: #f1f5f9; color: #475569; }
+    .sl-titlemain h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .sl-titlemain p { margin: .15rem 0 0; font-size: var(--fs-xs); color: #6b7280; }
+
+    .sl-kpis { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .45rem; }
+    .sl-kpi { display: inline-flex; align-items: center; gap: .4rem; padding: .25rem .6rem; border: 1px solid #e5e7eb; border-radius: .375rem; background: #fafbfc; font-size: var(--fs-xs); color: #475569; }
+    .sl-kpi i { width: 13px; height: 13px; }
+    .sl-kpi b { color: #0f172a; font-weight: 700; font-size: var(--fs-sm); margin-inline-start: .1rem; }
+    .sl-kpi-critical { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+    .sl-kpi-critical i { color: #dc2626; }
+    .sl-kpi-high     { background: #fff7ed; border-color: #fed7aa; color: #9a3412; }
+    .sl-kpi-high i   { color: #ea580c; }
+    .sl-kpi-warn     { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+    .sl-kpi-warn i   { color: #d97706; }
+    .sl-kpi-resolved { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+    .sl-kpi-resolved i { color: #059669; }
+
+    .sl-table-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; overflow: hidden; }
+    .sl-table { width: 100%; font-size: var(--fs-sm); margin: 0; border-collapse: collapse; }
+    .sl-table thead th { position: sticky; top: 0; z-index: 5; background: #f8fafc; color: #1e3a8a; font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: .55rem .75rem; text-align: start; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+    .sl-table tbody td { padding: .5rem .75rem; border-bottom: 1px solid #f3f4f6; vertical-align: middle; color: #374151; }
+    .sl-table tbody tr:hover { background: #f9fafb; }
+    .sl-table tbody tr:last-child td { border-bottom: none; }
+    /* Critical-unresolved row highlight, preserved from the original. */
+    .sl-table tbody tr.sl-row-critical { background: #fef2f2; }
+    .sl-table tbody tr.sl-row-critical:hover { background: #fee2e2; }
+
+    .sl-code { font-family: ui-monospace, monospace; font-weight: 700; color: #1d4ed8; font-size: var(--fs-xs); letter-spacing: .03em; }
+    .sl-num  { font-family: ui-monospace, monospace; font-weight: 600; color: #0f172a; font-size: var(--fs-xs); }
+    .sl-num-bad { color: #b91c1c; }
+
+    .sl-pill { display: inline-block; padding: .12rem .5rem; font-size: var(--fs-xs); font-weight: 700; border-radius: .25rem; }
+    .sl-pill-critical { background: #fee2e2; color: #991b1b; }
+    .sl-pill-high     { background: #ffedd5; color: #9a3412; }
+    .sl-pill-medium   { background: #fef3c7; color: #92400e; }
+    .sl-pill-low      { background: #f1f5f9; color: #475569; }
+    .sl-pill-open     { background: #fef3c7; color: #92400e; }
+    .sl-pill-resolved { background: #dcfce7; color: #166534; }
+
+    @@media (max-width: 768px) {
+        .sl-titlemain h1 { font-size: var(--fs-sm); }
+    }
+</style>
+
+<!-- ===================== STICKY HEADER ===================== -->
+<div class="sl-stickyhead">
+    <div class="sl-titlerow">
+        <div class="sl-titlemain">
+            <a asp-action="Index" class="sl-backbtn" title="@(isRtl ? "رجوع إلى اتفاقيات الخدمة" : "Back to SLAs")" aria-label="@(isRtl ? "رجوع" : "Back")">
+                <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" style="width:16px;height:16px;"></i>
+            </a>
+            <div>
+                <h1><i data-lucide="alert-triangle" class="w-5 h-5" style="color:#dc2626;" aria-hidden="true"></i>@Shared["Title_SLABreaches"]</h1>
+                <p>@Shared["Text_MonitorSLABreaches"]</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="sl-kpis">
+        <span class="sl-kpi sl-kpi-critical">
+            <i data-lucide="alert-circle"></i> @Shared["Label_CriticalBreaches"] <b>@criticalOpen</b>
+        </span>
+        <span class="sl-kpi sl-kpi-high">
+            <i data-lucide="alert-triangle"></i> @Shared["Label_HighSeverity"] <b>@highOpen</b>
+        </span>
+        <span class="sl-kpi sl-kpi-warn">
+            <i data-lucide="clock"></i> @Shared["Label_TotalUnresolved"] <b>@totalOpen</b>
+        </span>
+        <span class="sl-kpi sl-kpi-resolved">
+            <i data-lucide="check-circle"></i> @Shared["Label_Resolved"] <b>@resolved</b>
+        </span>
+    </div>
+</div>
+
+<!-- ===================== BREACHES TABLE ===================== -->
+<div class="sl-table-wrap">
+    @* DataTables owns search/sort/paging via .esems-datatable auto-init. *@
+    <table class="sl-table esems-datatable" id="breachesTable">
+        <thead>
+            <tr>
+                <th>@Shared["Column_BreachNumber"]</th>
+                <th>@Shared["Column_SLA"]</th>
+                <th>@Shared["Column_Service"]</th>
+                <th>@Shared["Column_BreachDate"]</th>
+                <th>@Shared["Column_Target"]</th>
+                <th>@Shared["Column_Actual"]</th>
+                <th>@Shared["Column_Variance"]</th>
+                <th>@Shared["Column_Severity"]</th>
+                <th>@Shared["Column_Status"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var breach in Model)
+            {
+                var pillClass = breach.Severity switch
+                {
+                    1 => "sl-pill-critical",
+                    2 => "sl-pill-high",
+                    3 => "sl-pill-medium",
+                    _ => "sl-pill-low"
+                };
+                var pillLabel = breach.Severity switch
+                {
+                    1 => Shared["Criticality_Critical"].Value,
+                    2 => Shared["Criticality_High"].Value,
+                    3 => Shared["Criticality_Medium"].Value,
+                    _ => Shared["Criticality_Low"].Value
+                };
+                var rowClass = (!breach.IsResolved && breach.Severity == 1) ? "sl-row-critical" : "";
+                var unit = breach.SLADefinition?.Unit ?? "";
+                <tr class="@rowClass">
+                    <td><span class="sl-code">@breach.BreachNumber</span></td>
+                    <td>
+                        @if (breach.SLADefinition != null)
+                        {
+                            <a asp-action="Details" asp-route-id="@breach.SLADefinitionId" class="sl-code text-decoration-none">@breach.SLADefinition.Code</a>
+                        }
+                        else
+                        {
+                            <span class="text-muted">—</span>
+                        }
+                    </td>
+                    <td>@(breach.SLADefinition?.Service != null ? (isRtl ? breach.SLADefinition.Service.NameAr : breach.SLADefinition.Service.NameEn) : "—")</td>
+                    <td><small class="text-muted">@breach.BreachDate.ToDubaiString("MMM dd, yyyy HH:mm")</small></td>
+                    <td><span class="sl-num">@breach.TargetValue</span> <small class="text-muted">@unit</small></td>
+                    <td><span class="sl-num sl-num-bad">@breach.ActualValue</span> <small class="text-muted">@unit</small></td>
+                    <td>
+                        <span class="sl-num sl-num-bad">+@breach.Variance</span>
+                        <small class="text-muted">(@breach.VariancePercentage.ToString("F1")%)</small>
+                    </td>
+                    <td><span class="sl-pill @pillClass">@pillLabel</span></td>
+                    <td>
+                        @if (breach.IsResolved)
+                        {
+                            <span class="sl-pill sl-pill-resolved">@Shared["Status_Resolved"]</span>
+                        }
+                        else
+                        {
+                            <span class="sl-pill sl-pill-open">@Shared["Status_Open"]</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

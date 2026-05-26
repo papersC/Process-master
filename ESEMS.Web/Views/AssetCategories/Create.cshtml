@@ -1,0 +1,203 @@
+@model AssetCategory
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = Shared["Title_CreateAssetCategory"].Value;
+}
+
+<style>
+    .pc-shell { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: .75rem; align-items: start; }
+    @@media (max-width: 992px) { .pc-shell { grid-template-columns: 1fr; } }
+    .pc-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; margin-bottom: .6rem; }
+    .pc-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .pc-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .pc-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; border: none; }
+    .pc-btn-primary { background: #005B99; color: #fff; } .pc-btn-primary:hover { background: #003d6b; color: #fff; }
+    .pc-btn-outline { background: #fff; color: #005B99; border: 1px solid #cbd5e1; } .pc-btn-outline:hover { background: #f1f5f9; }
+    .pc-btn-ghost { background: transparent; color: #374151; border: 1px solid #d1d5db; } .pc-btn-ghost:hover { background: #f9fafb; }
+    .pc-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; padding: .9rem 1rem; margin-bottom: .6rem; }
+    .pc-card-h { display: flex; align-items: center; gap: .5rem; padding-bottom: .55rem; margin-bottom: .75rem; border-bottom: 1px solid #f1f5f9; }
+    .pc-card-h h2 { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .45rem; }
+    .pc-card-h .pc-card-sub { font-size: var(--fs-xs); color: #6b7280; margin-inline-start: auto; }
+    .pc-label { display: block; font-size: var(--fs-xs); font-weight: 600; color: #374151; margin-bottom: .25rem; }
+    .pc-label .req { color: #dc2626; }
+    .pc-input, .pc-select, .pc-textarea { width: 100%; padding: .42rem .65rem; border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-sm); background: #fff; color: #111827; }
+    .pc-input:focus, .pc-select:focus, .pc-textarea:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .pc-input[readonly] { background: #f8fafc; color: #6b7280; cursor: not-allowed; }
+    .pc-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+    .pc-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .65rem; }
+    @@media (max-width: 768px) { .pc-grid-2, .pc-grid-3 { grid-template-columns: 1fr; } }
+    .pc-row { margin-bottom: .65rem; }
+    .pc-help { font-size: var(--fs-xs); color: #6b7280; margin-top: .2rem; }
+    .pc-err { font-size: var(--fs-xs); color: #dc2626; margin-top: .2rem; display: block; }
+    .pc-side { position: sticky; top: 1rem; display: flex; flex-direction: column; gap: .55rem; }
+    .pc-summary-row { display: flex; align-items: center; justify-content: space-between; padding: .35rem 0; font-size: var(--fs-xs); color: #374151; border-bottom: 1px dashed #f1f5f9; gap: .5rem; }
+    .pc-summary-row:last-child { border-bottom: none; }
+    .pc-summary-row .lbl { display: inline-flex; align-items: center; gap: .35rem; flex-shrink: 0; }
+    .pc-summary-row .val { font-weight: 600; color: #111827; text-align: end; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .pc-pill { display: inline-block; padding: .12rem .45rem; font-size: var(--fs-xs); font-weight: 700; border-radius: .25rem; background: #eff6ff; color: #1d4ed8; }
+    .pc-side-actions { display: flex; flex-direction: column; gap: .35rem; padding-top: .25rem; }
+    .pc-side-actions .pc-btn { justify-content: center; padding: .55rem .85rem; }
+</style>
+
+<div class="pc-header">
+    <div>
+        <h1><i data-lucide="folder-plus" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>@Shared["Title_CreateAssetCategory"]</h1>
+        <p>@Shared["Text_AddCategorySubtitle"]</p>
+    </div>
+    <a asp-action="Index" class="pc-btn pc-btn-outline">
+        <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "رجوع" : "Back")
+    </a>
+</div>
+
+<form asp-action="Create" method="post" id="createForm">
+    <div asp-validation-summary="ModelOnly" style="margin-bottom:.6rem;padding:.6rem .8rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.375rem;color:#b91c1c;font-size: var(--fs-xs);"></div>
+
+    <div class="pc-shell">
+        <div>
+            <div class="pc-card">
+                <div class="pc-card-h">
+                    <h2><i data-lucide="info" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@Shared["Heading_BasicInformation"]</h2>
+                    <span class="pc-card-sub">@(isRtl ? "الكود والاسم والفئة الأم" : "Code, parent, and names")</span>
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="Code" class="pc-label">@Shared["Label_CategoryCode"] <span class="req">*</span></label>
+                        <input asp-for="Code" class="pc-input" readonly />
+                        <div class="pc-help">@Shared["Text_AutoGeneratedCode"]</div>
+                    </div>
+                    <div>
+                        <label asp-for="ParentCategoryId" class="pc-label">@Shared["Label_ParentCategory"]</label>
+                        <select asp-for="ParentCategoryId" asp-items="@ViewBag.ParentCategories" class="pc-select" id="ParentSel">
+                            <option value="">@Shared["Text_NoneTopLevel"]</option>
+                        </select>
+                        <div class="pc-help">@Shared["Text_LeaveEmptyTopLevel"]</div>
+                    </div>
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="NameEn" class="pc-label">@Shared["Label_NameEnglish"] <span class="req">*</span></label>
+                        <input asp-for="NameEn" class="pc-input" />
+                        <span asp-validation-for="NameEn" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NameAr" class="pc-label">@Shared["Label_NameArabic"] <span class="req">*</span></label>
+                        <input asp-for="NameAr" dir="rtl" class="pc-input" />
+                        <span asp-validation-for="NameAr" class="pc-err"></span>
+                    </div>
+                </div>
+
+                <div class="pc-grid-2">
+                    <div>
+                        <label asp-for="DescriptionEn" class="pc-label">@Shared["Label_DescriptionEnglish"]</label>
+                        <textarea asp-for="DescriptionEn" rows="3" class="pc-textarea"></textarea>
+                    </div>
+                    <div>
+                        <label asp-for="DescriptionAr" class="pc-label">@Shared["Label_DescriptionArabic"]</label>
+                        <textarea asp-for="DescriptionAr" dir="rtl" rows="3" class="pc-textarea"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pc-card">
+                <div class="pc-card-h">
+                    <h2><i data-lucide="settings" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@Shared["Heading_DefaultAssetSettings"]</h2>
+                    <span class="pc-card-sub">@(isRtl ? "تُورّث للأصول الجديدة في هذه الفئة" : "Inherited by new assets in this category")</span>
+                </div>
+
+                <div class="pc-grid-3">
+                    <div>
+                        <label asp-for="DefaultDepreciationRate" class="pc-label">@Shared["Label_DefaultDepreciationRate"]</label>
+                        <input asp-for="DefaultDepreciationRate" type="number" step="0.01" min="0" max="100" class="pc-input" id="DepRate" />
+                        <div class="pc-help">@Shared["Text_PercentagePerYear"]</div>
+                    </div>
+                    <div>
+                        <label asp-for="DefaultUsefulLifeYears" class="pc-label">@Shared["Label_DefaultUsefulLife"]</label>
+                        <input asp-for="DefaultUsefulLifeYears" type="number" min="0" class="pc-input" id="UsefulLife" />
+                        <div class="pc-help">@Shared["Text_ExpectedLifespan"]</div>
+                    </div>
+                    <div>
+                        <label asp-for="DefaultMaintenanceIntervalDays" class="pc-label">@Shared["Label_DefaultMaintenanceInterval"]</label>
+                        <input asp-for="DefaultMaintenanceIntervalDays" type="number" min="0" class="pc-input" id="MaintInterval" />
+                        <div class="pc-help">@Shared["Text_DaysBetweenMaintenance"]</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <aside class="pc-side">
+            <div class="pc-card" style="margin-bottom:0;">
+                <div class="pc-card-h">
+                    <h2><i data-lucide="hash" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@(isRtl ? "رمز الفئة" : "Category Code")</h2>
+                </div>
+                <div style="font-size: var(--fs-xs);color:#6b7280;margin-bottom:.25rem;">@(isRtl ? "يُولد تلقائيًا عند الحفظ" : "Auto-generated on save")</div>
+                <div style="font-family:monospace;font-size: var(--fs-sm);font-weight:700;color:#005B99;background:#eff6ff;padding:.4rem .6rem;border-radius:.25rem;text-align:center;letter-spacing:.05em;">AC-&mdash;&mdash;</div>
+            </div>
+
+            <div class="pc-card" style="margin-bottom:0;">
+                <div class="pc-card-h">
+                    <h2><i data-lucide="settings" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@(isRtl ? "ملخص الإعدادات" : "Defaults Summary")</h2>
+                </div>
+                <div class="pc-summary-row">
+                    <span class="lbl">@(isRtl ? "الفئة الأم" : "Parent")</span>
+                    <span class="val" id="sumParent" style="color:#6b7280;">—</span>
+                </div>
+                <div class="pc-summary-row">
+                    <span class="lbl">@Shared["Label_DefaultDepreciationRate"]</span>
+                    <span class="val"><span class="pc-pill" id="sumDep">—</span></span>
+                </div>
+                <div class="pc-summary-row">
+                    <span class="lbl">@Shared["Label_DefaultUsefulLife"]</span>
+                    <span class="val"><span class="pc-pill" id="sumLife">—</span></span>
+                </div>
+                <div class="pc-summary-row">
+                    <span class="lbl">@Shared["Label_DefaultMaintenanceInterval"]</span>
+                    <span class="val"><span class="pc-pill" id="sumInt">—</span></span>
+                </div>
+            </div>
+
+            <div class="pc-side-actions">
+                <button type="submit" class="pc-btn pc-btn-primary">
+                    <i data-lucide="save" class="w-4 h-4" aria-hidden="true"></i>@Shared["Button_Save"]
+                </button>
+                <a asp-action="Index" class="pc-btn pc-btn-ghost">
+                    <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>@Shared["Button_Cancel"]
+                </a>
+            </div>
+        </aside>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+        const parentSel = document.getElementById('ParentSel');
+        const dep = document.getElementById('DepRate');
+        const life = document.getElementById('UsefulLife');
+        const intv = document.getElementById('MaintInterval');
+        function refresh() {
+            const sumParent = document.getElementById('sumParent');
+            const sumDep = document.getElementById('sumDep');
+            const sumLife = document.getElementById('sumLife');
+            const sumInt = document.getElementById('sumInt');
+            if (parentSel?.value) {
+                sumParent.textContent = parentSel.options[parentSel.selectedIndex].textContent.trim();
+                sumParent.style.color = '#111827';
+            } else {
+                sumParent.textContent = '—';
+                sumParent.style.color = '#6b7280';
+            }
+            const d = (dep?.value || '').trim();
+            sumDep.textContent = d && d !== '0' ? d + '%' : '—';
+            const l = (life?.value || '').trim();
+            sumLife.textContent = l && l !== '0' ? l + ' yr' : '—';
+            const i = (intv?.value || '').trim();
+            sumInt.textContent = i && i !== '0' ? i + ' d' : '—';
+        }
+        parentSel?.addEventListener('change', refresh);
+        [dep, life, intv].forEach(e => e?.addEventListener('input', refresh));
+        refresh();
+    </script>
+}

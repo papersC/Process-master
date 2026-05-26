@@ -1,0 +1,574 @@
+@model ESEMS.Web.Models.ViewModels.RoadmapViewModel
+@using ESEMS.Web.Models.Enums
+@using System.Text.Json
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = Shared["Title_ImprovementRoadmap"].Value;
+}
+
+<div class="esems-container">
+    <!-- Compact header (banner replaced) -->
+    <div class="d-flex align-items-center justify-content-between mb-3 pb-2" style="border-bottom: 1px solid #e5e7eb;">
+        <div>
+            <h1 style="margin:0;font-size: var(--fs-base);font-weight:600;color:#111827;display:flex;align-items:center;gap:.5rem;">
+                <i data-lucide="map" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>
+                @Shared["Heading_RoadmapShort"]
+            </h1>
+            <p style="margin:0;font-size: var(--fs-xs);color:#6b7280;">@Shared["Help_Roadmap"] · <strong>@Model.TotalInitiatives</strong> @Shared["Label_Initiatives"]</p>
+        </div>
+        <div style="display:flex;gap:.4rem;">
+            <a asp-action="DgepExcellenceExport" style="background:#fff;color:#005B99;border:1px solid #cbd5e1;border-radius:.375rem;padding:.42rem .85rem;font-size: var(--fs-xs);font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;" title="@(isRtl ? "تصدير تقديم DGEP للتميز" : "DGEP 4Gen Excellence submission export")">
+                <i data-lucide="file-down" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "تصدير DGEP" : "DGEP Export")
+            </a>
+            <a asp-action="Index" style="background:#005B99;color:#fff;border:none;border-radius:.375rem;padding:.42rem .85rem;font-size: var(--fs-xs);font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;">
+                <i data-lucide="list" class="w-4 h-4" aria-hidden="true"></i>@Shared["Button_Back"]
+            </a>
+        </div>
+    </div>
+
+    <!-- Legend + Filter Bar -->
+    <div class="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+        <div class="flex flex-wrap items-center gap-4">
+            <!-- Legend -->
+            <div class="flex flex-wrap items-center gap-3 text-xs text-gray-600">
+                <span class="font-semibold text-gray-700">@Shared["Label_Legend"]:</span>
+                <span class="inline-flex items-center gap-1">
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold" style="background:#22c55e20;color:#16a34a;">H1</span>
+                    @Shared["Horizon_EnhanceCurrent"]
+                </span>
+                <span class="inline-flex items-center gap-1">
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold" style="background:#3b82f620;color:#2563eb;">H2</span>
+                    @Shared["Horizon_ExpandExperiment"]
+                </span>
+                <span class="inline-flex items-center gap-1">
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold" style="background:#8b5cf620;color:#7c3aed;">H3</span>
+                    @Shared["Horizon_FutureVision"]
+                </span>
+                <span class="text-gray-300">|</span>
+                <span class="inline-flex items-center gap-1"><i data-lucide="star" class="w-3 h-3 text-gray-500"></i>@Shared["Label_Score"]</span>
+                <span class="inline-flex items-center gap-1 font-mono text-gray-700">I/E</span>
+                <span class="text-gray-500">= @Shared["Help_ImpactEffortFormat"]</span>
+            </div>
+
+            <!-- Filter spacer pushes filters to the right -->
+            <div class="flex-1"></div>
+
+            <!-- Filters -->
+            <div class="flex flex-wrap items-center gap-2">
+                <label class="text-xs font-semibold text-gray-700">@Shared["Filter_Horizon"]:</label>
+                <select id="rmFilterHorizon" class="px-3 py-1 border border-gray-300 rounded text-xs bg-white focus:ring-2 focus:ring-blue-500">
+                    <option value="">@Shared["Filter_All"]</option>
+                    <option value="H1">H1</option>
+                    <option value="H2">H2</option>
+                    <option value="H3">H3</option>
+                </select>
+                <label class="text-xs font-semibold text-gray-700">@Shared["Filter_Quadrant"]:</label>
+                <select id="rmFilterQuadrant" class="px-3 py-1 border border-gray-300 rounded text-xs bg-white focus:ring-2 focus:ring-blue-500">
+                    <option value="">@Shared["Filter_All"]</option>
+                    <option value="QuickWins">@Shared["Label_QuickWins"]</option>
+                    <option value="MajorProjects">@Shared["Label_MajorProjects"]</option>
+                    <option value="FillIns">@Shared["Label_FillIns"]</option>
+                    <option value="ThanklessTasks">@Shared["Label_HardSlogs"]</option>
+                </select>
+                <label class="text-xs font-semibold text-gray-700">@Shared["Filter_Status"]:</label>
+                <select id="rmFilterStatus" class="px-3 py-1 border border-gray-300 rounded text-xs bg-white focus:ring-2 focus:ring-blue-500">
+                    <option value="">@Shared["Filter_All"]</option>
+                    <option value="Proposed">@Shared["Status_Proposed"]</option>
+                    <option value="UnderReview">@Shared["Status_UnderReview"]</option>
+                    <option value="Approved">@Shared["Status_Approved"]</option>
+                    <option value="InProgress">@Shared["Status_InProgress"]</option>
+                    <option value="Completed">@Shared["Status_Completed"]</option>
+                    <option value="Closed">@Shared["Status_Closed"]</option>
+                </select>
+                <button type="button" onclick="RoadmapFilter.clear()" class="px-2 py-1 text-xs text-gray-600 hover:text-gray-900 inline-flex items-center gap-1">
+                    <i data-lucide="x" class="w-3 h-3"></i>@Shared["Button_Clear"]
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Executive KPI Row — compact .lt-kpi-strip pattern -->
+    <style>
+        .rm-kpi-strip { display: flex; align-items: stretch; gap: .5rem; padding: .55rem .65rem; background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .rm-kpi { display: flex; align-items: center; gap: .55rem; padding: .25rem .65rem; flex: 1 1 200px; min-width: 180px; border-inline-end: 1px dashed #e5e7eb; }
+        .rm-kpi:last-child { border-inline-end: none; }
+        .rm-kpi-icon { width: 36px; height: 36px; border-radius: .375rem; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: #eff6ff; color: #005B99; }
+        .rm-kpi-num { font-size: var(--fs-base); font-weight: 700; color: #111827; line-height: 1; }
+        .rm-kpi-label { font-size: var(--fs-xs); color: #6b7280; margin-top: .15rem; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+        .rm-kpi-sub { font-size: var(--fs-xs); color: #94a3b8; margin-top: .12rem; white-space: nowrap; }
+        @@media (max-width: 768px) { .rm-kpi { flex: 1 1 45%; border-inline-end: none; } }
+    </style>
+    <div class="rm-kpi-strip">
+        @{
+            var kpis = new[] {
+                new { Label = Shared["Roadmap_TotalInitiatives"].Value, Value = Model.TotalInitiatives.ToString(), Icon = "layers", Sub = $"{Model.CompletedInitiatives} {Shared["Roadmap_Completed"].Value}" },
+                new { Label = Shared["Roadmap_OverallProgress"].Value, Value = $"{Model.OverallProgress:F0}%", Icon = "trending-up", Sub = $"{Model.TotalInitiatives - Model.CompletedInitiatives} {Shared["Roadmap_Remaining"].Value}" },
+                new { Label = Shared["Roadmap_ProjectedSavings"].Value, Value = $"AED {Model.TotalEstimatedCostSavings/1000000:F1}M", Icon = "banknote", Sub = $"AED {Model.TotalActualCostSavings/1000000:F1}M {Shared["Roadmap_Realized"].Value}" },
+                new { Label = Shared["Roadmap_TimeSavings"].Value, Value = $"{Model.TotalEstimatedTimeSavings:F0}h", Icon = "clock", Sub = $"{Model.TotalActualTimeSavings:F0}h {Shared["Roadmap_Realized"].Value}" }
+            };
+        }
+        @foreach (var kpi in kpis)
+        {
+            <div class="rm-kpi">
+                <div class="rm-kpi-icon"><i data-lucide="@kpi.Icon" class="w-4 h-4" aria-hidden="true"></i></div>
+                <div>
+                    <div class="rm-kpi-num">@kpi.Value</div>
+                    <div class="rm-kpi-label">@kpi.Label</div>
+                    <div class="rm-kpi-sub">@kpi.Sub</div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- Analytics Section - All Charts in One Row -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <!-- Horizon Distribution -->
+        <div class="bg-white rounded-lg border border-gray-200 p-5">
+            <div class="flex items-center gap-2 mb-4">
+                <i data-lucide="git-branch" class="w-5 h-5 text-gray-700"></i>
+                <h3 class="text-sm font-bold text-gray-900">@Shared["Roadmap_HorizonDistribution"]</h3>
+            </div>
+            <div class="flex items-center justify-center" style="height: 280px;">
+                <canvas id="horizonChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Impact vs Effort Matrix -->
+        <div class="bg-white rounded-lg border border-gray-200 p-5">
+            <div class="flex items-center gap-2 mb-4">
+                <i data-lucide="scatter-chart" class="w-5 h-5 text-gray-700"></i>
+                <h3 class="text-sm font-bold text-gray-900">@Shared["Roadmap_ImpactEffortMatrix"]</h3>
+            </div>
+            <div style="height: 280px;">
+                <canvas id="scatterChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Cumulative Savings Projection -->
+        <div class="bg-white rounded-lg border border-gray-200 p-5">
+            <div class="flex items-center gap-2 mb-4">
+                <i data-lucide="trending-up" class="w-5 h-5 text-gray-700"></i>
+                <h3 class="text-sm font-bold text-gray-900">@Shared["Roadmap_CumulativeSavings"]</h3>
+            </div>
+            <div style="height: 280px;">
+                <canvas id="savingsChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Implementation Roadmap Timeline -->
+    <div class="bg-white rounded-lg border border-gray-200 mb-6">
+        <div class="p-5 border-b border-gray-200">
+            <div class="flex items-center gap-2">
+                <i data-lucide="gantt-chart" class="w-5 h-5 text-gray-700"></i>
+                <h3 class="text-sm font-bold text-gray-900">@Shared["Roadmap_VisualTimeline"]</h3>
+            </div>
+        </div>
+        <div class="p-5">
+            <div class="space-y-6">
+                @foreach (var phase in Model.Phases)
+                {
+                    var phaseName = isRtl ? phase.NameAr : phase.Name;
+                    var phaseTimeline = isRtl ? phase.TimelineLabelAr : phase.TimelineLabel;
+                    var isEmpty = !phase.Initiatives.Any();
+                    if (isEmpty)
+                    {
+                        // Compact 1-line stub for empty phases — still visible so
+                        // admins know the horizon exists but doesn't eat screen space.
+                        <div class="border-s-4 rounded-lg overflow-hidden opacity-60 rm-phase" data-phase-empty="true" style="border-color: #9ca3af;">
+                            <div class="p-3 bg-gray-50 flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-full flex items-center justify-center bg-gray-300">
+                                    <span class="text-white font-bold text-xs">@phase.PhaseNumber</span>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-semibold text-gray-700 text-sm">@phaseName</div>
+                                    <div class="text-xs text-gray-500">@phaseTimeline · @Shared["Text_NoInitiativesInPhase"]</div>
+                                </div>
+                                <a asp-action="Wizard" class="text-xs font-semibold inline-flex items-center gap-1" style="color:#005B99;">
+                                    <i data-lucide="plus" class="w-3 h-3"></i>
+                                    @Shared["Button_AddInitiative"]
+                                </a>
+                            </div>
+                        </div>
+                        continue;
+                    }
+                    <div class="border-s-4 rounded-lg overflow-hidden rm-phase" style="border-color: @phase.Color;">
+                        <div class="p-4" style="background: @(phase.Color)08;">
+                            <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-full flex items-center justify-center" style="background: @phase.Color;">
+                                        <span class="text-white font-bold text-sm">@phase.PhaseNumber</span>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold text-gray-900">@phaseName</h4>
+                                        <p class="text-xs text-gray-600">@phaseTimeline</p>
+                                    </div>
+                                    <span class="px-2.5 py-1 rounded-full text-xs font-semibold text-white" style="background: @phase.Color;">
+                                        @phase.Initiatives.Count @Shared["Label_Initiatives"]
+                                    </span>
+                                </div>
+                                <div class="flex items-center gap-4 text-xs text-gray-600">
+                                    <span class="flex items-center gap-1">
+                                        <i data-lucide="banknote" class="w-4 h-4"></i>
+                                        AED @((phase.TotalEstimatedCostSavings/1000000).ToString("F1"))M
+                                    </span>
+                                    <span class="flex items-center gap-1">
+                                        <i data-lucide="trending-up" class="w-4 h-4"></i>
+                                        @phase.AvgProgress.ToString("F0")% Progress
+                                    </span>
+                                    @if (phase.AvgPrioritizationScore > 0)
+                                    {
+                                        <span class="flex items-center gap-1">
+                                            <i data-lucide="star" class="w-4 h-4"></i>
+                                            @phase.AvgPrioritizationScore.ToString("F1") Score
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+                            <div class="space-y-2">
+                                    @{ int idx = 0; }
+                                    @foreach (var item in phase.Initiatives)
+                                    {
+                                        idx++;
+	                                        var processNames = (item.ImprovementProcesses ?? Enumerable.Empty<ImprovementProcess>())
+	                                            .Select(x => x.Process?.Name)
+	                                            .Where(n => !string.IsNullOrWhiteSpace(n))
+	                                            .Distinct()
+	                                            .ToList();
+	                                        var serviceNames = (item.ImprovementServices ?? Enumerable.Empty<ImprovementService>())
+	                                            .Select(x => x.Service?.Name)
+	                                            .Where(n => !string.IsNullOrWhiteSpace(n))
+	                                            .Distinct()
+	                                            .ToList();
+	                                        if (processNames.Count == 0 && !string.IsNullOrWhiteSpace(item.Process?.Name)) processNames.Add(item.Process!.Name);
+	                                        if (serviceNames.Count == 0 && !string.IsNullOrWhiteSpace(item.Service?.Name)) serviceNames.Add(item.Service!.Name);
+	                                        var workItemParts = new List<string>();
+	                                        if (processNames.Count > 0) workItemParts.Add(string.Join(", ", processNames));
+	                                        if (serviceNames.Count > 0) workItemParts.Add(string.Join(", ", serviceNames));
+	                                        string workItem = workItemParts.Count > 0 ? string.Join(" • ", workItemParts) : "-";
+                                        string horizonBadge = item.Horizon switch {
+                                            ImprovementHorizon.Horizon1_Current => "H1",
+                                            ImprovementHorizon.Horizon2_Expand => "H2",
+                                            ImprovementHorizon.Horizon3_Future => "H3",
+                                            _ => "—"
+                                        };
+                                        string horizonColor = item.Horizon switch {
+                                            ImprovementHorizon.Horizon1_Current => "#22c55e",
+                                            ImprovementHorizon.Horizon2_Expand => "#3b82f6",
+                                            ImprovementHorizon.Horizon3_Future => "#8b5cf6",
+                                            _ => "#9ca3af"
+                                        };
+                                        var quadrantConfig = item.Quadrant switch {
+                                            ImprovementQuadrant.QuickWins => new { Label = Shared["Label_QuickWins"].Value, Color = "#34C38F" },
+                                            ImprovementQuadrant.MajorProjects => new { Label = Shared["Label_MajorProjects"].Value, Color = "#005B99" },
+                                            ImprovementQuadrant.FillIns => new { Label = Shared["Label_FillIns"].Value, Color = "#F1B44C" },
+                                            ImprovementQuadrant.ThanklessTasks => new { Label = Shared["Label_HardSlogs"].Value, Color = "#F46A6A" },
+                                            _ => new { Label = "-", Color = "#9ca3af" }
+                                        };
+                                        <div class="bg-white border border-gray-200 rounded-lg p-3 hover:shadow-md transition-all rm-row"
+                                             data-horizon="@horizonBadge" data-quadrant="@item.Quadrant" data-status="@item.Status">
+                                            <div class="flex items-center gap-3 flex-wrap">
+                                                <span class="text-gray-400 font-bold text-sm w-6">@idx</span>
+                                                <a asp-action="Details" asp-route-id="@item.Id" class="flex-1 min-w-[200px] hover:text-blue-600 transition-colors">
+                                                    <div class="font-semibold text-gray-900 text-sm">@(isRtl ? item.TitleAr : item.TitleEn)</div>
+                                                    <div class="text-xs text-gray-500">@item.Code</div>
+                                                </a>
+                                                <div class="flex items-center gap-2 flex-wrap">
+                                                    <span class="px-2 py-0.5 rounded text-xs font-semibold" style="background: @(horizonColor)20; color: @horizonColor;" title="@Shared["Label_Horizon"]">@horizonBadge</span>
+                                                    <span class="px-2 py-0.5 rounded text-xs font-semibold" style="background: @(quadrantConfig.Color)20; color: @quadrantConfig.Color;" title="@Shared["Label_Quadrant"]">@quadrantConfig.Label</span>
+                                                    @if (item.TotalPrioritizationScore.HasValue)
+                                                    {
+                                                        <span class="px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-700 flex items-center gap-1" title="@Shared["Help_PrioritizationScore"]">
+                                                            <i data-lucide="star" class="w-3 h-3"></i>
+                                                            @item.TotalPrioritizationScore.Value.ToString("F1")
+                                                        </span>
+                                                    }
+                                                    <span class="px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-700 font-mono" title="@string.Format(Shared["Help_ImpactEffortTooltip"].Value, item.ImpactScore, item.EffortScore)">
+                                                        @item.ImpactScore/@item.EffortScore
+                                                    </span>
+                                                    <div class="flex items-center gap-1.5" title="@Shared["Label_Progress"]: @item.ProgressPercentage%">
+                                                        <div class="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                                            <div class="h-full rounded-full" style="width: @item.ProgressPercentage%; background: #005B99;"></div>
+                                                        </div>
+                                                        <span class="text-xs font-semibold text-gray-700">@item.ProgressPercentage%</span>
+                                                    </div>
+                                                    <span class="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">@Shared[$"ChangeRequestStatus_{item.Status}"].Value</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+@section Scripts {
+    <script src="~/lib/chartjs/chart.umd.js" asp-append-version="true"></script>
+    <script nonce="@Context.CspNonce()">
+        lucide.createIcons();
+
+        // ── Client-side filter bar (Horizon / Quadrant / Status) ──
+        window.RoadmapFilter = (function() {
+            function apply() {
+                var h = document.getElementById('rmFilterHorizon').value;
+                var q = document.getElementById('rmFilterQuadrant').value;
+                var s = document.getElementById('rmFilterStatus').value;
+                var rows = document.querySelectorAll('.rm-row');
+                var shownByPhase = {};
+                rows.forEach(function(row) {
+                    var rh = row.dataset.horizon || '';
+                    var rq = row.dataset.quadrant || '';
+                    var rs = row.dataset.status || '';
+                    var match = (!h || rh === h) && (!q || rq === q) && (!s || rs === s);
+                    row.style.display = match ? '' : 'none';
+                    if (match) {
+                        var phase = row.closest('.rm-phase');
+                        if (phase) { shownByPhase[phase.id || (phase.id = 'phase-' + Math.random().toString(36).slice(2, 8))] = (shownByPhase[phase.id] || 0) + 1; }
+                    }
+                });
+                // Hide phases with zero visible rows when any filter is active
+                var anyFilter = h || q || s;
+                document.querySelectorAll('.rm-phase').forEach(function(p) {
+                    if (p.dataset.phaseEmpty === 'true') { return; }
+                    var hasVisible = p.querySelectorAll('.rm-row:not([style*="display: none"])').length > 0;
+                    p.style.display = (anyFilter && !hasVisible) ? 'none' : '';
+                });
+            }
+            function clear() {
+                document.getElementById('rmFilterHorizon').value = '';
+                document.getElementById('rmFilterQuadrant').value = '';
+                document.getElementById('rmFilterStatus').value = '';
+                apply();
+            }
+            ['rmFilterHorizon', 'rmFilterQuadrant', 'rmFilterStatus'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) el.addEventListener('change', apply);
+            });
+            return { apply: apply, clear: clear };
+        })();
+
+        // RTL configuration for Chart.js
+        const isRtlJs = @(isRtl ? "true" : "false");
+        if (isRtlJs) {
+            Chart.defaults.plugins.legend.rtl = true;
+            Chart.defaults.plugins.legend.textDirection = 'rtl';
+            Chart.defaults.plugins.tooltip.rtl = true;
+            Chart.defaults.plugins.tooltip.textDirection = 'rtl';
+        }
+
+        // ── Scatter: Impact vs Effort ──────────────────────────────
+        // JsonSerializerOptions with camelCase so JS can access d.effortScore
+        // instead of d.EffortScore. Without this, every chart point was undefined.
+        const scatterData = @Html.Raw(JsonSerializer.Serialize(Model.ScatterData, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+        const quadrantColors = { QuickWins:'#34C38F', MajorProjects:'#005B99', FillIns:'#F1B44C', ThanklessTasks:'#F46A6A' };
+        const quadrantLabels = {
+            QuickWins: @Html.Raw(Json.Serialize(Shared["ImprovementQuadrant_QuickWins"].Value)),
+            MajorProjects: @Html.Raw(Json.Serialize(Shared["ImprovementQuadrant_MajorProjects"].Value)),
+            FillIns: @Html.Raw(Json.Serialize(Shared["ImprovementQuadrant_FillIns"].Value)),
+            ThanklessTasks: @Html.Raw(Json.Serialize(Shared["ImprovementQuadrant_ThanklessTasks"].Value))
+        };
+        new Chart(document.getElementById('scatterChart'), {
+            type: 'bubble',
+            data: {
+                datasets: Object.keys(quadrantColors).map(q => ({
+                    label: quadrantLabels[q],
+                    data: scatterData.filter(d => d.quadrant === q).map(d => ({
+                        x: d.effortScore,
+                        y: d.impactScore,
+                        r: Math.max(6, (d.prioritizationScore || 5) * 1.5),
+                        label: d.label,
+                        progress: d.progressPercentage
+                    })),
+                    backgroundColor: quadrantColors[q] + 'aa',
+                    borderColor: quadrantColors[q],
+                    borderWidth: 2
+                }))
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'point'
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: @Html.Raw(Json.Serialize(Shared["Label_EffortScore"].Value)),
+                            font: { size: 12, weight: 'bold' }
+                        },
+                        min: 0,
+                        max: 11,
+                        grid: { color: '#f3f4f6' }
+                    },
+                    y: {
+                        position: isRtlJs ? 'right' : 'left',
+                        title: {
+                            display: true,
+                            text: @Html.Raw(Json.Serialize(Shared["Label_ImpactScore"].Value)),
+                            font: { size: 12, weight: 'bold' }
+                        },
+                        min: 0,
+                        max: 11,
+                        grid: { color: '#f3f4f6' }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            boxWidth: 12,
+                            padding: 12,
+                            font: { size: 11 },
+                            usePointStyle: true,
+                            pointStyle: 'circle'
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        padding: 12,
+                        titleFont: { size: 13, weight: 'bold' },
+                        bodyFont: { size: 12 },
+                        callbacks: {
+                            label: ctx => {
+                                const p = ctx.raw;
+                                return [
+                                    `${p.label}`,
+                                    `Impact: ${p.y} | Effort: ${p.x}`,
+                                    `Progress: ${p.progress}%`
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // ── Horizon Doughnut ───────────────────────────────────────
+        new Chart(document.getElementById('horizonChart'), {
+            type: 'doughnut',
+            data: {
+                labels: [@Html.Raw(Json.Serialize(Shared["Option_Horizon1"].Value)), @Html.Raw(Json.Serialize(Shared["Option_Horizon2"].Value)), @Html.Raw(Json.Serialize(Shared["Option_Horizon3"].Value)), @Html.Raw(Json.Serialize(Shared["Roadmap_Unclassified"].Value))],
+                datasets: [{
+                    data: [@Model.Horizon1Count, @Model.Horizon2Count, @Model.Horizon3Count, @Model.UnclassifiedCount],
+                    backgroundColor: ['#22c55e','#3b82f6','#8b5cf6','#d1d5db'],
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                cutout: '65%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            boxWidth: 12,
+                            padding: 10,
+                            font: { size: 11 },
+                            usePointStyle: true,
+                            pointStyle: 'circle'
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                return `${label}: ${value} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // ── Cumulative Savings Bar ─────────────────────────────────
+        const cumSavings = @Html.Raw(JsonSerializer.Serialize(Model.CumulativeSavings));
+        const phaseLabels = @Html.Raw(JsonSerializer.Serialize(Model.Phases.Select(p => isRtl ? p.NameAr : p.Name).ToList()));
+        const phaseColors = @Html.Raw(JsonSerializer.Serialize(Model.Phases.Select(p => p.Color).ToList()));
+        const phaseSavings = @Html.Raw(JsonSerializer.Serialize(Model.Phases.Select(p => p.TotalEstimatedCostSavings / 1000000m).ToList()));
+        new Chart(document.getElementById('savingsChart'), {
+            type: 'bar',
+            data: {
+                labels: phaseLabels,
+                datasets: [
+                    {
+                        label: @Html.Raw(Json.Serialize(Shared["Roadmap_PhaseSavings"].Value + " (AED M)")),
+                        data: phaseSavings,
+                        backgroundColor: phaseColors.map(c => c + 'dd'),
+                        borderRadius: 6,
+                        borderWidth: 0
+                    },
+                    {
+                        label: @Html.Raw(Json.Serialize(Shared["Roadmap_CumulativeTotal"].Value + " (AED M)")),
+                        data: cumSavings.map(v => (v / 1000000).toFixed(1)),
+                        type: 'line',
+                        borderColor: '#005B99',
+                        backgroundColor: 'rgba(0, 91, 153, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 6,
+                        pointBackgroundColor: '#005B99',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        borderWidth: 3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                scales: {
+                    y: {
+                        position: isRtlJs ? 'right' : 'left',
+                        title: { display: true, text: '@(isRtl ? "درهم (بالملايين)" : "AED (Millions)")', font: { size: 12, weight: 'bold' } },
+                        beginAtZero: true,
+                        grid: { color: '#f3f4f6' }
+                    },
+                    x: {
+                        grid: { display: false }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            boxWidth: 12,
+                            padding: 12,
+                            font: { size: 11 },
+                            usePointStyle: true
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        padding: 12,
+                        titleFont: { size: 13, weight: 'bold' },
+                        bodyFont: { size: 12 },
+                        borderColor: '#e5e7eb',
+                        borderWidth: 1
+                    }
+                }
+            }
+        });
+    </script>
+}
+<!-- Floating Help Button -->
+<div class="fixed bottom-6 right-6 z-50">
+    <button type="button" onclick="window.location.href='@Url.Action("Dashboard")'" class="w-14 h-14 rounded-full shadow-lg text-white flex items-center justify-center transition-all hover:shadow-xl hover:scale-110" style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);" title="@Shared["Help_ImprovementJourney"]">
+        <i data-lucide="help-circle" class="w-6 h-6"></i>
+    </button>
+</div>

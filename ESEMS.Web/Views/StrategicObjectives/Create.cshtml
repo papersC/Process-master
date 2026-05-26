@@ -1,0 +1,39 @@
+@model ESEMS.Web.Models.Services.StrategicObjective
+@{
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = isRtl ? "هدف استراتيجي جديد" : "New Strategic Objective";
+}
+
+@* Page header — matches the same compact one-row pattern used by Processes/Create. *@
+<style>
+    .pc-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; margin-bottom: .6rem; }
+    .pc-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .pc-header p { margin: .1rem 0 0; font-size: var(--fs-xs); color: #6b7280; }
+</style>
+<div class="pc-header">
+    <div>
+        <h1>
+            <i data-lucide="target" style="width: 20px; height: 20px; color: #005B99;" aria-hidden="true"></i>
+            @ViewData["Title"]
+        </h1>
+        <p>
+            @(isRtl
+                ? "هدف يربط الخدمات والعمليات بالأولويات الاستراتيجية للمؤسسة."
+                : "An objective that connects services and processes to organisational strategic priorities.")
+        </p>
+    </div>
+    <a asp-action="Index" style="border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; text-decoration: none; background: #fff; color: #005B99; border: 1px solid #cbd5e1;">
+        <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" style="width: 14px; height: 14px;" aria-hidden="true"></i>
+        @(isRtl ? "رجوع" : "Back")
+    </a>
+</div>
+
+<form asp-action="Create" method="post" novalidate>
+    @Html.AntiForgeryToken()
+    <partial name="_Form" model="Model" />
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script nonce="@Context.CspNonce()">if (window.lucide) lucide.createIcons();</script>
+}

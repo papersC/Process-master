@@ -1,0 +1,61 @@
+@model List<OrganizationUnit>
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = Shared["Title_OrganizationStructure"].Value;
+}
+
+<div class="esems-container">
+    <!-- Page Header -->
+    <div class="esems-page-header">
+        <div class="esems-page-header-content">
+            <h1 class="esems-page-title">@ViewData["Title"]</h1>
+            <p class="esems-page-subtitle">@Shared["Label_HierarchicalView"]</p>
+        </div>
+        <div class="esems-page-header-actions">
+            <a asp-controller="OrganizationUnits" asp-action="Index" class="btn btn-primary">
+                <i data-lucide="building-2" style="width: 16px; height: 16px;"></i>
+                @Shared["Label_ManageUnits"]
+            </a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table datatable mb-0">
+                    <thead style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+                        <tr>
+                            <th class="text-white">@Shared["Column_Unit"]</th>
+                            <th class="text-white">@Shared["Column_Code"]</th>
+                            <th class="text-white">@Shared["Column_Level"]</th>
+                            <th class="text-white">@Shared["Column_Parent"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var u in Model.OrderBy(x => x.Level).ThenBy(x => x.DisplayOrder))
+                        {
+                            var pad = Math.Min(24, Math.Max(0, u.Level) * 12);
+                            <tr>
+                                <td style="padding-inline-start:@(pad)px">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i data-lucide="corner-down-right" style="width: 16px; height: 16px; color: var(--esems-color-neutral-400);"></i>
+                                        <a asp-controller="OrganizationUnits" asp-action="Details" asp-route-id="@u.Id" class="esems-body fw-medium text-decoration-none" style="color: var(--esems-color-primary);">@u.Name</a>
+                                    </div>
+                                </td>
+                                <td><span class="badge badge-primary">@u.Code</span></td>
+                                <td><span class="badge badge-secondary">@u.Level</span></td>
+                                <td class="esems-body-secondary">@(u.Parent?.Name ?? "-")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        lucide.createIcons();
+    </script>
+}

@@ -1,0 +1,519 @@
+@model ChangeRequest
+@{
+    ViewData["Title"] = Shared["Title_ChangeRequestDetails"].Value;
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+
+    // Status pill — monochrome by default. Only Rejected uses the destructive
+    // red accent (semantic) and only Implemented goes solid-dark to signal
+    // terminal-positive. Everything else differentiates via icon + tone.
+    (string bg, string fg, string icon) StatusStyle(ChangeRequestStatus s) => s switch
+    {
+        ChangeRequestStatus.Submitted    => ("#f1f5f9", "#005B99", "circle-dot"),
+        ChangeRequestStatus.UnderReview  => ("#e0f0fb", "#005B99", "clipboard-check"),
+        ChangeRequestStatus.Approved     => ("#dbeafe", "#003d6b", "check"),
+        ChangeRequestStatus.Implemented  => ("#1e293b", "#ffffff", "check-circle"),
+        ChangeRequestStatus.Rejected     => ("#fef2f2", "#b91c1c", "x-circle"),
+        ChangeRequestStatus.Cancelled    => ("#f1f5f9", "#94a3b8", "ban"),
+        _                                => ("#f1f5f9", "#6b7280", "help-circle")
+    };
+    var (statusBg, statusFg, statusIcon) = StatusStyle(Model.Status);
+
+    var canDecide = Model.Status == ChangeRequestStatus.Submitted || Model.Status == ChangeRequestStatus.UnderReview;
+    var canCancel = Model.Status == ChangeRequestStatus.Submitted
+                 || Model.Status == ChangeRequestStatus.UnderReview
+                 || Model.Status == ChangeRequestStatus.Approved;
+}
+
+<style>
+    /* Detail page — corporate-blue .pc-* tokens. Matches ServiceCategories /
+       Services / Process detail pages already shipped on master. */
+    .pc-shell { display:flex; flex-direction:column; gap:.7rem; }
+    .pc-header { display:flex; align-items:center; justify-content:space-between; gap:.75rem; padding:.4rem 0 .55rem; border-bottom:1px solid #e5e7eb; flex-wrap:wrap; }
+    .pc-header-titleblock { display:flex; flex-direction:column; gap:.3rem; min-width:0; flex:1 1 auto; }
+    .pc-header-meta { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
+    .pc-id-chip { display:inline-block; padding:.18rem .55rem; font-size:var(--fs-xs); font-weight:600; background:#eff6ff; color:#1d4ed8; border-radius:.3rem; letter-spacing:.02em; }
+    .pc-status-pill { display:inline-flex; align-items:center; gap:.35rem; padding:.18rem .65rem; font-size:var(--fs-xs); font-weight:600; border-radius:999px; }
+    .pc-header h1 { margin:0; font-size:var(--fs-lg); font-weight:600; color:#111827; }
+    .pc-header-sub { font-size:var(--fs-xs); color:#6b7280; }
+    .pc-actions { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; }
+
+    .pc-btn { display:inline-flex; align-items:center; gap:.35rem; padding:.42rem .85rem; border-radius:.375rem; font-size:var(--fs-xs); font-weight:600; border:1px solid transparent; cursor:pointer; text-decoration:none; line-height:1; transition:background .12s, border-color .12s; }
+    .pc-btn-primary { background:#005B99; color:#fff; }
+    .pc-btn-primary:hover { background:#003d6b; color:#fff; }
+    .pc-btn-secondary { background:#fff; color:#005B99; border-color:#cbd5e1; }
+    .pc-btn-secondary:hover { background:#f1f5f9; }
+    .pc-btn-ghost { background:transparent; color:#6b7280; border-color:#e5e7eb; }
+    .pc-btn-ghost:hover { background:#f9fafb; color:#374151; }
+    .pc-btn-danger { background:#fff; color:#b91c1c; border-color:#fecaca; }
+    .pc-btn-danger:hover { background:#fef2f2; }
+
+    .pc-grid { display:grid; grid-template-columns:minmax(0, 2fr) minmax(0, 1fr); gap:.7rem; }
+    @@media (max-width: 992px) { .pc-grid { grid-template-columns:1fr; } }
+
+    .pc-card { background:#fff; border:1px solid #e5e7eb; border-radius:.5rem; overflow:hidden; }
+    .pc-card + .pc-card { margin-top:.7rem; }
+    .pc-card-head { display:flex; align-items:center; justify-content:space-between; gap:.5rem; padding:.6rem .85rem; border-bottom:1px solid #f3f4f6; background:#fafbfc; }
+    .pc-card-head h2 { margin:0; font-size:var(--fs-sm); font-weight:600; color:#111827; display:flex; align-items:center; gap:.4rem; }
+    .pc-card-head .pc-count-pill { padding:.1rem .5rem; font-size:var(--fs-xs); font-weight:600; background:#eff6ff; color:#1d4ed8; border-radius:999px; }
+    .pc-card-body { padding:.85rem 1rem; }
+
+    .pc-fieldgrid { display:grid; grid-template-columns:1fr 1fr; gap:.85rem .85rem; }
+    @@media (max-width: 768px) { .pc-fieldgrid { grid-template-columns:1fr; } }
+    .pc-fieldgrid .full { grid-column:1 / -1; }
+    .pc-fld-label { font-size:var(--fs-xs); font-weight:600; color:#6b7280; margin-bottom:.2rem; text-transform:uppercase; letter-spacing:.04em; }
+    .pc-fld-value { font-size:var(--fs-sm); color:#111827; line-height:1.5; white-space:pre-wrap; word-wrap:break-word; }
+    .pc-fld-value.muted { color:#94a3b8; }
+    .pc-fld-value.danger { color:#b91c1c; }
+
+    .pc-link { color:#005B99; font-weight:600; text-decoration:none; }
+    .pc-link:hover { text-decoration:underline; color:#003d6b; }
+
+    .pc-row-item { display:flex; align-items:flex-start; gap:.6rem; padding:.55rem .65rem; background:#fafbfc; border:1px solid #f3f4f6; border-radius:.375rem; }
+    .pc-row-item + .pc-row-item { margin-top:.45rem; }
+    .pc-row-item-icon { width:28px; height:28px; border-radius:.3rem; background:#eff6ff; color:#005B99; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .pc-row-item-body { flex:1 1 0; min-width:0; }
+    .pc-row-item-title { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; font-size:var(--fs-sm); color:#111827; font-weight:500; }
+    .pc-row-item-meta { font-size:var(--fs-xs); color:#6b7280; margin-top:.2rem; }
+
+    /* Tiny neutral tag for in-row chips (criticality, level, etc.). All grayscale —
+       the icon already conveys the type. */
+    .pc-tag { display:inline-block; padding:.08rem .42rem; font-size:var(--fs-xs); font-weight:600; border-radius:.25rem; background:#f1f5f9; color:#475569; letter-spacing:.02em; }
+    .pc-tag-strong { background:#1e293b; color:#fff; }
+
+    .pc-timeline-row { display:flex; align-items:center; justify-content:space-between; gap:.5rem; padding:.45rem 0; border-bottom:1px dashed #f1f5f9; font-size:var(--fs-sm); }
+    .pc-timeline-row:last-child { border-bottom:none; }
+    .pc-timeline-row .lbl { color:#6b7280; }
+    .pc-timeline-row .val { color:#111827; font-weight:500; }
+    .pc-timeline-row .val.muted { color:#cbd5e1; font-weight:400; }
+
+    .pc-comment { padding:.55rem 0; border-bottom:1px dashed #f1f5f9; font-size:var(--fs-sm); color:#111827; }
+    .pc-comment:last-child { border-bottom:none; }
+    .pc-comment-meta { font-size:var(--fs-xs); color:#9ca3af; margin-bottom:.2rem; }
+
+    .pc-empty { text-align:center; padding:1.25rem .5rem; color:#94a3b8; font-size:var(--fs-sm); }
+    .pc-empty i { display:block; margin:0 auto .35rem; }
+
+    /* F-SV-001: state-aware "waiting on" strip — always visible so a viewer
+       who lacks an action button still understands what state the CR is in
+       and what's expected next. Compact, monochrome, sits below the header. */
+    .pc-state-hint {
+        display:flex; align-items:center; gap:.55rem;
+        margin:0 0 1rem; padding:.55rem .85rem;
+        background:#f8fafc; border:1px solid #e2e8f0; border-inline-start:3px solid #005B99;
+        border-radius:.375rem; font-size:var(--fs-xs); color:#475569;
+    }
+    .pc-state-hint.terminal { border-inline-start-color:#94a3b8; color:#64748b; }
+    .pc-state-hint.danger   { border-inline-start-color:#b91c1c; color:#7f1d1d; background:#fef2f2; }
+    .pc-state-hint i { width:14px; height:14px; flex-shrink:0; }
+</style>
+
+<div class="pc-shell">
+    <!-- Header: code + status + title + actions. One compact row. -->
+    <div class="pc-header">
+        <div class="pc-header-titleblock">
+            <div class="pc-header-meta">
+                <span class="pc-id-chip">@Model.Code</span>
+                <span class="pc-status-pill" style="background:@statusBg; color:@statusFg;">
+                    <i data-lucide="@statusIcon" style="width:13px; height:13px;"></i>
+                    @Shared[$"ChangeRequestStatus_{Model.Status}"]
+                </span>
+            </div>
+            <h1>@Model.Name</h1>
+            <div class="pc-header-sub">
+                @Shared["Column_Priority"]: @Model.Priority &nbsp;·&nbsp;
+                @Shared["Column_Source"]: @Shared[$"ChangeRequestSource_{Model.Source}"]
+            </div>
+        </div>
+        <div class="pc-actions">
+            <a asp-action="Index" class="pc-btn pc-btn-ghost">
+                <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" style="width:14px; height:14px;"></i>
+                @Shared["Button_Back"]
+            </a>
+            <button type="button" onclick="executeAiAnalysis('/AI/AnalyzeChangeRequest?changeRequestId=@Model.Id', null, '@(isRtl ? "تحليل الذكاء الاصطناعي لطلب التغيير" : "AI Change Request Analysis")')" class="pc-btn pc-btn-secondary">
+                <i data-lucide="sparkles" style="width:14px; height:14px;"></i>
+                @(isRtl ? "تحليل الذكاء الاصطناعي" : "AI Analysis")
+            </button>
+            @if (Model.Status == ChangeRequestStatus.Submitted)
+            {
+                <form asp-action="StartReview" method="post" class="inline" style="display:inline;">
+                    <input type="hidden" name="id" value="@Model.Id" />
+                    <button type="submit" class="pc-btn pc-btn-primary">
+                        <i data-lucide="clipboard-check" style="width:14px; height:14px;"></i>
+                        @(isRtl ? "بدء المراجعة" : "Start Review")
+                    </button>
+                </form>
+            }
+            @if (canDecide)
+            {
+                <form asp-action="Approve" method="post" class="inline" style="display:inline;">
+                    <input type="hidden" name="id" value="@Model.Id" />
+                    <button type="submit" class="pc-btn pc-btn-primary">
+                        <i data-lucide="check" style="width:14px; height:14px;"></i>
+                        @Shared["Action_Approve"]
+                    </button>
+                </form>
+                <button type="button" onclick="rejectPrompt()" class="pc-btn pc-btn-danger">
+                    <i data-lucide="x" style="width:14px; height:14px;"></i>
+                    @Shared["Action_Reject"]
+                </button>
+            }
+            @if (Model.Status == ChangeRequestStatus.Approved)
+            {
+                <form asp-action="MarkImplemented" method="post" class="inline" style="display:inline;">
+                    <input type="hidden" name="id" value="@Model.Id" />
+                    <button type="submit" class="pc-btn pc-btn-primary">
+                        <i data-lucide="check-circle" style="width:14px; height:14px;"></i>
+                        @(isRtl ? "تم التنفيذ" : "Mark Implemented")
+                    </button>
+                </form>
+            }
+            @if (canCancel)
+            {
+                <button type="button" onclick="cancelPrompt()" class="pc-btn pc-btn-ghost">
+                    <i data-lucide="ban" style="width:14px; height:14px;"></i>
+                    @(isRtl ? "إلغاء الطلب" : "Cancel Request")
+                </button>
+            }
+        </div>
+    </div>
+
+    @* F-SV-001: state-aware microcopy. Renders one line of "what's expected
+       next" for every status — including terminal states — so the page is
+       never a wall of metadata with no narrative. *@
+    @{
+        var (hintCls, hintIcon, hintKey) = Model.Status switch
+        {
+            ChangeRequestStatus.Submitted    => ("",         "hourglass",       "Text_CR_WaitingOnReviewer"),
+            ChangeRequestStatus.UnderReview  => ("",         "clipboard-check", "Text_CR_WaitingOnApprover"),
+            ChangeRequestStatus.Approved     => ("",         "rocket",          "Text_CR_WaitingOnImplementer"),
+            ChangeRequestStatus.Implemented  => ("terminal", "check-circle",    "Text_CR_TerminalImplemented"),
+            ChangeRequestStatus.Rejected     => ("danger",   "x-circle",        "Text_CR_TerminalRejected"),
+            ChangeRequestStatus.Cancelled    => ("terminal", "ban",             "Text_CR_TerminalCancelled"),
+            _                                => ("terminal", "help-circle",     "")
+        };
+    }
+    @if (!string.IsNullOrEmpty(hintKey))
+    {
+        <div class="pc-state-hint @hintCls" role="status">
+            <i data-lucide="@hintIcon"></i>
+            <span>@Shared[hintKey]</span>
+        </div>
+    }
+
+    <div class="pc-grid">
+        <!-- LEFT (2/3) — Details + AI panel + linked entities -->
+        <div>
+            <div class="pc-card">
+                <div class="pc-card-head">
+                    <h2><i data-lucide="file-text" style="width:16px; height:16px; color:#005B99;"></i>@Shared["Section_Details"]</h2>
+                </div>
+                <div class="pc-card-body">
+                    <div class="pc-fieldgrid">
+                        <div>
+                            <div class="pc-fld-label">@Shared["Column_Process"]</div>
+                            @if (Model.Process == null)
+                            {
+                                <div class="pc-fld-value muted">-</div>
+                            }
+                            else
+                            {
+                                <div class="pc-fld-value">
+                                    <a asp-controller="Processes" asp-action="Details" asp-route-id="@Model.Process.Id" class="pc-link">@Model.Process.Code</a>
+                                    &nbsp;·&nbsp; @Model.Process.Name
+                                </div>
+                            }
+                        </div>
+                        <div>
+                            <div class="pc-fld-label">@Shared["Column_Service"]</div>
+                            @if (Model.Service == null)
+                            {
+                                <div class="pc-fld-value muted">-</div>
+                            }
+                            else
+                            {
+                                <div class="pc-fld-value">
+                                    <a asp-controller="Services" asp-action="Details" asp-route-id="@Model.Service.Id" class="pc-link">@Model.Service.Code</a>
+                                    &nbsp;·&nbsp; @Model.Service.Name
+                                </div>
+                            }
+                        </div>
+                        <div>
+                            <div class="pc-fld-label">@Shared["Column_OwningUnit"]</div>
+                            <div class="pc-fld-value @(Model.OwningUnit == null ? "muted" : "")">@(Model.OwningUnit?.Name ?? "-")</div>
+                        </div>
+                        <div>
+                            <div class="pc-fld-label">@Shared["Column_ExternalReference"]</div>
+                            <div class="pc-fld-value @(string.IsNullOrWhiteSpace(Model.ExternalReferenceId) ? "muted" : "")">@(string.IsNullOrWhiteSpace(Model.ExternalReferenceId) ? "-" : Model.ExternalReferenceId)</div>
+                        </div>
+                        <div class="full">
+                            <div class="pc-fld-label">@Shared["Column_Justification"]</div>
+                            <div class="pc-fld-value @(string.IsNullOrWhiteSpace(Model.Justification) ? "muted" : "")">@(string.IsNullOrWhiteSpace(Model.Justification) ? "-" : Model.Justification)</div>
+                        </div>
+                        <div class="full">
+                            <div class="pc-fld-label">@Shared["Column_ImpactAssessment"]</div>
+                            <div class="pc-fld-value @(string.IsNullOrWhiteSpace(Model.ImpactAssessment) ? "muted" : "")">@(string.IsNullOrWhiteSpace(Model.ImpactAssessment) ? "-" : Model.ImpactAssessment)</div>
+                        </div>
+                        @if (Model.Status == ChangeRequestStatus.Rejected && !string.IsNullOrWhiteSpace(Model.RejectionReason))
+                        {
+                            <div class="full">
+                                <div class="pc-fld-label">@Shared["Prompt_RejectionReasonTitle"]</div>
+                                <div class="pc-fld-value danger">@Model.RejectionReason</div>
+                            </div>
+                        }
+                        @if (Model.Status == ChangeRequestStatus.Cancelled && !string.IsNullOrWhiteSpace(Model.CancellationReason))
+                        {
+                            <div class="full">
+                                <div class="pc-fld-label">@(isRtl ? "سبب الإلغاء" : "Cancellation reason")</div>
+                                <div class="pc-fld-value">@Model.CancellationReason</div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            @* AI impact assessment — kept inline so reviewers see it next to the
+               request details. Partial owns its own styling; we don't wrap it
+               in .pc-card to avoid double borders.
+               F-CC-LO-7: skip the include + wrapper div entirely when AI is
+               unconfigured. *@
+            @if ((bool?)ViewData["AiEnabled"] == true)
+            {
+                <div style="margin-top:.7rem;">
+                    @await Html.PartialAsync("_AiAnalysisPanel", new ESEMS.Web.Models.ViewModels.AiAnalysisPanelVM
+                    {
+                        Endpoint = $"/AI/AnalyzeChangeRequest?changeRequestId={Model.Id}",
+                        Title = isRtl ? "تقييم الأثر الذكي" : "AI Impact Assessment",
+                        Subtitle = isRtl ? "تحليل الأثر النهائي على الخدمات والأصول والمخاطر المرتبطة" : "Downstream impact across linked services, assets and risks",
+                        PanelId = $"cr_{Model.Id}"
+                    })
+                </div>
+            }
+
+            @if (Model.ChangeRequestAssets.Any())
+            {
+                <div class="pc-card">
+                    <div class="pc-card-head">
+                        <h2><i data-lucide="package" style="width:16px; height:16px; color:#005B99;"></i>@Shared["Label_AffectedAssets"]</h2>
+                        <span class="pc-count-pill">@Model.ChangeRequestAssets.Count</span>
+                    </div>
+                    <div class="pc-card-body">
+                        @foreach (var cra in Model.ChangeRequestAssets.OrderBy(cra => cra.Asset?.AssetTag))
+                        {
+                            @if (cra.Asset != null)
+                            {
+                                <div class="pc-row-item">
+                                    <span class="pc-row-item-icon"><i data-lucide="package" style="width:14px; height:14px;"></i></span>
+                                    <div class="pc-row-item-body">
+                                        <div class="pc-row-item-title">
+                                            <a asp-controller="Assets" asp-action="Details" asp-route-id="@cra.Asset.Id" class="pc-link">@cra.Asset.AssetTag</a>
+                                            <span style="color:#6b7280;">— @(isRtl ? cra.Asset.NameAr : cra.Asset.NameEn)</span>
+                                            @if (cra.IsCritical)
+                                            {
+                                                <span class="pc-tag pc-tag-strong">@(isRtl ? "حرج" : "Critical")</span>
+                                            }
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(cra.ImpactDescription))
+                                        {
+                                            <div class="pc-row-item-meta">@cra.ImpactDescription</div>
+                                        }
+                                        <div class="pc-row-item-meta">
+                                            @Shared["Label_ImpactLevel"]: <span class="pc-tag">@cra.ImpactType</span>
+                                            @if (cra.Asset.Category != null)
+                                            {
+                                                <span style="margin:0 .3rem; color:#cbd5e1;">·</span>
+                                                <span>@(isRtl ? cra.Asset.Category.NameAr : cra.Asset.Category.NameEn)</span>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (Model.ChangeRequestRisks.Any())
+            {
+                <div class="pc-card">
+                    <div class="pc-card-head">
+                        <h2><i data-lucide="shield-alert" style="width:16px; height:16px; color:#005B99;"></i>@Shared["Label_RelatedRisks"]</h2>
+                        <span class="pc-count-pill">@Model.ChangeRequestRisks.Count</span>
+                    </div>
+                    <div class="pc-card-body">
+                        @* Risk-level chip stays monochrome unless Critical, which earns
+                           the solid-dark variant. Single semantic accent, no rainbow. *@
+                        @foreach (var crr in Model.ChangeRequestRisks.OrderBy(crr => crr.Risk?.RiskNumber))
+                        {
+                            @if (crr.Risk != null)
+                            {
+                                <div class="pc-row-item">
+                                    <span class="pc-row-item-icon"><i data-lucide="shield-alert" style="width:14px; height:14px;"></i></span>
+                                    <div class="pc-row-item-body">
+                                        <div class="pc-row-item-title">
+                                            <a asp-controller="EnterpriseRisks" asp-action="Details" asp-route-id="@crr.Risk.Id" class="pc-link">@crr.Risk.RiskNumber</a>
+                                            <span style="color:#6b7280;">— @(isRtl ? crr.Risk.NameAr : crr.Risk.NameEn)</span>
+                                            <span class="@(crr.Risk.RiskLevel == RiskLevel.Critical ? "pc-tag pc-tag-strong" : "pc-tag")">@crr.Risk.RiskLevel</span>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(crr.ImpactDescription))
+                                        {
+                                            <div class="pc-row-item-meta">@crr.ImpactDescription</div>
+                                        }
+                                        <div class="pc-row-item-meta">
+                                            <span>@(isRtl ? "العلاقة" : "Relationship"):</span> <span class="pc-tag">@crr.RelationshipType</span>
+                                            <span style="margin:0 .3rem; color:#cbd5e1;">·</span>
+                                            <span>@(isRtl ? "النتيجة" : "Score"):</span> <span>@crr.Risk.InherentRiskScore</span>
+                                            @if (!string.IsNullOrEmpty(crr.ExpectedRiskChange))
+                                            {
+                                                <span style="margin:0 .3rem; color:#cbd5e1;">·</span>
+                                                <span>@(isRtl ? "المتوقع" : "Expected"):</span> <span>@crr.ExpectedRiskChange</span>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- RIGHT (1/3) — Activity log + comments -->
+        <div>
+            <div class="pc-card">
+                <div class="pc-card-head">
+                    <h2><i data-lucide="activity" style="width:16px; height:16px; color:#005B99;"></i>@(isRtl ? "سجل النشاط" : "Activity log")</h2>
+                </div>
+                <div class="pc-card-body">
+                    <div class="pc-timeline-row">
+                        <span class="lbl">@Shared["Column_CreatedAt"]</span>
+                        <span class="val">@Model.CreatedAt.ToDubaiString("yyyy-MM-dd HH:mm")</span>
+                    </div>
+                    <div class="pc-timeline-row">
+                        <span class="lbl">@(isRtl ? "بدء المراجعة" : "Review started")</span>
+                        @if (Model.ReviewStartedAt.HasValue)
+                        {
+                            <span class="val">@Model.ReviewStartedAt.Value.ToDubaiString("yyyy-MM-dd HH:mm")@(string.IsNullOrWhiteSpace(Model.ReviewStartedById) ? "" : $" · {Model.ReviewStartedById}")</span>
+                        }
+                        else
+                        {
+                            <span class="val muted">—</span>
+                        }
+                    </div>
+                    <div class="pc-timeline-row">
+                        <span class="lbl">@Shared["Column_ApprovalDate"]</span>
+                        @if (Model.ApprovalDate.HasValue)
+                        {
+                            <span class="val">@Model.ApprovalDate.Value.ToDubaiString("yyyy-MM-dd HH:mm")@(string.IsNullOrWhiteSpace(Model.ApprovedById) ? "" : $" · {Model.ApprovedById}")</span>
+                        }
+                        else
+                        {
+                            <span class="val muted">—</span>
+                        }
+                    </div>
+                    <div class="pc-timeline-row">
+                        <span class="lbl">@Shared["Column_ImplementationDate"]</span>
+                        @if (Model.ImplementationDate.HasValue)
+                        {
+                            <span class="val">@Model.ImplementationDate.Value.ToDubaiString("yyyy-MM-dd HH:mm")@(string.IsNullOrWhiteSpace(Model.ImplementedById) ? "" : $" · {Model.ImplementedById}")</span>
+                        }
+                        else
+                        {
+                            <span class="val muted">—</span>
+                        }
+                    </div>
+                    @if (Model.CancelledAt.HasValue)
+                    {
+                        <div class="pc-timeline-row">
+                            <span class="lbl">@(isRtl ? "تم الإلغاء" : "Cancelled")</span>
+                            <span class="val">@Model.CancelledAt.Value.ToDubaiString("yyyy-MM-dd HH:mm")@(string.IsNullOrWhiteSpace(Model.CancelledById) ? "" : $" · {Model.CancelledById}")</span>
+                        </div>
+                    }
+                    <div class="pc-timeline-row">
+                        <span class="lbl">@Shared["Column_UpdatedAt"]</span>
+                        <span class="val">@Model.UpdatedAt.ToDubaiString("yyyy-MM-dd HH:mm")</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pc-card">
+                <div class="pc-card-head">
+                    <h2><i data-lucide="message-circle" style="width:16px; height:16px; color:#005B99;"></i>@Shared["Section_Comments"]</h2>
+                    @if (Model.Comments.Any())
+                    {
+                        <span class="pc-count-pill">@Model.Comments.Count</span>
+                    }
+                </div>
+                <div class="pc-card-body">
+                    @if (Model.Comments.Any())
+                    {
+                        @foreach (var c in Model.Comments.OrderByDescending(x => x.CreatedAt).Take(5))
+                        {
+                            <div class="pc-comment">
+                                <div class="pc-comment-meta">@c.CreatedAt.ToDubaiString("yyyy-MM-dd HH:mm")</div>
+                                <div>@c.Comment</div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="pc-empty">
+                            <i data-lucide="message-circle" style="width:26px; height:26px; color:#cbd5e1;"></i>
+                            @Shared["Text_NoComments"]
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<form id="rejectForm" asp-action="Reject" method="post" style="display:none;">
+    <input type="hidden" name="id" value="@Model.Id" />
+    <input type="hidden" name="rejectionReason" id="rejectionReason" />
+</form>
+
+<form id="cancelForm" asp-action="Cancel" method="post" style="display:none;">
+    <input type="hidden" name="id" value="@Model.Id" />
+    <input type="hidden" name="cancellationReason" id="cancellationReason" />
+</form>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+
+        function rejectPrompt() {
+            Swal.fire({
+                title: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Prompt_RejectionReasonTitle"].Value)),
+                input: 'textarea',
+                inputPlaceholder: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Prompt_RejectionReasonPlaceholder"].Value)),
+                showCancelButton: true,
+                confirmButtonText: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Action_Reject"].Value)),
+                cancelButtonText: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Button_Cancel"].Value)),
+                confirmButtonColor: '#b91c1c'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('rejectionReason').value = result.value || '';
+                    document.getElementById('rejectForm').submit();
+                }
+            });
+        }
+
+        function cancelPrompt() {
+            Swal.fire({
+                title: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(isRtl ? "سبب إلغاء الطلب" : "Cancellation reason")),
+                input: 'textarea',
+                inputPlaceholder: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(isRtl ? "اختياري — لماذا تم إلغاء الطلب؟" : "Optional — why is this change being cancelled?")),
+                showCancelButton: true,
+                confirmButtonText: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(isRtl ? "تأكيد الإلغاء" : "Confirm Cancel")),
+                cancelButtonText: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Button_Cancel"].Value)),
+                confirmButtonColor: '#005B99'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('cancellationReason').value = result.value || '';
+                    document.getElementById('cancelForm').submit();
+                }
+            });
+        }
+    </script>
+}

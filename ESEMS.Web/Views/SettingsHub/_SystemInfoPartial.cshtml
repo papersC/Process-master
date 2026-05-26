@@ -1,0 +1,244 @@
+@inject IStringLocalizer<SharedResource> Shared
+@{
+    decimal estSavings = ViewBag.TotalEstimatedSavings ?? 0m;
+    decimal actSavings = ViewBag.TotalActualSavings ?? 0m;
+    var achieved = estSavings > 0 ? (int)Math.Round((double)(actSavings / estSavings * 100m)) : 0;
+    decimal estHours = ViewBag.TotalEstimatedHours ?? 0m;
+    decimal actHours = ViewBag.TotalActualHours ?? 0m;
+    var hoursAchieved = estHours > 0 ? (int)Math.Round((double)(actHours / estHours * 100m)) : 0;
+}
+
+<style>
+    .si-stat-card { animation: siFadeInUp .35s ease-out backwards; }
+    .si-stat-card:nth-child(1) { animation-delay: .00s; }
+    .si-stat-card:nth-child(2) { animation-delay: .05s; }
+    .si-stat-card:nth-child(3) { animation-delay: .10s; }
+    .si-stat-card:nth-child(4) { animation-delay: .15s; }
+    .si-stat-card:nth-child(5) { animation-delay: .20s; }
+    @@keyframes siFadeInUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    .si-progress-thin { height:6px; }
+</style>
+
+<p class="text-muted small mb-3">@Shared["Text_SystemInformationSubtitle"]</p>
+
+<!-- Process Architecture -->
+<div class="card mb-3 si-stat-card">
+    <div class="card-header bg-white d-flex align-items-center gap-2">
+        <i data-lucide="workflow" style="width:20px;height:20px;color:#334155;"></i>
+        <h6 class="fw-bold mb-0" style="color:#334155;">@Shared["Heading_ProcessArchitecture"]</h6>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold" style="color:#005B99;">@ViewBag.TotalProcesses</div>
+                    <small class="text-muted">@Shared["Label_Processes"]</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold" style="color:#005B99;">@ViewBag.TotalServices</div>
+                    <small class="text-muted">@Shared["Label_Services"]</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold" style="color:#005B99;">@ViewBag.TotalUnits</div>
+                    <small class="text-muted">@Shared["Label_OrganizationUnits"]</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Improvement -->
+<div class="card mb-3 si-stat-card">
+    <div class="card-header bg-white d-flex align-items-center gap-2">
+        <i data-lucide="trending-up" style="width:20px;height:20px;color:#334155;"></i>
+        <h6 class="fw-bold mb-0" style="color:#334155;">@Shared["Heading_Improvement"]</h6>
+    </div>
+    <div class="card-body">
+        <div class="row g-3 mb-3">
+            <div class="col-md-3 col-6">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold" style="color:#005B99;">@ViewBag.TotalImprovements</div>
+                    <small class="text-muted">@Shared["Label_TotalInitiatives"]</small>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold text-dark">@ViewBag.ProposedImprovements</div>
+                    <small class="text-muted">@Shared["Status_Proposed"]</small>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold text-dark">@ViewBag.InProgressImprovements</div>
+                    <small class="text-muted">@Shared["Status_InProgress"]</small>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold text-dark">@ViewBag.ClosedImprovements</div>
+                    <small class="text-muted">@Shared["Status_Closed"]</small>
+                </div>
+            </div>
+        </div>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="border rounded p-3">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <div class="small fw-semibold text-muted">@Shared["Label_CostSavings_AED"]</div>
+                        </div>
+                        <span class="badge bg-light text-dark">@achieved%</span>
+                    </div>
+                    <div class="d-flex gap-3">
+                        <div class="flex-grow-1">
+                            <div class="small text-muted">@Shared["Label_Estimated"]</div>
+                            <div class="fs-5 fw-bold text-dark">@estSavings.ToString("N0")</div>
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="small text-muted">@Shared["Label_Realized"]</div>
+                            <div class="fs-5 fw-bold" style="color:#005B99;">@actSavings.ToString("N0")</div>
+                        </div>
+                    </div>
+                    <div class="progress si-progress-thin mt-2">
+                        <div class="progress-bar" role="progressbar" style="width:@Math.Min(100, achieved)%;background:#005B99;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="border rounded p-3">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <div class="small fw-semibold text-muted">@Shared["Label_TimeSavings_Hours"]</div>
+                        </div>
+                        <span class="badge bg-light text-dark">@hoursAchieved%</span>
+                    </div>
+                    <div class="d-flex gap-3">
+                        <div class="flex-grow-1">
+                            <div class="small text-muted">@Shared["Label_Estimated"]</div>
+                            <div class="fs-5 fw-bold text-dark">@estHours.ToString("N0")</div>
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="small text-muted">@Shared["Label_Realized"]</div>
+                            <div class="fs-5 fw-bold" style="color:#005B99;">@actHours.ToString("N0")</div>
+                        </div>
+                    </div>
+                    <div class="progress si-progress-thin mt-2">
+                        <div class="progress-bar" role="progressbar" style="width:@Math.Min(100, hoursAchieved)%;background:#005B99;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Risk, Assets, Incidents -->
+<div class="card mb-3 si-stat-card">
+    <div class="card-header bg-white d-flex align-items-center gap-2">
+        <i data-lucide="shield-alert" style="width:20px;height:20px;color:#334155;"></i>
+        <h6 class="fw-bold mb-0" style="color:#334155;">@Shared["Heading_RiskAssetsIncidents"]</h6>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3 col-6">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold" style="color:#005B99;">@ViewBag.TotalRisks</div>
+                    <small class="text-muted">@Shared["Label_EnterpriseRisks"]</small>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold text-dark">@ViewBag.HighRisks</div>
+                    <small class="text-muted">@Shared["Label_HighCriticalRisks"]</small>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold text-dark">@ViewBag.TotalAssets</div>
+                    <small class="text-muted">@Shared["Label_Assets"]</small>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold text-dark">@ViewBag.OpenIncidents / @ViewBag.TotalIncidents</div>
+                    <small class="text-muted">@Shared["Label_OpenIncidentsRatio"]</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Users, Workflow, Governance -->
+<div class="card mb-3 si-stat-card">
+    <div class="card-header bg-white d-flex align-items-center gap-2">
+        <i data-lucide="users" style="width:20px;height:20px;color:#334155;"></i>
+        <h6 class="fw-bold mb-0" style="color:#334155;">@Shared["Heading_UsersAndGovernance"]</h6>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3 col-6">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold" style="color:#005B99;">@ViewBag.TotalUsers</div>
+                    <small class="text-muted">@Shared["Label_TotalUsers"]</small>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold" style="color:#005B99;">@ViewBag.RoleGroupsCount</div>
+                    <small class="text-muted">@Shared["Label_RoleGroups"]</small>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold text-dark">@ViewBag.PendingWorkflows</div>
+                    <small class="text-muted">@Shared["Label_PendingWorkflows"]</small>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold text-dark">@ViewBag.ApprovalRules</div>
+                    <small class="text-muted">@Shared["Label_ActiveApprovalRules"]</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Infrastructure -->
+<div class="card si-stat-card">
+    <div class="card-header bg-white d-flex align-items-center gap-2">
+        <i data-lucide="server" style="width:20px;height:20px;color:#334155;"></i>
+        <h6 class="fw-bold mb-0" style="color:#334155;">@Shared["Heading_Infrastructure"]</h6>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3 col-6">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-6 fw-bold text-dark">@Shared["Text_Running"]</div>
+                    <small class="text-muted">@Shared["Label_NotificationHub"]</small>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-6 fw-bold text-dark">@Shared["Text_Running"]</div>
+                    <small class="text-muted">@Shared["Label_MeasurementReminder"]</small>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-6 fw-bold text-dark">@Shared["Text_Running"]</div>
+                    <small class="text-muted">@Shared["Label_VectorSync"]</small>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="border rounded p-3 text-center">
+                    <div class="fs-6 fw-bold">@DateTime.UtcNow.ToDubaiString("yyyy-MM-dd HH:mm")</div>
+                    <small class="text-muted">@Shared["Label_ServerTimeUtc"]</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

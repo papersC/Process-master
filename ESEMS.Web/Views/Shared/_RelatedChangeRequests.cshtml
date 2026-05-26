@@ -1,0 +1,85 @@
+@using ESEMS.Web.Models.Improvement
+@using ESEMS.Web.Models.Enums
+@inject IStringLocalizer<SharedResource> Shared
+@*
+    Shared "Change requests for this …" panel — F-CC-002.
+    Surfaced on Process/Details and Service/Details so the just-completed
+    ChangeRequest lifecycle becomes discoverable from the entity that
+    actually triggers a change. Caller passes:
+      - ViewBag.RelatedChangeRequests : IEnumerable<ChangeRequest> (recent 5)
+      - ViewBag.OpenChangeRequestCount : int
+      - ViewData["CR_TargetKind"] : "process" | "service"
+      - ViewData["CR_TargetId"]   : the FK id used in the deep link
+*@
+@{
+    var related = ViewBag.RelatedChangeRequests as IEnumerable<ChangeRequest> ?? Enumerable.Empty<ChangeRequest>();
+    var openCount = (int)(ViewBag.OpenChangeRequestCount ?? 0);
+    var kind = (ViewData["CR_TargetKind"] as string) ?? "process";
+    var targetId = (ViewData["CR_TargetId"] as string) ?? string.Empty;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    var routeKey = kind == "service" ? "serviceId" : "processId";
+    var routeData = new Dictionary<string, string> { { routeKey, targetId } };
+}
+
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mt-6" data-section="related-change-requests">
+    <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-3">
+            <h3 class="text-lg font-semibold text-gray-900">
+                <i data-lucide="git-pull-request" class="w-4 h-4 inline" style="vertical-align:-3px;color:#005B99;"></i>
+                @Shared["Label_ChangeRequestsForThis"] @(kind == "service" ? (isRtl ? "الخدمة" : "service") : (isRtl ? "العملية" : "process"))
+            </h3>
+            @if (openCount > 0)
+            {
+                <span class="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                      style="background:#e0f0fb;color:#005B99;min-width:1.5rem;">@openCount</span>
+            }
+        </div>
+        <div class="flex items-center gap-2">
+            <a asp-controller="ChangeRequests" asp-action="Index" asp-all-route-data="@routeData"
+               class="text-sm font-medium text-gray-600 hover:text-gray-900">
+                @Shared["Link_ViewAll"]
+            </a>
+            <a asp-controller="ChangeRequests" asp-action="Create" asp-all-route-data="@routeData"
+               class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md text-white"
+               style="background:#005B99;">
+                <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                @Shared["Button_OpenChangeRequest"]
+            </a>
+        </div>
+    </div>
+
+    @if (!related.Any())
+    {
+        <div class="text-sm text-gray-500 py-4 text-center border border-dashed border-gray-200 rounded">
+            @Shared["Text_NoChangeRequestsYet"]
+        </div>
+    }
+    else
+    {
+        <ul class="divide-y divide-gray-100">
+            @foreach (var cr in related)
+            {
+                var (sbg, sfg) = cr.Status switch
+                {
+                    ChangeRequestStatus.Submitted    => ("#f1f5f9", "#005B99"),
+                    ChangeRequestStatus.UnderReview  => ("#e0f0fb", "#005B99"),
+                    ChangeRequestStatus.Approved     => ("#dbeafe", "#003d6b"),
+                    ChangeRequestStatus.Implemented  => ("#1e293b", "#ffffff"),
+                    ChangeRequestStatus.Rejected     => ("#fef2f2", "#b91c1c"),
+                    ChangeRequestStatus.Cancelled    => ("#f1f5f9", "#94a3b8"),
+                    _                                => ("#f1f5f9", "#6b7280")
+                };
+                <li class="py-2 flex items-center justify-between gap-3">
+                    <a asp-controller="ChangeRequests" asp-action="Details" asp-route-id="@cr.Id"
+                       class="flex-1 min-w-0 flex items-center gap-3 hover:underline">
+                        <span class="text-xs font-mono font-semibold" style="color:#005B99;">@cr.Code</span>
+                        <span class="text-sm text-gray-800 truncate">@(isRtl && !string.IsNullOrWhiteSpace(cr.NameAr) ? cr.NameAr : cr.NameEn)</span>
+                    </a>
+                    <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full"
+                          style="background:@sbg;color:@sfg;">@Shared[$"ChangeRequestStatus_{cr.Status}"]</span>
+                    <span class="text-xs text-gray-500 whitespace-nowrap">@cr.CreatedAt.ToString("yyyy-MM-dd")</span>
+                </li>
+            }
+        </ul>
+    }
+</div>

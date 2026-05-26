@@ -1,0 +1,345 @@
+@model IEnumerable<WorkloadScenario>
+@functions {
+    string StatusLabel(WorkloadScenarioStatus s, bool rtl) => s switch {
+        WorkloadScenarioStatus.Draft => rtl ? "مسودة" : "Draft",
+        WorkloadScenarioStatus.InReview => rtl ? "قيد المراجعة" : "In Review",
+        WorkloadScenarioStatus.Approved => rtl ? "معتمد" : "Approved",
+        WorkloadScenarioStatus.Archived => rtl ? "مؤرشف" : "Archived",
+        _ => s.ToString()
+    };
+}
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = isRtl ? "سيناريوهات تحليل حجم العمل" : "Workload Scenarios";
+
+    var perms = new HashSet<string>(User.FindAll("Permission").Select(c => c.Value));
+    bool HasPerm(string p) => perms.Contains("*.*") || perms.Contains("Workload.*") || perms.Contains(p);
+    var canCreate = HasPerm("Workload.Create");
+    var canEdit   = HasPerm("Workload.Edit");
+    var canDelete = HasPerm("Workload.Delete");
+
+    var orgUnits = ViewBag.OrgUnits as List<SelectListItem> ?? new List<SelectListItem>();
+    var configs  = ViewBag.Configs  as List<SelectListItem> ?? new List<SelectListItem>();
+    var statusFilter = ViewBag.StatusFilter as WorkloadScenarioStatus?;
+    var yearFilter = ViewBag.YearFilter as int?;
+    var unitFilter = ViewBag.UnitFilter as string;
+
+    var list = Model?.ToList() ?? new List<WorkloadScenario>();
+    var totalCount = list.Count;
+    // Headline FTE / Gap KPIs must mirror the Dashboard, which sums Approved
+    // scenarios only. Without this, one Draft test scenario (e.g. WS-020 "q11"
+    // with FTE 2,120) can drag the headline from "-17 Overstaffed" to
+    // "+2,336 Understaffed" — contradicting the Dashboard. When the user
+    // explicitly filters by status, respect that filter instead.
+    var kpiList = statusFilter.HasValue
+        ? list
+        : list.Where(s => s.Status == WorkloadScenarioStatus.Approved).ToList();
+    var kpiBasisLabel = statusFilter.HasValue
+        ? (isRtl ? "حسب التصفية" : "filtered")
+        : (isRtl ? "المعتمدة فقط" : "approved only");
+    var totalRequiredFTE = kpiList.Sum(s => s.TotalFTE);
+    // Headcount must NOT be summed naively — multiple scenarios for the
+    // same owning unit (different fiscal years, iterations, or revisions)
+    // would otherwise count the same people 3–5×. Dedupe by OwningUnit,
+    // take the latest fiscal year as the representative "current" snapshot.
+    // Scenarios without an owning unit are treated as unique rows.
+    var totalHeadcount = kpiList
+        .GroupBy(s => s.OwningUnitId?.ToString() ?? Guid.NewGuid().ToString())
+        .Select(g => g.OrderByDescending(s => s.FiscalYear).First())
+        .Sum(s => (decimal)(s.CurrentHeadcount ?? 0));
+    var totalGap = totalRequiredFTE - totalHeadcount;
+    var approvedCount = list.Count(s => s.Status == WorkloadScenarioStatus.Approved);
+    var draftCount = list.Count(s => s.Status == WorkloadScenarioStatus.Draft);
+    var inReviewCount = list.Count(s => s.Status == WorkloadScenarioStatus.InReview);
+    var hasActiveFilter = statusFilter.HasValue || yearFilter.HasValue || !string.IsNullOrEmpty(unitFilter);
+}
+
+<partial name="_WaStyles" />
+
+<div class="wa-page">
+    <div class="wa-pageheader">
+        <div>
+            <h1 class="wa-pagetitle"><i data-lucide="calculator" aria-hidden="true"></i>@(isRtl ? "سيناريوهات حجم العمل" : "Workload Scenarios")</h1>
+            <p class="wa-pagesub">@(isRtl ? "إدارة سيناريوهات تحليل حجم العمل وحساب الموارد البشرية" : "Manage workload analysis scenarios and FTE calculations")</p>
+        </div>
+        <div class="wa-actions">
+            <a asp-action="Dashboard" class="wa-btn wa-btn-outline"><i data-lucide="layout-dashboard" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "نظرة عامة" : "Overview")</a>
+            <a asp-action="Config" class="wa-btn wa-btn-outline"><i data-lucide="settings" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "الإعدادات" : "Config")</a>
+            @if (canCreate) {
+                <a asp-action="Create" class="wa-btn wa-btn-primary"><i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "سيناريو جديد" : "New Scenario")</a>
+            }
+        </div>
+    </div>
+
+    @* KPI strip — totals across the FILTERED set. Updates as filters apply. *@
+    <div class="wa-kpis">
+        <div class="wa-kpi">
+            <div class="wa-kpi-icon" style="background:#eff6ff;color:#1d4ed8;"><i data-lucide="layers" class="w-4 h-4"></i></div>
+            <div class="wa-kpi-text">
+                <div class="wa-kpi-label">@(isRtl ? "السيناريوهات" : "Scenarios")</div>
+                <div class="wa-kpi-value">@totalCount.ToString("N0")</div>
+                <div class="wa-kpi-sub">
+                    @if (hasActiveFilter) { <span>@(isRtl ? "بعد التصفية" : "after filter")</span> }
+                    else { <span>@(isRtl ? "إجمالي" : "all")</span> }
+                </div>
+            </div>
+        </div>
+        <div class="wa-kpi">
+            <div class="wa-kpi-icon" style="background:#f0fdf4;color:#15803d;"><i data-lucide="users" class="w-4 h-4"></i></div>
+            <div class="wa-kpi-text">
+                <div class="wa-kpi-label">@(isRtl ? "إجمالي الموارد البشرية المطلوبة" : "Total Required FTE")</div>
+                <div class="wa-kpi-value">@totalRequiredFTE.ToString("N0")</div>
+                <div class="wa-kpi-sub">@kpiBasisLabel</div>
+            </div>
+        </div>
+        <div class="wa-kpi">
+            <div class="wa-kpi-icon" style="background:#f5f3ff;color:#6d28d9;"><i data-lucide="user-check" class="w-4 h-4"></i></div>
+            <div class="wa-kpi-text">
+                <div class="wa-kpi-label">@(isRtl ? "الموارد الحالية" : "Current Headcount")</div>
+                <div class="wa-kpi-value">@totalHeadcount.ToString("N0")</div>
+                <div class="wa-kpi-sub">@kpiBasisLabel</div>
+            </div>
+        </div>
+        @{
+            var gapClass = totalGap > 0 ? "wa-kpi-bad" : (totalGap < 0 ? "wa-kpi-good" : "");
+            var gapBg = totalGap > 0 ? "#fef2f2" : (totalGap < 0 ? "#f0fdf4" : "#f1f5f9");
+            var gapFg = totalGap > 0 ? "#b91c1c" : (totalGap < 0 ? "#15803d" : "#475569");
+            var gapIcon = totalGap > 0 ? "trending-up" : (totalGap < 0 ? "trending-down" : "minus");
+            var gapLabel = totalGap > 0
+                ? (isRtl ? "نقص في الموارد" : "Understaffed")
+                : (totalGap < 0 ? (isRtl ? "فائض في الموارد" : "Overstaffed") : (isRtl ? "متوازن" : "Balanced"));
+            var gapPrefix = totalGap > 0 ? "+" : "";
+        }
+        <div class="wa-kpi @gapClass">
+            <div class="wa-kpi-icon" style="background:@gapBg;color:@gapFg;"><i data-lucide="@gapIcon" class="w-4 h-4"></i></div>
+            <div class="wa-kpi-text">
+                <div class="wa-kpi-label">@(isRtl ? "الفجوة الإجمالية" : "Total Gap")</div>
+                <div class="wa-kpi-value">@gapPrefix@totalGap.ToString("N0")</div>
+                <div class="wa-kpi-sub">@gapLabel</div>
+            </div>
+        </div>
+        <div class="wa-kpi">
+            <div class="wa-kpi-icon" style="background:#dcfce7;color:#166534;"><i data-lucide="check-circle-2" class="w-4 h-4"></i></div>
+            <div class="wa-kpi-text">
+                <div class="wa-kpi-label">@(isRtl ? "بحسب الحالة" : "By Status")</div>
+                <div class="wa-kpi-value" style="font-size: var(--fs-sm);display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;">
+                    <span style="color:#166534;">@approvedCount</span><span style="color:#cbd5e1;font-weight:400;">·</span>
+                    <span style="color:#92400e;">@inReviewCount</span><span style="color:#cbd5e1;font-weight:400;">·</span>
+                    <span style="color:#64748b;">@draftCount</span>
+                </div>
+                <div class="wa-kpi-sub">@(isRtl ? "معتمد · مراجعة · مسودة" : "approved · review · draft")</div>
+            </div>
+        </div>
+    </div>
+
+    <form method="get" class="wa-toolbar">
+        <select name="status" class="wa-filter" aria-label="@(isRtl ? "الحالة" : "Status")">
+            <option value="">@(isRtl ? "الحالة: الكل" : "Status: All")</option>
+            @foreach (var s in Enum.GetValues<WorkloadScenarioStatus>())
+            {
+                <option value="@s" selected="@(statusFilter == s)">@StatusLabel(s, isRtl)</option>
+            }
+        </select>
+        <select name="fiscalYear" class="wa-filter" aria-label="@(isRtl ? "السنة" : "Fiscal Year")">
+            <option value="">@(isRtl ? "السنة: الكل" : "Year: All")</option>
+            @for (int y = DateTime.Now.Year - 2; y <= DateTime.Now.Year + 2; y++)
+            {
+                <option value="@y" selected="@(yearFilter == y)">@y</option>
+            }
+        </select>
+        <select name="unitId" class="wa-filter" aria-label="@(isRtl ? "الوحدة" : "Unit")">
+            <option value="">@(isRtl ? "الوحدة: الكل" : "Unit: All")</option>
+            @foreach (var u in orgUnits)
+            {
+                <option value="@u.Value" selected="@(unitFilter == u.Value)">@u.Text</option>
+            }
+        </select>
+        <button type="submit" class="wa-btn wa-btn-outline wa-btn-sm"><i data-lucide="search" class="w-3.5 h-3.5" aria-hidden="true"></i>@(isRtl ? "بحث" : "Filter")</button>
+        <a asp-action="Index" class="wa-btn wa-btn-ghost wa-btn-sm"><i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>@(isRtl ? "مسح" : "Clear")</a>
+    </form>
+
+    <form asp-action="BulkReassignConfig" method="post" id="bulkForm">
+        @Html.AntiForgeryToken()
+        @if (canEdit)
+        {
+            <div id="bulkBar" class="wa-bulk wa-bulk-armed" style="display:none;">
+                <label><span id="bulkCount">0</span> @(isRtl ? "محدد — غيّر الإعدادات إلى:" : "selected — change config to:")</label>
+                <select id="bulkConfigSelect" name="targetConfigId" class="wa-filter" style="min-width:200px;">
+                    <option value="">@(isRtl ? "— اختر إعدادات —" : "— Select config —")</option>
+                    @foreach (var c in configs)
+                    {
+                        <option value="@c.Value">@c.Text</option>
+                    }
+                </select>
+                <button type="button" id="btnBulkApply" class="wa-btn wa-btn-primary wa-btn-sm" style="background:#4f46e5;border-color:#4f46e5;"><i data-lucide="check" class="w-3.5 h-3.5" aria-hidden="true"></i>@(isRtl ? "تطبيق" : "Apply")</button>
+                <button type="button" id="btnBulkCancel" class="wa-btn wa-btn-ghost wa-btn-sm">@(isRtl ? "إلغاء التحديد" : "Clear")</button>
+            </div>
+        }
+
+        <div class="wa-card">
+            <div class="wa-table-wrap">
+                <table class="wa-table esems-datatable" id="scenariosTable">
+                    <thead>
+                        <tr>
+                            @if (canEdit) { <th style="width:32px;"><input type="checkbox" id="selectAll" aria-label="Select all" /></th> }
+                            <th>@(isRtl ? "الرمز" : "Code")</th>
+                            <th>@(isRtl ? "الاسم" : "Name")</th>
+                            <th>@(isRtl ? "السنة" : "Year")</th>
+                            <th>@(isRtl ? "الحالة" : "Status")</th>
+                            <th>@(isRtl ? "الوحدة" : "Unit")</th>
+                            <th class="wa-num">@(isRtl ? "إجمالي الموظفين" : "Total FTE")</th>
+                            <th class="wa-num">@(isRtl ? "الفجوة" : "Gap")</th>
+                            <th style="text-align:end;">@(isRtl ? "الإجراءات" : "Actions")</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in list)
+                        {
+                            var statusCls = $"wa-status-{s.Status}";
+                            var rowGapCls = s.FTEGap > 0 ? "wa-row-hot" : "";
+                            var gapColor = s.FTEGap > 0 ? "#b91c1c" : (s.FTEGap < 0 ? "#15803d" : "#475569");
+                            var gapPrefixCell = s.FTEGap > 0 ? "+" : "";
+                            <tr class="@rowGapCls">
+                                @if (canEdit)
+                                {
+                                    <td><input type="checkbox" name="scenarioIds" value="@s.Id" class="row-select" aria-label="@s.Code" @(ESEMS.Web.Services.Workload.WorkloadScenarioStatusMachine.IsEditable(s.Status) ? "" : "disabled") /></td>
+                                }
+                                <td><a asp-action="Details" asp-route-id="@s.Id" style="color:#005B99;font-weight:600;text-decoration:none;font-family:ui-monospace,monospace;letter-spacing:.04em;">@s.Code</a></td>
+                                <td style="font-weight:600;color:#111827;">@s.Name</td>
+                                <td style="color:#6b7280;">@s.FiscalYear</td>
+                                <td><span class="wa-status-pill @statusCls">@StatusLabel(s.Status, isRtl)</span></td>
+                                <td style="color:#6b7280;">@(s.OwningUnit?.Name ?? "—")</td>
+                                <td class="wa-num wa-mono" style="font-weight:700;">@s.TotalFTE.ToString("N0")</td>
+                                <td class="wa-num wa-mono" style="font-weight:700;color:@gapColor;">@gapPrefixCell@s.FTEGap.ToString("N0")</td>
+                                <td style="text-align:end;">
+                                    <span style="display:inline-flex;gap:.25rem;">
+                                        <a asp-action="Details" asp-route-id="@s.Id" class="wa-btn wa-btn-ghost wa-btn-sm" style="padding:.25rem .35rem;" title="@(isRtl ? "عرض" : "View")" aria-label="@(isRtl ? "عرض" : "View")"><i data-lucide="eye" class="w-4 h-4" aria-hidden="true"></i></a>
+                                        @if (canEdit)
+                                        {
+                                            <a asp-action="Edit" asp-route-id="@s.Id" class="wa-btn wa-btn-ghost wa-btn-sm" style="padding:.25rem .35rem;" title="@(isRtl ? "تعديل" : "Edit")" aria-label="@(isRtl ? "تعديل" : "Edit")"><i data-lucide="edit" class="w-4 h-4" aria-hidden="true"></i></a>
+                                        }
+                                        <a asp-action="ExportScenario" asp-route-id="@s.Id" class="wa-btn wa-btn-ghost wa-btn-sm" style="padding:.25rem .35rem;" title="@(isRtl ? "تصدير CSV" : "Export CSV")" aria-label="CSV"><i data-lucide="download" class="w-4 h-4" aria-hidden="true"></i></a>
+                                        <a asp-action="ExportScenarioPdf" asp-route-id="@s.Id" class="wa-btn wa-btn-ghost wa-btn-sm" style="padding:.25rem .35rem;" title="@(isRtl ? "تصدير PDF" : "Export PDF")" aria-label="PDF"><i data-lucide="file-text" class="w-4 h-4" aria-hidden="true"></i></a>
+                                        @if (canCreate)
+                                        {
+                                            <form asp-action="Clone" asp-route-id="@s.Id" method="post" class="clone-form" data-year="@(s.FiscalYear + 1)" style="display:inline;">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="newFiscalYear" />
+                                                <button type="button" class="btn-clone wa-btn wa-btn-ghost wa-btn-sm" style="padding:.25rem .35rem;color:#6d28d9;" data-name="@s.Name" data-year="@(s.FiscalYear + 1)" title="@(isRtl ? "نسخ" : "Clone")" aria-label="Clone"><i data-lucide="copy" class="w-4 h-4" aria-hidden="true"></i></button>
+                                            </form>
+                                        }
+                                        @if (canDelete)
+                                        {
+                                            <form asp-action="Delete" asp-route-id="@s.Id" method="post" class="delete-form" style="display:inline;">
+                                                @Html.AntiForgeryToken()
+                                                <button type="button" class="btn-delete wa-btn wa-btn-ghost wa-btn-sm" style="padding:.25rem .35rem;color:#dc2626;" data-name="@s.Name" title="@(isRtl ? "حذف" : "Delete")" aria-label="Delete"><i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i></button>
+                                            </form>
+                                        }
+                                    </span>
+                                </td>
+                            </tr>
+                        }
+                        @if (totalCount == 0)
+                        {
+                            <tr><td colspan="@(canEdit ? 9 : 8)" style="padding:0;">
+                                <div class="wa-empty">
+                                    <div class="wa-empty-icon"><i data-lucide="inbox" class="w-10 h-10" aria-hidden="true"></i></div>
+                                    <div class="wa-empty-title">@(isRtl ? "لا توجد سيناريوهات بعد" : "No scenarios yet")</div>
+                                    @if (hasActiveFilter)
+                                    {
+                                        <div class="wa-empty-msg">@(isRtl ? "لا توجد نتائج للتصفية الحالية." : "No results match the current filter.")</div>
+                                    }
+                                    else if (canCreate)
+                                    {
+                                        <div class="wa-empty-msg">@(isRtl ? "ابدأ بإنشاء سيناريو جديد لتحليل أعباء العمل." : "Start by creating a new scenario to analyze workload.")</div>
+                                    }
+                                </div>
+                            </td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+<script nonce="@Context.CspNonce()">
+    if (window.lucide) lucide.createIcons();
+    const idxIsRtl = @(isRtl ? "true" : "false");
+
+    document.querySelectorAll('.btn-delete').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var name = this.dataset.name;
+            var form = this.closest('.delete-form');
+            Swal.fire({
+                title: idxIsRtl ? 'تأكيد الحذف' : 'Confirm Delete',
+                text: (idxIsRtl ? 'هل تريد حذف ' : 'Delete ') + name + '?',
+                icon: 'warning', showCancelButton: true,
+                confirmButtonColor: '#005B99',
+                cancelButtonText: idxIsRtl ? 'إلغاء' : 'Cancel',
+                confirmButtonText: idxIsRtl ? 'حذف' : 'Delete'
+            }).then(function(result) { if (result.isConfirmed) form.submit(); });
+        });
+    });
+
+    (function() {
+        const bar       = document.getElementById('bulkBar');
+        const countEl   = document.getElementById('bulkCount');
+        const selectAll = document.getElementById('selectAll');
+        const rowBoxes  = [...document.querySelectorAll('.row-select:not([disabled])')];
+        const btnApply  = document.getElementById('btnBulkApply');
+        const btnCancel = document.getElementById('btnBulkCancel');
+        const configSel = document.getElementById('bulkConfigSelect');
+        const form      = document.getElementById('bulkForm');
+        if (!bar) return;
+        function refresh() {
+            const checked = rowBoxes.filter(cb => cb.checked);
+            countEl.textContent = checked.length;
+            bar.style.display = checked.length === 0 ? 'none' : '';
+            if (selectAll) selectAll.checked = checked.length > 0 && checked.length === rowBoxes.length;
+        }
+        rowBoxes.forEach(cb => cb.addEventListener('change', refresh));
+        selectAll?.addEventListener('change', () => { rowBoxes.forEach(cb => cb.checked = selectAll.checked); refresh(); });
+        btnCancel?.addEventListener('click', () => { rowBoxes.forEach(cb => cb.checked = false); refresh(); });
+        btnApply?.addEventListener('click', async () => {
+            const checked = rowBoxes.filter(cb => cb.checked);
+            if (checked.length === 0 || !configSel.value) {
+                Swal.fire({ icon:'info', title: idxIsRtl ? 'تحديد ناقص' : 'Missing selection', text: idxIsRtl ? 'اختر سيناريوهات وإعدادات' : 'Pick scenarios and a target config.', confirmButtonColor:'#005B99' });
+                return;
+            }
+            const r = await Swal.fire({
+                icon:'question',
+                title: idxIsRtl ? `تغيير الإعدادات لـ ${checked.length} سيناريو؟` : `Change config on ${checked.length} scenario(s)?`,
+                text:  idxIsRtl ? 'سيتم تحديث الإعدادات. السيناريوهات المؤرشفة ستُتجاهل.' : 'Archived scenarios will be skipped.',
+                showCancelButton:true, confirmButtonText: idxIsRtl ? 'تطبيق' : 'Apply',
+                cancelButtonText: idxIsRtl ? 'إلغاء' : 'Cancel',
+                confirmButtonColor:'#4f46e5', cancelButtonColor:'#64748b'
+            });
+            if (r.isConfirmed) form.submit();
+        });
+    })();
+
+    document.querySelectorAll('.btn-clone').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+            const form = this.closest('.clone-form');
+            const name = this.dataset.name;
+            const defaultYear = Number(this.dataset.year) || new Date().getFullYear() + 1;
+            const { value: year, isConfirmed } = await Swal.fire({
+                title: idxIsRtl ? 'نسخ السيناريو' : 'Clone Scenario',
+                html:  (idxIsRtl ? 'نسخ <b>' : 'Cloning <b>') + name + (idxIsRtl ? '</b> إلى السنة المالية:' : '</b> to fiscal year:'),
+                input: 'number', inputValue: defaultYear,
+                inputAttributes: { min: 2000, max: 2100, step: 1, lang: 'en' },
+                showCancelButton: true,
+                confirmButtonText: idxIsRtl ? 'نسخ' : 'Clone',
+                cancelButtonText:  idxIsRtl ? 'إلغاء' : 'Cancel',
+                confirmButtonColor: '#005B99', cancelButtonColor: '#64748b',
+                inputValidator: v => { const n = Number(v); if (!n || n < 2000 || n > 2100) return idxIsRtl ? 'أدخل سنة صحيحة' : 'Enter a valid year'; }
+            });
+            if (!isConfirmed) return;
+            form.querySelector('input[name="newFiscalYear"]').value = year;
+            form.submit();
+        });
+    });
+</script>
+}

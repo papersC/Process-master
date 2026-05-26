@@ -1,0 +1,229 @@
+@inject IStringLocalizer<SharedResource> Shared
+@{
+    ViewData["Title"] = "Visio → BPMN Batch Import";
+    ViewBag.BannerIcon = "file-cog";
+    ViewBag.BannerTitle = "Visio → BPMN Batch Import";
+    ViewBag.BannerSubtitle = "Convert embedded Visio diagrams in full.xlsx to BPMN 2.0 XML via AWS Bedrock, then match against Processes/ProcessTasks in the DB.";
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+}
+
+@await Html.PartialAsync("_ModuleBanner")
+
+<style>
+    .bpmn-stat-tile { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 1rem; text-align: center; }
+    .bpmn-stat-tile .stat-value { font-size: var(--fs-xl); font-weight: 700; color: #005B99; line-height: 1; }
+    .bpmn-stat-tile .stat-label { font-size: var(--fs-xs); color: #64748b; text-transform: uppercase; letter-spacing: .03em; margin-top: .4rem; }
+    .bpmn-stat-tile.is-good .stat-value { color: #059669; }
+    .bpmn-stat-tile.is-bad .stat-value { color: #dc2626; }
+    .bpmn-stat-tile.is-warn .stat-value { color: #d97706; }
+    .status-pill { display: inline-block; padding: .1rem .55rem; border-radius: 9999px; font-size: var(--fs-xs); font-weight: 600; }
+    .status-pill.status-success { background: #dcfce7; color: #166534; }
+    .status-pill.status-conversion_failed { background: #fee2e2; color: #991b1b; }
+    .status-pill.status-validation_failed { background: #fef3c7; color: #92400e; }
+    .status-pill.status-error { background: #fee2e2; color: #991b1b; }
+    .match-pill { display: inline-block; padding: .1rem .5rem; border-radius: 6px; font-size: var(--fs-xs); background: #eff6ff; color: #1e40af; font-family: ui-monospace, monospace; }
+    .match-pill.match-file_only { background: #f1f5f9; color: #475569; }
+    .bpmn-results-row:hover { background: #f8fafc; }
+    .bpmn-running { opacity: .55; pointer-events: none; }
+    .bpmn-spinner { width: 18px; height: 18px; border: 2px solid #e5e7eb; border-top-color: #005B99; border-radius: 50%; animation: bpmn-spin .7s linear infinite; display: inline-block; vertical-align: text-bottom; }
+    @@keyframes bpmn-spin { to { transform: rotate(360deg); } }
+</style>
+
+<!-- Control panel -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
+    <div class="d-flex flex-wrap align-items-end gap-3">
+        <div>
+            <label class="form-label small fw-semibold mb-1">Start index</label>
+            <input type="number" id="bpmnStartIndex" class="form-control form-control-sm" style="width:110px;" min="0" value="0" />
+        </div>
+        <div>
+            <label class="form-label small fw-semibold mb-1">Count</label>
+            <input type="number" id="bpmnCount" class="form-control form-control-sm" style="width:110px;" min="1" placeholder="@(isRtl ? "الكل" : "all")" />
+        </div>
+        <div>
+            <label class="form-label small fw-semibold mb-1">Status filter</label>
+            <select id="bpmnStatusFilter" class="form-select form-select-sm" style="width:180px;">
+                <option value="">All</option>
+                <option value="success">Success</option>
+                <option value="validation_failed">Validation failed</option>
+                <option value="conversion_failed">Conversion failed</option>
+                <option value="error">Error</option>
+                <option value="file_only">Unmatched (file only)</option>
+            </select>
+        </div>
+        <div class="form-check form-switch align-self-center">
+            <input class="form-check-input" type="checkbox" id="bpmnAutoCreate" title="Create a Process row for unmatched sheets" />
+            <label class="form-check-label small fw-semibold" for="bpmnAutoCreate">Auto-create Process on unmatched</label>
+        </div>
+        <button type="button" id="bpmnRunBtn" class="btn btn-sm fw-semibold"
+                style="background:linear-gradient(135deg,#005B99 0%,#003d6b 100%);color:#fff;">
+            <i data-lucide="play" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+            Run batch
+        </button>
+        <a asp-action="Lanes" class="btn btn-sm btn-outline-secondary fw-semibold"
+           title="Reconcile swimlanes from imported BPMN against your OrganizationUnit hierarchy">
+            <i data-lucide="git-merge" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+            Lane review
+        </a>
+        <div class="flex-grow-1"></div>
+        <div class="text-muted small" id="bpmnStatus">Idle. Ensure <code>full.xlsx</code> exists at the project root.</div>
+    </div>
+</div>
+
+<!-- Summary tiles -->
+<div class="row g-3 mb-4" id="bpmnSummary" style="display:none;">
+    <div class="col-6 col-md-2 col-lg"><div class="bpmn-stat-tile"><div class="stat-value" id="bpmnTotalTile">0</div><div class="stat-label">Sheets</div></div></div>
+    <div class="col-6 col-md-2 col-lg"><div class="bpmn-stat-tile is-good"><div class="stat-value" id="bpmnSuccessTile">0</div><div class="stat-label">Converted</div></div></div>
+    <div class="col-6 col-md-2 col-lg"><div class="bpmn-stat-tile is-good"><div class="stat-value" id="bpmnMatchedTile">0</div><div class="stat-label">DB matched</div></div></div>
+    <div class="col-6 col-md-2 col-lg"><div class="bpmn-stat-tile is-good"><div class="stat-value" id="bpmnAutoCreateTile">0</div><div class="stat-label">Auto-created</div></div></div>
+    <div class="col-6 col-md-2 col-lg"><div class="bpmn-stat-tile is-good"><div class="stat-value" id="bpmnVersionedTile">0</div><div class="stat-label">Versioned</div></div></div>
+    <div class="col-6 col-md-2 col-lg"><div class="bpmn-stat-tile is-warn"><div class="stat-value" id="bpmnRetryTile">0</div><div class="stat-label">Retry-recovered</div></div></div>
+    <div class="col-6 col-md-2 col-lg"><div class="bpmn-stat-tile is-bad"><div class="stat-value" id="bpmnFailTile">0</div><div class="stat-label">Failed</div></div></div>
+</div>
+
+<!-- Per-sheet results -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-0 mb-4" id="bpmnResultsCard" style="display:none;">
+    <div class="px-4 py-3 border-bottom d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-2">
+            <i data-lucide="list-checks" style="width:18px;height:18px;color:#005B99;"></i>
+            <h5 class="fw-bold mb-0" style="color:#005B99;">Per-sheet results</h5>
+            <span class="badge rounded-pill" style="background:#eff6ff;color:#1e40af;" id="bpmnResultsCount">0</span>
+        </div>
+        <div class="small text-muted" id="bpmnOutputFolder"></div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead class="table-light small">
+                <tr>
+                    <th style="min-width:200px;">Sheet</th>
+                    <th>Status</th>
+                    <th>Match</th>
+                    <th>Code</th>
+                    <th style="min-width:200px;">Matched name</th>
+                    <th class="text-end">Details</th>
+                </tr>
+            </thead>
+            <tbody id="bpmnResultsBody" class="small"></tbody>
+        </table>
+    </div>
+</div>
+
+<script nonce="@Context.CspNonce()">
+    (function () {
+        const runBtn = document.getElementById('bpmnRunBtn');
+        const startEl = document.getElementById('bpmnStartIndex');
+        const countEl = document.getElementById('bpmnCount');
+        const filterEl = document.getElementById('bpmnStatusFilter');
+        const statusEl = document.getElementById('bpmnStatus');
+        const summaryEl = document.getElementById('bpmnSummary');
+        const resultsCard = document.getElementById('bpmnResultsCard');
+        const resultsBody = document.getElementById('bpmnResultsBody');
+        const resultsCount = document.getElementById('bpmnResultsCount');
+        const outputFolderEl = document.getElementById('bpmnOutputFolder');
+        let lastDetails = [];
+
+        function setTile(id, v) { document.getElementById(id).textContent = (v ?? 0).toString(); }
+        function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+        function render(details) {
+            const filter = filterEl.value;
+            const rows = details.filter(d => !filter || d.status === filter || d.matchType === filter);
+            resultsCount.textContent = rows.length;
+            resultsBody.innerHTML = rows.map(d => {
+                const matchType = d.matchType || '';
+                const matchHow = d.matchHow ? ` <span class="text-muted">(${escapeHtml(d.matchHow)})</span>` : '';
+                const detailBits = [];
+                if (d.reason) detailBits.push(`<span class="badge bg-warning text-dark">${escapeHtml(d.reason)}</span>`);
+                if (d.versioned) detailBits.push(`<span class="badge bg-primary">v${d.versionNumber}</span>`);
+                if (d.flowNodes != null) detailBits.push(`<span class="text-muted">${d.flowNodes} flowNodes</span>`);
+                if (d.diOrphans) detailBits.push(`<span class="text-danger">${d.diOrphans} DI orphans</span>`);
+                if (d.errors && d.errors.length) detailBits.push(`<span class="text-danger" title="${escapeHtml(d.errors.join('\n'))}">${d.errors.length} error${d.errors.length === 1 ? '' : 's'}</span>`);
+                if (d.error) detailBits.push(`<span class="text-danger" title="${escapeHtml(d.error)}">${escapeHtml(d.error).slice(0, 50)}…</span>`);
+                return `<tr class="bpmn-results-row">
+                    <td><code class="small">${escapeHtml(d.sheet)}</code></td>
+                    <td><span class="status-pill status-${escapeHtml(d.status || '')}">${escapeHtml(d.status || '')}</span></td>
+                    <td>${matchType ? `<span class="match-pill match-${escapeHtml(matchType)}">${escapeHtml(matchType)}</span>${matchHow}` : ''}</td>
+                    <td><code class="small">${escapeHtml(d.matchCode || '')}</code></td>
+                    <td>${escapeHtml(d.matchName || '')}</td>
+                    <td class="text-end small">${detailBits.join(' ')}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        filterEl.addEventListener('change', () => render(lastDetails));
+
+        let pollTimer = null;
+        async function pollProgress(startCount) {
+            try {
+                const res = await fetch('/api/Import/excel-visio-to-bpmn/progress', { credentials: 'include' });
+                if (!res.ok) return;
+                const p = await res.json();
+                const delta = (p.fileCount ?? 0) - startCount;
+                const age = p.ageSeconds ? Math.round(p.ageSeconds) : null;
+                const ageNote = age != null ? `, last file ${age}s ago` : '';
+                statusEl.innerHTML = `<span class="bpmn-spinner"></span> Running — ${p.fileCount} files in output folder (+${delta} this run${ageNote}).`
+                    + (p.lastFileName ? `<br><small class="text-muted">latest: <code>${escapeHtml(p.lastFileName)}</code></small>` : '');
+            } catch (e) { /* swallow — poll again */ }
+        }
+
+        runBtn.addEventListener('click', async () => {
+            const start = parseInt(startEl.value || '0', 10);
+            const count = countEl.value ? parseInt(countEl.value, 10) : null;
+            const autoCreate = document.getElementById('bpmnAutoCreate').checked;
+            const qs = new URLSearchParams();
+            qs.set('startIndex', start);
+            if (count) qs.set('count', count);
+            if (autoCreate) qs.set('autoCreate', 'true');
+
+            // Snapshot starting file count so the poller reports delta-this-run.
+            let startCount = 0;
+            try {
+                const pre = await fetch('/api/Import/excel-visio-to-bpmn/progress', { credentials: 'include' });
+                if (pre.ok) startCount = (await pre.json()).fileCount ?? 0;
+            } catch (e) { /* ignore */ }
+
+            document.body.classList.add('bpmn-running');
+            statusEl.innerHTML = '<span class="bpmn-spinner"></span> Running — this can take 30+ minutes.';
+            summaryEl.style.display = 'none';
+            resultsCard.style.display = 'none';
+            resultsBody.innerHTML = '';
+
+            pollTimer = setInterval(() => pollProgress(startCount), 4000);
+            pollProgress(startCount);
+
+            const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+            try {
+                const res = await fetch('/api/Import/excel-visio-to-bpmn?' + qs.toString(), {
+                    method: 'POST', credentials: 'include',
+                    headers: token ? { 'RequestVerificationToken': token } : {}
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    statusEl.innerHTML = `<span class="text-danger">Failed: ${escapeHtml(data.error || res.statusText)}</span>`;
+                    return;
+                }
+                lastDetails = data.details || [];
+                setTile('bpmnTotalTile', data.totalSheets);
+                setTile('bpmnSuccessTile', data.successCount);
+                setTile('bpmnMatchedTile', data.dbMatchCount);
+                setTile('bpmnAutoCreateTile', data.autoCreatedCount);
+                setTile('bpmnVersionedTile', data.versionedCount);
+                setTile('bpmnRetryTile', data.retrySucceededCount);
+                setTile('bpmnFailTile', data.failCount);
+                summaryEl.style.display = '';
+                outputFolderEl.textContent = data.outputFolder ? 'Output: ' + data.outputFolder : '';
+                resultsCard.style.display = '';
+                render(lastDetails);
+                statusEl.innerHTML = `<span class="text-success">${escapeHtml(data.message || 'Done.')}</span>`;
+            } catch (e) {
+                statusEl.innerHTML = `<span class="text-danger">Network error: ${escapeHtml(e.message)} — check the server logs; the batch may still be running.</span>`;
+            } finally {
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                document.body.classList.remove('bpmn-running');
+            }
+        });
+    })();
+</script>
+
+<!-- antiForgeryToken helper -->
+<form id="antiForgeryForm" style="display:none;">@Html.AntiForgeryToken()</form>

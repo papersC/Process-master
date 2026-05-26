@@ -1,0 +1,201 @@
+@model IEnumerable<ChangeRequest>
+@{
+    ViewData["Title"] = Shared["Title_ChangeRequests"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+
+    var total = Model.Count();
+    var pending = Model.Count(cr => cr.Status == ChangeRequestStatus.Submitted || cr.Status == ChangeRequestStatus.UnderReview);
+    var approved = Model.Count(cr => cr.Status == ChangeRequestStatus.Approved);
+    var implemented = Model.Count(cr => cr.Status == ChangeRequestStatus.Implemented);
+}
+
+<style>
+    .lt-shell { display: flex; flex-direction: column; gap: .6rem; }
+    .lt-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; }
+    .lt-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .lt-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .lt-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; border: none; }
+    .lt-btn-primary { background: #005B99; color: #fff; } .lt-btn-primary:hover { background: #003d6b; color: #fff; }
+    .lt-btn-outline { background: #fff; color: #005B99; border: 1px solid #cbd5e1; } .lt-btn-outline:hover { background: #f1f5f9; }
+    .lt-btn-ghost { background: transparent; color: #6b7280; border: 1px solid transparent; } .lt-btn-ghost:hover { background: #f9fafb; color: #111827; }
+
+    .lt-kpi-strip { display: flex; align-items: stretch; gap: .5rem; padding: .55rem .65rem; background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; flex-wrap: wrap; }
+    .lt-kpi { display: flex; align-items: center; gap: .55rem; padding: .25rem .65rem; flex: 1 1 180px; min-width: 180px; border-inline-end: 1px dashed #e5e7eb; }
+    .lt-kpi:last-child { border-inline-end: none; }
+    .lt-kpi-icon { width: 34px; height: 34px; border-radius: .375rem; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .lt-kpi-icon.kpi-blue   { background: #eff6ff; color: #005B99; }
+    .lt-kpi-icon.kpi-amber  { background: #fffbeb; color: #b45309; }
+    .lt-kpi-icon.kpi-green  { background: #ecfdf5; color: #047857; }
+    .lt-kpi-icon.kpi-cyan   { background: #ecfeff; color: #0e7490; }
+    .lt-kpi-num { font-size: var(--fs-base); font-weight: 700; color: #111827; line-height: 1; }
+    .lt-kpi-label { font-size: var(--fs-xs); color: #6b7280; margin-top: .15rem; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+    @@media (max-width: 768px) { .lt-kpi { flex: 1 1 45%; border-inline-end: none; } }
+
+    .lt-toolbar { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; padding: .5rem .75rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .lt-search { flex: 1 1 220px; max-width: 320px; position: relative; }
+    .lt-search input { width: 100%; padding: .42rem .7rem; padding-inline-start: 2.1rem; border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-sm); }
+    .lt-search input:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .lt-search > i, .lt-search > svg { position: absolute; top: 50%; transform: translateY(-50%); inset-inline-start: .65rem; width: 16px; height: 16px; color: #9ca3af; pointer-events: none; }
+    .lt-select { padding: .4rem .55rem; border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-xs); background: #fff; color: #111827; min-width: 130px; }
+
+    .lt-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; display: flex; flex-direction: column; overflow: hidden; }
+    .lt-table-wrap { overflow: auto; }
+    .lt-table-wrap table { width: 100%; font-size: var(--fs-sm); border-collapse: collapse; }
+    .lt-table-wrap thead { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
+    .lt-table-wrap th { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; padding: .55rem .75rem; text-align: start; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+    .lt-table-wrap td { padding: .5rem .75rem; border-bottom: 1px solid #f3f4f6; color: #374151; vertical-align: middle; }
+    .lt-table-wrap tbody tr:hover td { background: #f9fafb; }
+
+    .lt-pill { display: inline-block; padding: .15rem .5rem; font-size: var(--fs-xs); font-weight: 600; border-radius: .25rem; white-space: nowrap; }
+    .lt-pill-st-Submitted    { background: #eff6ff; color: #1d4ed8; }
+    .lt-pill-st-UnderReview  { background: #fffbeb; color: #b45309; }
+    .lt-pill-st-Approved     { background: #ecfdf5; color: #047857; }
+    .lt-pill-st-Rejected     { background: #fef2f2; color: #b91c1c; }
+    .lt-pill-st-Implemented  { background: #ecfeff; color: #0e7490; }
+    .lt-pill-st-Cancelled    { background: #f1f5f9; color: #475569; }
+    .lt-pill-pri { background: #f5f3ff; color: #6d28d9; }
+
+    .lt-link { color: #005B99; font-weight: 600; text-decoration: none; }
+    .lt-link:hover { text-decoration: underline; color: #003d6b; }
+    .lt-actions { display: inline-flex; gap: .35rem; align-items: center; }
+    .lt-actions a { color: #005B99; padding: .2rem; border-radius: .25rem; transition: background .15s; }
+    .lt-actions a:hover { background: #eff6ff; }
+    .lt-action-locked { color: #cbd5e1; padding: .2rem; display: inline-flex; align-items: center; cursor: not-allowed; }
+</style>
+
+<div class="lt-shell">
+    <div class="lt-header">
+        <div>
+            <h1><i data-lucide="git-pull-request" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>@Shared["Heading_ChangeRequests"]</h1>
+            <p>@Shared["Text_ManageChangeRequests"]</p>
+        </div>
+        <a asp-action="Create" class="lt-btn lt-btn-primary">
+            <i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>@Shared["Action_NewRequest"]
+        </a>
+    </div>
+
+    <div class="lt-kpi-strip">
+        <div class="lt-kpi"><div class="lt-kpi-icon kpi-blue"><i data-lucide="file-text" class="w-4 h-4" aria-hidden="true"></i></div><div><div class="lt-kpi-num">@total</div><div class="lt-kpi-label">@Shared["Label_TotalRequests"]</div></div></div>
+        <div class="lt-kpi"><div class="lt-kpi-icon kpi-amber"><i data-lucide="clock" class="w-4 h-4" aria-hidden="true"></i></div><div><div class="lt-kpi-num">@pending</div><div class="lt-kpi-label">@Shared["Label_PendingApproval"]</div></div></div>
+        <div class="lt-kpi"><div class="lt-kpi-icon kpi-green"><i data-lucide="check-circle" class="w-4 h-4" aria-hidden="true"></i></div><div><div class="lt-kpi-num">@approved</div><div class="lt-kpi-label">@Shared["ChangeRequestStatus_Approved"]</div></div></div>
+        <div class="lt-kpi"><div class="lt-kpi-icon kpi-cyan"><i data-lucide="check-check" class="w-4 h-4" aria-hidden="true"></i></div><div><div class="lt-kpi-num">@implemented</div><div class="lt-kpi-label">@Shared["ChangeRequestStatus_Implemented"]</div></div></div>
+    </div>
+
+    <div class="lt-toolbar">
+        <div class="lt-search">
+            <i data-lucide="search" class="w-4 h-4" aria-hidden="true"></i>
+            <input type="text" id="searchInput" placeholder="@Shared["Placeholder_SearchChangeRequests"]" />
+        </div>
+        <select id="filterStatus" class="lt-select" aria-label="@Shared["Filter_Status"]">
+            <option value="">@Shared["Filter_Status"]: @Shared["Filter_All"]</option>
+            <option value="Submitted">@Shared["ChangeRequestStatus_Submitted"]</option>
+            <option value="UnderReview">@Shared["ChangeRequestStatus_UnderReview"]</option>
+            <option value="Approved">@Shared["ChangeRequestStatus_Approved"]</option>
+            <option value="Rejected">@Shared["ChangeRequestStatus_Rejected"]</option>
+            <option value="Implemented">@Shared["ChangeRequestStatus_Implemented"]</option>
+            <option value="Cancelled">@Shared["ChangeRequestStatus_Cancelled"]</option>
+        </select>
+        <select id="filterPriority" class="lt-select" aria-label="@Shared["Filter_Priority"]">
+            <option value="">@Shared["Filter_Priority"]: @Shared["Filter_All"]</option>
+            <option value="1">1 (@Shared["Priority_Highest"])</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5 (@Shared["Priority_Lowest"])</option>
+        </select>
+        <button type="button" id="clearFiltersBtn" class="lt-btn lt-btn-ghost"><i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>@Shared["Button_Clear"]</button>
+        <span style="flex:1;"></span>
+        <button type="button" onclick="window.print()" class="lt-btn lt-btn-outline"><i data-lucide="download" class="w-3.5 h-3.5" aria-hidden="true"></i>@Shared["Button_Export"]</button>
+    </div>
+
+    <div class="lt-card">
+        <div class="lt-table-wrap">
+            <table id="crTable">
+                <thead>
+                    <tr>
+                        <th>@Shared["Column_Code"]</th>
+                        <th>@Shared["Column_Title"]</th>
+                        <th>@Shared["Column_Status"]</th>
+                        <th>@Shared["Column_Priority"]</th>
+                        <th>@Shared["Column_Process"]</th>
+                        <th>@Shared["Column_Service"]</th>
+                        <th style="text-align:end;">@Shared["Column_Actions"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var cr in Model)
+                    {
+                        var statusCls = $"lt-pill-st-{cr.Status}";
+                        var priLabel = cr.Priority switch
+                        {
+                            1 => Shared["Priority_Highest"].Value,
+                            2 => Shared["Priority_High"].Value,
+                            3 => Shared["Priority_Medium"].Value,
+                            4 => Shared["Priority_Low"].Value,
+                            _ => Shared["Priority_Lowest"].Value
+                        };
+                        <tr data-status="@cr.Status" data-priority="@cr.Priority">
+                            <td><span style="font-weight:600;color:#111827;">@cr.Code</span></td>
+                            <td style="font-weight:600;color:#111827;">@cr.Name</td>
+                            <td><span class="lt-pill @statusCls">@Shared[$"ChangeRequestStatus_{cr.Status}"]</span></td>
+                            <td><span class="lt-pill lt-pill-pri">@priLabel</span></td>
+                            <td style="color:#6b7280;">@(cr.Process?.Code ?? "—")</td>
+                            <td style="color:#6b7280;">@(cr.Service?.Code ?? "—")</td>
+                            <td style="text-align:end;">
+                                <span class="lt-actions">
+                                    <a asp-action="Details" asp-route-id="@cr.Id" title="@Shared["Tooltip_ViewDetails"]" aria-label="@Shared["Tooltip_ViewDetails"]"><i data-lucide="eye" class="w-4 h-4" aria-hidden="true"></i></a>
+                                    @if (cr.Status == ChangeRequestStatus.Submitted || cr.Status == ChangeRequestStatus.Rejected)
+                                    {
+                                        <a asp-action="Edit" asp-route-id="@cr.Id" title="@Shared["Tooltip_EditRecord"]" aria-label="@Shared["Tooltip_EditRecord"]"><i data-lucide="edit" class="w-4 h-4" aria-hidden="true"></i></a>
+                                    }
+                                    @* M-14 (Tier-3 a11y): role=img required for aria-label on <span>. *@
+                                    <span class="lt-action-locked" role="img" title="@(isRtl ? "لا يمكن الحذف — مقفل للتدقيق" : "Cannot delete — audit-locked")" aria-label="@(isRtl ? "مقفل للتدقيق" : "Audit-locked")"><i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i></span>
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                    @if (!Model.Any())
+                    {
+                        <tr><td colspan="7" style="padding:3rem 1rem;text-align:center;color:#94a3b8;">
+                            <i data-lucide="inbox" class="w-10 h-10" aria-hidden="true" style="margin:0 auto .5rem;display:block;color:#cbd5e1;"></i>
+                            <div style="font-weight:500;margin-bottom:.25rem;">@Shared["Empty_NoChangeRequests"]</div>
+                            <a asp-action="Create" style="color:#005B99;text-decoration:none;font-size: var(--fs-sm);">@Shared["Empty_CreateFirstChangeRequest"]</a>
+                        </td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+        const search = document.getElementById('searchInput');
+        const fst = document.getElementById('filterStatus');
+        const fpri = document.getElementById('filterPriority');
+        const rows = Array.from(document.querySelectorAll('tbody tr'));
+        function apply() {
+            const q = (search?.value || '').toLowerCase().trim();
+            const s = (fst?.value || '').trim();
+            const p = (fpri?.value || '').trim();
+            rows.forEach(r => {
+                if (r.querySelector('td[colspan]')) return;
+                const text = r.textContent.toLowerCase();
+                const okQ = !q || text.includes(q);
+                const okS = !s || r.dataset.status === s;
+                const okP = !p || r.dataset.priority === p;
+                r.style.display = (okQ && okS && okP) ? '' : 'none';
+            });
+        }
+        search?.addEventListener('input', apply);
+        fst?.addEventListener('change', apply);
+        fpri?.addEventListener('change', apply);
+        document.getElementById('clearFiltersBtn')?.addEventListener('click', function () {
+            if (search) search.value = '';
+            if (fst) fst.value = '';
+            if (fpri) fpri.value = '';
+            apply();
+        });
+    </script>
+}

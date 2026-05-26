@@ -1,0 +1,948 @@
+@model WorkloadScenario
+@functions {
+    string StatusLabel(WorkloadScenarioStatus s, bool rtl) => s switch {
+        WorkloadScenarioStatus.Draft => rtl ? "مسودة" : "Draft",
+        WorkloadScenarioStatus.InReview => rtl ? "قيد المراجعة" : "In Review",
+        WorkloadScenarioStatus.Approved => rtl ? "معتمد" : "Approved",
+        WorkloadScenarioStatus.Archived => rtl ? "مؤرشف" : "Archived",
+        _ => s.ToString()
+    };
+}
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = isRtl ? "تعديل السيناريو" : "Edit Scenario";
+
+    var orgUnits = ViewBag.OrgUnits as List<SelectListItem> ?? new List<SelectListItem>();
+    var configs = ViewBag.Configs as List<SelectListItem> ?? new List<SelectListItem>();
+    var processes = ViewBag.Processes as List<SelectListItem> ?? new List<SelectListItem>();
+    var services = ViewBag.Services as List<SelectListItem> ?? new List<SelectListItem>();
+    var lineItems = Model.LineItems?.OrderBy(li => li.CreatedAt).ToList() ?? new List<WorkloadLineItem>();
+    var allowedStatuses = ViewBag.AllowedStatuses as HashSet<WorkloadScenarioStatus>
+        ?? new HashSet<WorkloadScenarioStatus> { Model.Status };
+    var isEditable = ViewBag.IsEditable as bool? ?? true;
+
+    var tooltipConfig     = isRtl ? "يحدد ساعات العمل الصافية لكل موظف" : "Controls net hours per FTE";
+    var tooltipHeadcount  = isRtl ? "العدد الحالي للموظفين — يُستخدم لحساب الفجوة" : "Current employees — used to compute the staffing gap";
+    var tooltipGrowth     = isRtl ? "نسبة الزيادة السنوية" : "Annual volume growth rate per projection year";
+    var tooltipProjection = isRtl ? "عدد سنوات تطبيق النمو" : "Years to project growth forward (0 = current year only)";
+    var tooltipBaseFTE    = isRtl ? "قبل النمو والإشراف" : "Before growth + supervision";
+    var tooltipTotalFTE   = isRtl ? "بعد النمو والإشراف" : "After growth + supervision";
+    var tooltipGap        = isRtl ? "موجب = نقص، سالب = فائض" : "Positive = shortage, negative = surplus";
+
+    var arrowBack = isRtl ? "arrow-right" : "arrow-left";
+}
+
+<partial name="_WaStyles" />
+
+<div class="wa-page">
+    @* Sticky scenario header. *@
+    <div class="wa-stickyhead">
+        <div class="wa-titlerow">
+            <div class="wa-titlemain">
+                <a asp-action="Details" asp-route-id="@Model.Id" class="wa-btn wa-btn-ghost wa-btn-sm" style="padding:.25rem .45rem;" title="@(isRtl ? "العودة" : "Back")" aria-label="@(isRtl ? "العودة" : "Back")"><i data-lucide="@arrowBack" class="w-4 h-4" aria-hidden="true"></i></a>
+                <span class="wa-code-pill">@Model.Code</span>
+                <h1 class="wa-title" title="@Model.Name">@Model.Name</h1>
+                <span class="wa-status-pill wa-status-@Model.Status">@StatusLabel(Model.Status, isRtl)</span>
+                <span class="wa-breadcrumb">FY @Model.FiscalYear</span>
+                @if (!isEditable)
+                {
+                    <span style="font-size: var(--fs-xs);font-weight:600;color:#92400e;background:#fef3c7;padding:.15rem .5rem;border-radius:.25rem;">@(isRtl ? "للقراءة فقط" : "READ-ONLY")</span>
+                }
+            </div>
+            <div class="wa-actions">
+                <a asp-action="Details" asp-route-id="@Model.Id" class="wa-btn wa-btn-outline"><i data-lucide="eye" class="w-3.5 h-3.5"></i>@(isRtl ? "عرض" : "View")</a>
+                <a asp-action="ExportScenario" asp-route-id="@Model.Id" class="wa-btn wa-btn-outline"><i data-lucide="download" class="w-3.5 h-3.5"></i>CSV</a>
+            </div>
+        </div>
+    </div>
+
+    @* TempData["Success"] is rendered by _Layout — don't duplicate it here. *@
+
+    @* Dismissible "How it works" callout. *@
+    <div id="howItWorks" style="display:none;padding:.6rem .8rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:.375rem;">
+        <div style="display:flex;gap:.5rem;align-items:flex-start;">
+            <i data-lucide="info" class="w-4 h-4" style="color:#005B99;flex-shrink:0;margin-top:.15rem;"></i>
+            <div style="flex:1;font-size: var(--fs-xs);color:#1e3a8a;line-height:1.5;">
+                <strong>@(isRtl ? "كيفية الاستخدام:" : "How it works:")</strong>
+                <span>@(isRtl
+                    ? "املأ بيانات السيناريو في الخطوة 1 → أضف العمليات والخدمات في الخطوة 2 → اضبط الحالة واحفظ في الخطوة 3."
+                    : "Fill in scenario details in Step 1 → add processes and services in Step 2 → set status and save in Step 3.")</span>
+            </div>
+            <button type="button" id="dismissHowItWorks" class="wa-btn wa-btn-ghost wa-btn-sm" style="padding:.2rem .35rem;" title="@(isRtl ? "إخفاء" : "Dismiss")" aria-label="@(isRtl ? "إخفاء" : "Dismiss")"><i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i></button>
+        </div>
+    </div>
+    <button type="button" id="showHowItWorks" style="display:none;background:none;border:none;color:#005B99;font-size: var(--fs-xs);text-decoration:underline;cursor:pointer;align-self:flex-start;padding:0;">@(isRtl ? "عرض التعليمات" : "Show instructions")</button>
+
+    @* WIZARD INDICATOR — three steps. *@
+    <ul class="wa-wizard-steps" id="wizSteps">
+        <li class="wa-wizard-step is-active" data-step="1">
+            <span class="wa-step-num"><span>1</span></span>
+            <span class="wa-step-text">
+                <span class="wa-step-label">@(isRtl ? "تفاصيل السيناريو" : "Scenario Details")</span>
+                <span class="wa-step-desc">@(isRtl ? "الاسم والمعايير" : "Name & parameters")</span>
+            </span>
+        </li>
+        <li class="wa-wizard-step" data-step="2">
+            <span class="wa-step-num"><span>2</span></span>
+            <span class="wa-step-text">
+                <span class="wa-step-label">@(isRtl ? "بنود حجم العمل" : "Line Items")</span>
+                <span class="wa-step-desc"><span id="stepCount">@lineItems.Count</span> @(isRtl ? "بنود" : "items")</span>
+            </span>
+        </li>
+        <li class="wa-wizard-step" data-step="3">
+            <span class="wa-step-num"><span>3</span></span>
+            <span class="wa-step-text">
+                <span class="wa-step-label">@(isRtl ? "الحالة والحفظ" : "Status & Save")</span>
+                <span class="wa-step-desc">@(isRtl ? "مراجعة وتأكيد" : "Review & commit")</span>
+            </span>
+        </li>
+    </ul>
+
+    @* MAIN FORM — wraps Steps 1 and 3 (status). Step 2 line-items work via AJAX. *@
+    <form asp-action="Edit" method="post" id="editForm">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="Id" />
+        <input type="hidden" asp-for="Code" />
+
+        <div asp-validation-summary="ModelOnly" style="margin-bottom:.6rem;padding:.55rem .8rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.375rem;color:#b91c1c;font-size: var(--fs-xs);empty:hidden;"></div>
+
+        @* ─────────────── STEP 1: scenario details ─────────────── *@
+        <div class="wa-wizard-content is-active" data-step="1">
+            <div class="wa-card">
+                <div class="wa-card-head">
+                    <div class="wa-card-title"><i data-lucide="info" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "المعلومات الأساسية" : "Basic Information")</div>
+                </div>
+                <div class="wa-card-body">
+                    <div class="wa-form-grid wa-form-grid-2">
+                        <div>
+                            <label asp-for="NameEn" class="wa-label">@(isRtl ? "الاسم (إنجليزي)" : "Name (English)") <span class="wa-req">*</span></label>
+                            <input asp-for="NameEn" class="wa-input" />
+                        </div>
+                        <div>
+                            <label asp-for="NameAr" class="wa-label">@(isRtl ? "الاسم (عربي)" : "Name (Arabic)") <span class="wa-req">*</span></label>
+                            <input asp-for="NameAr" dir="rtl" class="wa-input" />
+                        </div>
+                    </div>
+                    <div class="wa-form-grid wa-form-grid-2">
+                        <div>
+                            <label asp-for="DescriptionEn" class="wa-label">@(isRtl ? "الوصف (إنجليزي)" : "Description (English)")</label>
+                            <textarea asp-for="DescriptionEn" rows="2" class="wa-textarea"></textarea>
+                        </div>
+                        <div>
+                            <label asp-for="DescriptionAr" class="wa-label">@(isRtl ? "الوصف (عربي)" : "Description (Arabic)")</label>
+                            <textarea asp-for="DescriptionAr" dir="rtl" rows="2" class="wa-textarea"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="wa-card">
+                <div class="wa-card-head">
+                    <div class="wa-card-title"><i data-lucide="settings" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "معايير التحليل" : "Analysis Parameters")</div>
+                </div>
+                <div class="wa-card-body">
+                    <div class="wa-form-grid wa-form-grid-3">
+                        <div>
+                            <label asp-for="FiscalYear" class="wa-label">@(isRtl ? "السنة المالية" : "Fiscal Year")</label>
+                            <select asp-for="FiscalYear" class="wa-select">
+                                @for (int y = DateTime.Now.Year - 2; y <= DateTime.Now.Year + 2; y++)
+                                {
+                                    <option value="@y" selected="@(Model.FiscalYear == y)">@y</option>
+                                }
+                            </select>
+                        </div>
+                        <div>
+                            <label asp-for="OwningUnitId" class="wa-label">@(isRtl ? "الوحدة التنظيمية" : "Organization Unit")</label>
+                            <select asp-for="OwningUnitId" class="wa-select">
+                                <option value="">—</option>
+                                @foreach (var u in orgUnits) { <option value="@u.Value" selected="@(Model.OwningUnitId?.ToString() == u.Value)">@u.Text</option> }
+                            </select>
+                        </div>
+                        <div>
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <label asp-for="WorkloadConfigId" class="wa-label" style="margin-bottom:.2rem;">@(isRtl ? "الإعدادات" : "Config") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tooltipConfig"></i></label>
+                                <a asp-action="Config" style="font-size: var(--fs-xs);color:#005B99;text-decoration:underline;">@(isRtl ? "تعديل" : "Edit")</a>
+                            </div>
+                            <select asp-for="WorkloadConfigId" class="wa-select">
+                                @foreach (var c in configs) { <option value="@c.Value" selected="@(Model.WorkloadConfigId == c.Value)">@c.Text</option> }
+                            </select>
+                        </div>
+                    </div>
+                    <div class="wa-form-grid wa-form-grid-3">
+                        <div>
+                            <label asp-for="CurrentHeadcount" class="wa-label">@(isRtl ? "العدد الحالي" : "Current Headcount") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tooltipHeadcount"></i></label>
+                            @* max=10000 mirrors [Range(0, 10000)] on the model. Without it, 12-digit
+                               values overflow int parse server-side and bypass Range validation. *@
+                            <input asp-for="CurrentHeadcount" type="number" min="0" max="10000" lang="en" inputmode="numeric" class="wa-input" />
+                        </div>
+                        <div>
+                            <label asp-for="GrowthRatePercent" class="wa-label">@(isRtl ? "نسبة النمو %" : "Growth Rate %") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tooltipGrowth"></i></label>
+                            <input asp-for="GrowthRatePercent" type="number" step="0.1" lang="en" inputmode="decimal" class="wa-input" />
+                        </div>
+                        <div>
+                            <label asp-for="ProjectionYears" class="wa-label">@(isRtl ? "سنوات الإسقاط" : "Projection Years") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tooltipProjection"></i></label>
+                            <input asp-for="ProjectionYears" type="number" min="0" max="10" lang="en" inputmode="numeric" class="wa-input" />
+                        </div>
+                    </div>
+                    <div>
+                        <label asp-for="Notes" class="wa-label">@(isRtl ? "ملاحظات" : "Notes")</label>
+                        <textarea asp-for="Notes" rows="2" class="wa-textarea"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* ─────────────── STEP 2: line items ─────────────── *@
+        <div class="wa-wizard-content" data-step="2">
+            <div class="wa-card">
+                <div class="wa-card-head">
+                    <div class="wa-card-title"><i data-lucide="list" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "بنود حجم العمل" : "Workload Line Items") <span class="wa-card-count" id="lineItemCount">@lineItems.Count</span></div>
+                    <div style="display:flex;gap:.3rem;">
+                        <a asp-action="ExportScenario" asp-route-id="@Model.Id" class="wa-btn wa-btn-ghost wa-btn-sm" title="@(isRtl ? "تصدير CSV" : "Export CSV")"><i data-lucide="download" class="w-3 h-3"></i>@(isRtl ? "تصدير" : "Export")</a>
+                        @if (lineItems.Any() && isEditable)
+                        {
+                            <button type="button" id="btnClearAll" class="wa-btn wa-btn-ghost wa-btn-sm" style="color:#dc2626;" title="@(isRtl ? "حذف كل البنود" : "Remove all items")"><i data-lucide="trash" class="w-3 h-3"></i>@(isRtl ? "حذف الكل" : "Clear All")</button>
+                        }
+                    </div>
+                </div>
+                <div class="wa-card-body" style="padding:.65rem .85rem;">
+                    @if (isEditable)
+                    {
+                        <div class="wa-form-grid wa-form-grid-3" style="background:#f8fafc;padding:.6rem .75rem;border-radius:.375rem;border:1px solid #e5e7eb;margin-bottom:.55rem;">
+                            <div>
+                                <label class="wa-label" style="font-size: var(--fs-xs);">@(isRtl ? "إضافة عملية" : "Add Process")</label>
+                                <div style="display:flex;gap:.35rem;">
+                                    <select id="processSelect" class="wa-select" style="flex:1;">
+                                        <option value="">@(isRtl ? "— اختر عملية —" : "— Select Process —")</option>
+                                        @foreach (var p in processes) { <option value="@p.Value">@p.Text</option> }
+                                    </select>
+                                    <button type="button" id="btnAddProcess" class="wa-btn wa-btn-primary wa-btn-sm" style="padding:.4rem .55rem;"><i data-lucide="plus" class="w-3.5 h-3.5"></i></button>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="wa-label" style="font-size: var(--fs-xs);">@(isRtl ? "إضافة خدمة" : "Add Service")</label>
+                                <div style="display:flex;gap:.35rem;">
+                                    <select id="serviceSelect" class="wa-select" style="flex:1;">
+                                        <option value="">@(isRtl ? "— اختر خدمة —" : "— Select Service —")</option>
+                                        @foreach (var s in services) { <option value="@s.Value">@s.Text</option> }
+                                    </select>
+                                    <button type="button" id="btnAddService" class="wa-btn wa-btn-primary wa-btn-sm" style="padding:.4rem .55rem;background:#15803d;border-color:#15803d;"><i data-lucide="plus" class="w-3.5 h-3.5"></i></button>
+                                </div>
+                            </div>
+                            <div style="display:flex;align-items:flex-end;">
+                                <button type="button" id="btnRecalculate" class="wa-btn wa-btn-primary wa-btn-sm" style="background:#d97706;border-color:#d97706;width:100%;justify-content:center;padding:.45rem .65rem;"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>@(isRtl ? "إعادة الحساب" : "Recalculate FTE")</button>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="wa-table-wrap">
+                        <table class="wa-table" id="lineItemsTable">
+                            <thead>
+                                <tr>
+                                    <th>@(isRtl ? "الاسم" : "Name")</th>
+                                    <th class="wa-num" style="width:120px;">@(isRtl ? "الحجم السنوي" : "Annual Volume")</th>
+                                    <th class="wa-num" style="width:120px;">@(isRtl ? "وقت المعالجة" : "Time (min)")</th>
+                                    <th style="width:110px;">@(isRtl ? "الترجيح" : "Weighting")</th>
+                                    <th style="width:110px;">@(isRtl ? "موسمية" : "Seasonality")</th>
+                                    <th class="wa-num" style="width:100px;">@(isRtl ? "ساعات" : "Hrs")</th>
+                                    <th style="width:48px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="lineItemsBody">
+                                <tr id="emptyLineItemsRow" class="@(lineItems.Any() ? "" : "")" style="display:@(lineItems.Any() ? "none" : "")">
+                                    <td colspan="7" style="padding:0;">
+                                        <div class="wa-empty">
+                                            <div class="wa-empty-icon"><i data-lucide="inbox" class="w-10 h-10"></i></div>
+                                            <div class="wa-empty-title">@(isRtl ? "لا توجد بنود بعد" : "No line items yet")</div>
+                                            <div class="wa-empty-msg">@(isRtl ? "أضف عملية أو خدمة من الأعلى لتبدأ" : "Add a process or service above to get started")</div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                @foreach (var li in lineItems)
+                                {
+                                    var hasSeasonal = !string.IsNullOrWhiteSpace(li.SeasonalDistribution);
+                                    <tr data-id="@li.Id"
+                                        data-complexity-enabled="@li.ComplexityEnabled.ToString().ToLowerInvariant()"
+                                        data-simple-pct="@(li.SimpleVolumePercent  ?? 100m)"
+                                        data-medium-pct="@(li.MediumVolumePercent ?? 0m)"
+                                        data-complex-pct="@(li.ComplexVolumePercent ?? 0m)"
+                                        data-simple-mult="@(li.SimpleMult  ?? 1.0m)"
+                                        data-medium-mult="@(li.MediumMult ?? 1.5m)"
+                                        data-complex-mult="@(li.ComplexMult ?? 2.5m)"
+                                        data-seasonal="@(li.SeasonalDistribution ?? "")">
+                                        <td style="font-weight:600;color:#111827;">@li.Name</td>
+                                        <td class="wa-num"><input type="number" min="0" lang="en" inputmode="numeric" value="@li.AnnualVolume" data-field="volume" class="wa-table-input line-item-input" /></td>
+                                        <td class="wa-num"><input type="number" min="0" step="0.1" lang="en" inputmode="decimal" value="@li.AvgProcessingTimeMinutes.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-field="time" class="wa-table-input line-item-input" /></td>
+                                        <td>
+                                            <button type="button" class="btn-complexity wa-btn wa-btn-sm" data-id="@li.Id" style="padding:.2rem .45rem;@(li.ComplexityEnabled ? "background:#fef3c7;color:#92400e;border-color:#fde68a;" : "background:#f1f5f9;color:#64748b;border-color:#e5e7eb;")">
+                                                <i data-lucide="@(li.ComplexityEnabled ? "sliders-horizontal" : "settings-2")" class="w-3 h-3"></i>
+                                                <span class="complexity-label">@(li.ComplexityEnabled ? (isRtl ? "مرجّح" : "Weighted") : (isRtl ? "عادي" : "Flat"))</span>
+                                            </button>
+                                        </td>
+                                        <td>
+                                            <button type="button" class="btn-seasonal wa-btn wa-btn-sm" data-id="@li.Id" style="padding:.2rem .45rem;@(hasSeasonal ? "background:#ede9fe;color:#5b21b6;border-color:#ddd6fe;" : "background:#f1f5f9;color:#64748b;border-color:#e5e7eb;")">
+                                                <i data-lucide="calendar-range" class="w-3 h-3"></i>
+                                                <span class="seasonal-label">@(hasSeasonal ? (isRtl ? "مخصّص" : "Custom") : (isRtl ? "منتظم" : "Even"))</span>
+                                            </button>
+                                        </td>
+                                        <td class="wa-num wa-mono" style="font-weight:700;"><span class="workload-hours">@li.WorkloadHours.ToString("N1")</span></td>
+                                        <td><button type="button" class="wa-btn wa-btn-ghost wa-btn-sm btn-remove-item" data-id="@li.Id" style="padding:.2rem .35rem;color:#dc2626;" title="@(isRtl ? "حذف" : "Remove")" aria-label="@(isRtl ? "حذف" : "Remove")"><i data-lucide="trash-2" class="w-3 h-3" aria-hidden="true"></i></button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div id="fteSummary" class="wa-kpis" style="margin-top:.55rem;">
+                        <div class="wa-kpi">
+                            <div class="wa-kpi-icon" style="background:#eff6ff;color:#1d4ed8;"><i data-lucide="clock" class="w-4 h-4"></i></div>
+                            <div class="wa-kpi-text">
+                                <div class="wa-kpi-label">@(isRtl ? "إجمالي الساعات" : "Total Hours")</div>
+                                <div class="wa-kpi-value" id="totalHours">@Model.TotalWorkloadHours.ToString("N0")</div>
+                            </div>
+                        </div>
+                        <div class="wa-kpi">
+                            <div class="wa-kpi-icon" style="background:#f5f3ff;color:#6d28d9;"><i data-lucide="calculator" class="w-4 h-4"></i></div>
+                            <div class="wa-kpi-text">
+                                <div class="wa-kpi-label" title="@tooltipBaseFTE">@(isRtl ? "الموظفون الأساسيون" : "Base FTE")</div>
+                                <div class="wa-kpi-value" id="rawFTE">@Model.TotalRequiredFTE.ToString("N2")</div>
+                            </div>
+                        </div>
+                        <div class="wa-kpi">
+                            <div class="wa-kpi-icon" style="background:#f0fdf4;color:#15803d;"><i data-lucide="users" class="w-4 h-4"></i></div>
+                            <div class="wa-kpi-text">
+                                <div class="wa-kpi-label" title="@tooltipTotalFTE">@(isRtl ? "إجمالي الموظفين" : "Total FTE")</div>
+                                <div class="wa-kpi-value" id="totalFTE">@Model.TotalFTE.ToString("N0")</div>
+                            </div>
+                        </div>
+                        @{
+                            var initGapPositive = Model.FTEGap > 0;
+                            var initGapBg = initGapPositive ? "#fef2f2" : (Model.FTEGap < 0 ? "#f0fdf4" : "#f1f5f9");
+                            var initGapFg = initGapPositive ? "#b91c1c" : (Model.FTEGap < 0 ? "#15803d" : "#475569");
+                            var initGapIcon = initGapPositive ? "trending-up" : (Model.FTEGap < 0 ? "trending-down" : "minus");
+                        }
+                        <div class="wa-kpi" id="fteGapKpi">
+                            <div class="wa-kpi-icon" id="fteGapIcon" style="background:@initGapBg;color:@initGapFg;"><i data-lucide="@initGapIcon" class="w-4 h-4"></i></div>
+                            <div class="wa-kpi-text">
+                                <div class="wa-kpi-label" id="fteGapLabel" title="@tooltipGap">@(initGapPositive ? (isRtl ? "نقص" : "Shortage") : (isRtl ? "فائض" : "Surplus"))</div>
+                                <div class="wa-kpi-value" id="fteGap" data-value="@Model.FTEGap">@(initGapPositive ? "+" : "")@Model.FTEGap.ToString("N0")</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* ─────────────── STEP 3: status & save ─────────────── *@
+        <div class="wa-wizard-content" data-step="3">
+            <div class="wa-card">
+                <div class="wa-card-head">
+                    <div class="wa-card-title"><i data-lucide="check-circle" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "الحالة والحفظ" : "Status & Save")</div>
+                </div>
+                <div class="wa-card-body">
+                    <div class="wa-form-grid wa-form-grid-2">
+                        <div>
+                            <label asp-for="Status" class="wa-label">@(isRtl ? "حالة السيناريو" : "Scenario Status")</label>
+                            @if (isEditable)
+                            {
+                                <select asp-for="Status" class="wa-select">
+                                    @foreach (var s in Enum.GetValues<WorkloadScenarioStatus>().Where(x => allowedStatuses.Contains(x)))
+                                    {
+                                        <option value="@s" selected="@(Model.Status == s)">@StatusLabel(s, isRtl)</option>
+                                    }
+                                </select>
+                                <div class="wa-help">@(isRtl ? "يتم عرض التحويلات المسموحة فقط من الحالة الحالية." : "Only state-machine-allowed transitions are shown.")</div>
+                            }
+                            else
+                            {
+                                <select asp-for="Status" class="wa-select" disabled style="background:#f8fafc;">
+                                    <option value="@Model.Status" selected>@StatusLabel(Model.Status, isRtl)</option>
+                                </select>
+                                <div class="wa-help" style="color:#92400e;">@(isRtl ? "هذا السيناريو مؤرشف ولا يمكن تعديله." : "This scenario is archived and cannot be modified.")</div>
+                            }
+                        </div>
+                        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:.375rem;padding:.65rem .85rem;">
+                            <div style="font-size: var(--fs-xs);color:#1e3a8a;font-weight:700;margin-bottom:.35rem;display:flex;align-items:center;gap:.3rem;"><i data-lucide="info" class="w-3 h-3"></i>@(isRtl ? "ملخص الحفظ" : "Save Summary")</div>
+                            <div style="font-size: var(--fs-xs);color:#1e3a8a;line-height:1.6;">
+                                <div><span style="opacity:.7;">@(isRtl ? "البنود:" : "Items:")</span> <span id="saveSummaryItems" style="font-weight:700;">@lineItems.Count</span></div>
+                                <div><span style="opacity:.7;">@(isRtl ? "إجمالي الموظفين:" : "Total FTE:")</span> <span id="saveSummaryFTE" style="font-weight:700;">@Model.TotalFTE.ToString("N0")</span></div>
+                                <div><span style="opacity:.7;">@(isRtl ? "الفجوة:" : "Gap:")</span> <span id="saveSummaryGap" style="font-weight:700;">@(initGapPositive ? "+" : "")@Model.FTEGap.ToString("N0")</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* WIZARD FOOTER — Prev/Next navigation + Save (only on step 3). *@
+        <div class="wa-wizard-foot">
+            <button type="button" id="btnWizPrev" class="wa-btn wa-btn-outline" style="visibility:hidden;"><i data-lucide="@arrowBack" class="w-3.5 h-3.5"></i>@(isRtl ? "السابق" : "Previous")</button>
+            <div style="display:flex;gap:.4rem;">
+                <a asp-action="Details" asp-route-id="@Model.Id" class="wa-btn wa-btn-ghost">@(isRtl ? "إلغاء" : "Cancel")</a>
+                <button type="button" id="btnWizNext" class="wa-btn wa-btn-primary">@(isRtl ? "التالي" : "Next") <i data-lucide="@(isRtl ? "arrow-left" : "arrow-right")" class="w-3.5 h-3.5"></i></button>
+                <button type="submit" id="btnWizSave" class="wa-btn wa-btn-primary" style="display:none;background:#15803d;border-color:#15803d;"><i data-lucide="save" class="w-3.5 h-3.5"></i>@(isRtl ? "حفظ التغييرات" : "Save Changes")</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+@* ─────────────── COMPLEXITY SIDE PANEL — replaces the Swal modal ─────────────── *@
+<div class="wa-sidepanel-overlay" id="complexityOverlay"></div>
+<aside class="wa-sidepanel" id="complexityPanel" aria-hidden="true">
+    <div class="wa-sidepanel-head">
+        <div class="wa-sidepanel-title"><i data-lucide="sliders-horizontal"></i><span>@(isRtl ? "ترجيح التعقيد" : "Complexity Weighting")</span></div>
+        <button type="button" class="wa-btn wa-btn-ghost wa-btn-sm" data-close-panel="complexity"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+    </div>
+    <div class="wa-sidepanel-body">
+        <p style="font-size: var(--fs-xs);color:#6b7280;margin:0 0 .65rem;line-height:1.45;">@(isRtl
+            ? "قسّم الحجم السنوي حسب التعقيد. يجب أن يكون مجموع النسب 100٪."
+            : "Split annual volume by complexity. The three percentages must sum to 100%.")</p>
+        <label style="display:inline-flex;align-items:center;gap:.45rem;margin-bottom:.65rem;font-size: var(--fs-xs);font-weight:600;color:#111827;">
+            <input type="checkbox" id="cxEnabled" />@(isRtl ? "تفعيل الترجيح" : "Enable weighting")
+        </label>
+        <div id="cxFields" style="display:grid;grid-template-columns:80px 1fr 1fr;gap:.5rem;align-items:center;">
+            <div></div>
+            <div style="font-size: var(--fs-xs);font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;">@(isRtl ? "النسبة" : "Share %")</div>
+            <div style="font-size: var(--fs-xs);font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;">@(isRtl ? "المضاعف" : "Multiplier")</div>
+            <div style="font-size: var(--fs-xs);font-weight:600;">@(isRtl ? "بسيط" : "Simple")</div>
+            <input type="number" min="0" max="100" step="0.1" id="cx_simple_pct" lang="en" class="wa-input" />
+            <input type="number" min="0" step="0.1" id="cx_simple_mult" lang="en" class="wa-input" />
+            <div style="font-size: var(--fs-xs);font-weight:600;">@(isRtl ? "متوسط" : "Medium")</div>
+            <input type="number" min="0" max="100" step="0.1" id="cx_medium_pct" lang="en" class="wa-input" />
+            <input type="number" min="0" step="0.1" id="cx_medium_mult" lang="en" class="wa-input" />
+            <div style="font-size: var(--fs-xs);font-weight:600;">@(isRtl ? "معقّد" : "Complex")</div>
+            <input type="number" min="0" max="100" step="0.1" id="cx_complex_pct" lang="en" class="wa-input" />
+            <input type="number" min="0" step="0.1" id="cx_complex_mult" lang="en" class="wa-input" />
+        </div>
+        <div id="cxSum" style="font-size: var(--fs-xs);font-weight:600;margin-top:.65rem;"></div>
+    </div>
+    <div class="wa-sidepanel-foot">
+        <button type="button" class="wa-btn wa-btn-ghost" data-close-panel="complexity">@(isRtl ? "إلغاء" : "Cancel")</button>
+        <button type="button" id="btnSaveComplexity" class="wa-btn wa-btn-primary"><i data-lucide="check" class="w-3.5 h-3.5"></i>@(isRtl ? "حفظ" : "Save")</button>
+    </div>
+</aside>
+
+@* ─────────────── SEASONAL SIDE PANEL — replaces the Swal modal ─────────────── *@
+<div class="wa-sidepanel-overlay" id="seasonalOverlay"></div>
+<aside class="wa-sidepanel" id="seasonalPanel" aria-hidden="true">
+    <div class="wa-sidepanel-head">
+        <div class="wa-sidepanel-title"><i data-lucide="calendar-range"></i><span>@(isRtl ? "توزيع موسمي" : "Seasonal Distribution")</span></div>
+        <button type="button" class="wa-btn wa-btn-ghost wa-btn-sm" data-close-panel="seasonal"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+    </div>
+    <div class="wa-sidepanel-body">
+        <p style="font-size: var(--fs-xs);color:#6b7280;margin:0 0 .65rem;line-height:1.45;">@(isRtl
+            ? "حدد نسبة الحجم السنوي لكل شهر. يجب أن يكون المجموع 100٪. اتركها صفراً لتوزيع منتظم."
+            : "Enter the share of annual volume per month. Must sum to 100%. Leave all zero for an even split.")</p>
+        <div id="seasonalGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.65rem;">
+            <span id="seasonSum" style="font-size: var(--fs-xs);font-weight:600;"></span>
+            <div style="display:flex;gap:.5rem;">
+                <button type="button" id="btnSeasonReset" class="wa-btn wa-btn-ghost wa-btn-sm" style="color:#005B99;">@(isRtl ? "إعادة 8.33٪" : "Even 8.33%")</button>
+                <button type="button" id="btnSeasonClear" class="wa-btn wa-btn-ghost wa-btn-sm">@(isRtl ? "مسح" : "Clear")</button>
+            </div>
+        </div>
+    </div>
+    <div class="wa-sidepanel-foot">
+        <button type="button" class="wa-btn wa-btn-ghost" data-close-panel="seasonal">@(isRtl ? "إلغاء" : "Cancel")</button>
+        <button type="button" id="btnSaveSeasonal" class="wa-btn wa-btn-primary"><i data-lucide="check" class="w-3.5 h-3.5"></i>@(isRtl ? "حفظ" : "Save")</button>
+    </div>
+</aside>
+
+@section Scripts {
+<script nonce="@Context.CspNonce()">
+const scenarioId = '@Model.Id';
+const antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]').value;
+const isRtl = @(isRtl ? "true" : "false");
+const BRAND = '#005B99';
+
+const T = {
+    flat:     isRtl ? 'عادي'  : 'Flat',
+    weighted: isRtl ? 'مرجّح' : 'Weighted',
+    seasonCustom: isRtl ? 'مخصّص' : 'Custom',
+    seasonEven:   isRtl ? 'منتظم' : 'Even',
+    confirmRemoveTitle: isRtl ? 'حذف هذا البند؟' : 'Remove this line item?',
+    confirmRemoveText:  isRtl ? 'لا يمكن التراجع.' : 'This cannot be undone.',
+    confirmClearTitle:  isRtl ? 'حذف كل البنود؟' : 'Remove all line items?',
+    confirmClearText:   isRtl ? 'سيتم حذف جميع البنود نهائياً.' : 'All line items will be permanently removed.',
+    confirm: isRtl ? 'نعم، احذف' : 'Yes, remove',
+    cancel:  isRtl ? 'إلغاء' : 'Cancel',
+    mustSumTo100: isRtl ? 'يجب أن يكون المجموع 100٪' : 'Percentages must sum to 100%',
+    tooltipNote: isRtl ? 'الحجم السنوي ووقت المعالجة غير محددين — يرجى إدخالهما يدوياً' : 'Annual volume and processing time are not set — please enter them manually.',
+    note: isRtl ? 'تنبيه' : 'Note',
+    gapShortage: isRtl ? 'نقص'   : 'Shortage',
+    gapSurplus:  isRtl ? 'فائض' : 'Surplus',
+};
+
+if (window.lucide) lucide.createIcons();
+
+function headers() { return { 'RequestVerificationToken': antiForgeryToken }; }
+
+const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 2000, timerProgressBar: true });
+
+// ── Dismissible "How it works" ─────────────────────────────────────
+(function() {
+    const KEY = 'esems.workload.howItWorks.dismissed';
+    const panel = document.getElementById('howItWorks');
+    const showBtn = document.getElementById('showHowItWorks');
+    const dismiss = document.getElementById('dismissHowItWorks');
+    const dismissed = localStorage.getItem(KEY) === '1';
+    panel.style.display = dismissed ? 'none' : '';
+    showBtn.style.display = dismissed ? '' : 'none';
+    dismiss.addEventListener('click', () => {
+        localStorage.setItem(KEY, '1');
+        panel.style.display = 'none';
+        showBtn.style.display = '';
+    });
+    showBtn.addEventListener('click', () => {
+        localStorage.removeItem(KEY);
+        panel.style.display = '';
+        showBtn.style.display = 'none';
+    });
+})();
+
+// ── WIZARD navigation ─────────────────────────────────────────────
+(function() {
+    const steps = [...document.querySelectorAll('.wa-wizard-step')];
+    const contents = [...document.querySelectorAll('.wa-wizard-content')];
+    const btnPrev = document.getElementById('btnWizPrev');
+    const btnNext = document.getElementById('btnWizNext');
+    const btnSave = document.getElementById('btnWizSave');
+    let current = 1;
+    function render() {
+        steps.forEach(s => {
+            const n = Number(s.dataset.step);
+            s.classList.toggle('is-active', n === current);
+            s.classList.toggle('is-done', n < current);
+        });
+        contents.forEach(c => c.classList.toggle('is-active', Number(c.dataset.step) === current));
+        btnPrev.style.visibility = current === 1 ? 'hidden' : 'visible';
+        btnNext.style.display = current === 3 ? 'none' : '';
+        btnSave.style.display = current === 3 ? '' : 'none';
+        // Refresh save-step summary when arriving at step 3.
+        if (current === 3) refreshSaveSummary();
+        if (window.lucide) lucide.createIcons();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    btnPrev.addEventListener('click', () => { if (current > 1) { current--; render(); } });
+    btnNext.addEventListener('click', () => { if (current < 3) { current++; render(); } });
+    steps.forEach(s => s.addEventListener('click', () => { current = Number(s.dataset.step); render(); }));
+})();
+
+function refreshSaveSummary() {
+    document.getElementById('saveSummaryItems').textContent = document.getElementById('lineItemCount').textContent;
+    document.getElementById('saveSummaryFTE').textContent   = document.getElementById('totalFTE').textContent;
+    document.getElementById('saveSummaryGap').textContent   = document.getElementById('fteGap').textContent;
+}
+
+function refreshLineItemCount() {
+    const n = document.querySelectorAll('#lineItemsBody tr[data-id]').length;
+    document.getElementById('lineItemCount').textContent = n;
+    document.getElementById('stepCount').textContent = n;
+    const empty = document.getElementById('emptyLineItemsRow');
+    if (empty) empty.style.display = n > 0 ? 'none' : '';
+}
+
+// ── Add process / service ─────────────────────────────────────────
+document.getElementById('btnAddProcess')?.addEventListener('click', () => {
+    const sel = document.getElementById('processSelect');
+    if (!sel.value) return;
+    addLineItem(sel.value, null);
+    sel.value = '';
+});
+document.getElementById('btnAddService')?.addEventListener('click', () => {
+    const sel = document.getElementById('serviceSelect');
+    if (!sel.value) return;
+    addLineItem(null, sel.value);
+    sel.value = '';
+});
+
+async function addLineItem(processId, serviceId) {
+    const fd = new FormData();
+    fd.append('scenarioId', scenarioId);
+    if (processId) fd.append('processId', processId);
+    if (serviceId) fd.append('serviceId', serviceId);
+    const res = await fetch('@Url.Action("AddLineItem")', { method: 'POST', body: fd, headers: headers() });
+    const data = await res.json();
+    if (!data.success) {
+        Swal.fire({ icon: 'error', title: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_Error"].Value)), text: data.error || @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_CouldNotAdd"].Value)), confirmButtonColor: BRAND });
+        return;
+    }
+    const li = data.lineItem;
+    if ((li.annualVolume === 0) && (li.avgProcessingTimeMinutes === 0)) {
+        Toast.fire({ icon: 'info', title: T.tooltipNote, timer: 4000 });
+    }
+    appendRow(li);
+    refreshLineItemCount();
+}
+
+function appendRow(li) {
+    const tr = document.createElement('tr');
+    tr.dataset.id = li.id;
+    tr.dataset.complexityEnabled = String(!!li.complexityEnabled);
+    tr.dataset.simplePct = li.simpleVolumePercent ?? 100;
+    tr.dataset.mediumPct = li.mediumVolumePercent ?? 0;
+    tr.dataset.complexPct = li.complexVolumePercent ?? 0;
+    tr.dataset.simpleMult = li.simpleMult ?? 1.0;
+    tr.dataset.mediumMult = li.mediumMult ?? 1.5;
+    tr.dataset.complexMult = li.complexMult ?? 2.5;
+    tr.dataset.seasonal = li.seasonalDistribution ?? '';
+    const weighted = !!li.complexityEnabled;
+    const hasSeasonal = !!(li.seasonalDistribution && li.seasonalDistribution.length > 0);
+    const cxStyle = weighted
+        ? 'background:#fef3c7;color:#92400e;border-color:#fde68a;'
+        : 'background:#f1f5f9;color:#64748b;border-color:#e5e7eb;';
+    const seStyle = hasSeasonal
+        ? 'background:#ede9fe;color:#5b21b6;border-color:#ddd6fe;'
+        : 'background:#f1f5f9;color:#64748b;border-color:#e5e7eb;';
+    tr.innerHTML = `
+        <td style="font-weight:600;color:#111827;">${escapeHtml(li.nameEn || li.nameAr || 'New Item')}</td>
+        <td class="wa-num"><input type="number" min="0" lang="en" inputmode="numeric" value="${li.annualVolume}" data-field="volume" class="wa-table-input line-item-input" /></td>
+        <td class="wa-num"><input type="number" min="0" step="0.1" lang="en" inputmode="decimal" value="${li.avgProcessingTimeMinutes}" data-field="time" class="wa-table-input line-item-input" /></td>
+        <td><button type="button" class="btn-complexity wa-btn wa-btn-sm" data-id="${li.id}" style="padding:.2rem .45rem;${cxStyle}"><i data-lucide="${weighted ? 'sliders-horizontal' : 'settings-2'}" class="w-3 h-3"></i><span class="complexity-label">${weighted ? T.weighted : T.flat}</span></button></td>
+        <td><button type="button" class="btn-seasonal wa-btn wa-btn-sm" data-id="${li.id}" style="padding:.2rem .45rem;${seStyle}"><i data-lucide="calendar-range" class="w-3 h-3"></i><span class="seasonal-label">${hasSeasonal ? T.seasonCustom : T.seasonEven}</span></button></td>
+        <td class="wa-num wa-mono" style="font-weight:700;"><span class="workload-hours">${(li.workloadHours ?? 0).toFixed(1)}</span></td>
+        <td><button type="button" class="wa-btn wa-btn-ghost wa-btn-sm btn-remove-item" data-id="${li.id}" style="padding:.2rem .35rem;color:#dc2626;"><i data-lucide="trash-2" class="w-3 h-3"></i></button></td>`;
+    document.getElementById('lineItemsBody').appendChild(tr);
+    if (window.lucide) lucide.createIcons();
+}
+
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ── Confirm-before-remove + clear-all ─────────────────────────────
+document.getElementById('lineItemsBody').addEventListener('click', async (e) => {
+    const btn = e.target.closest('.btn-remove-item');
+    if (!btn) return;
+    const row = btn.closest('tr[data-id]');
+    const result = await Swal.fire({
+        icon: 'warning', title: T.confirmRemoveTitle, text: T.confirmRemoveText,
+        showCancelButton: true, confirmButtonText: T.confirm, cancelButtonText: T.cancel,
+        confirmButtonColor: '#dc2626', cancelButtonColor: '#64748b'
+    });
+    if (!result.isConfirmed) return;
+    const fd = new FormData();
+    fd.append('id', row.dataset.id);
+    const res = await fetch('@Url.Action("RemoveLineItem")', { method: 'POST', body: fd, headers: headers() });
+    const data = await res.json();
+    if (data.success) { row.remove(); refreshLineItemCount(); }
+    else Swal.fire({ icon: 'error', title: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_Error"].Value)), text: data.error || @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_CouldNotRemove"].Value)), confirmButtonColor: BRAND });
+});
+
+document.getElementById('btnClearAll')?.addEventListener('click', async () => {
+    const result = await Swal.fire({
+        icon: 'warning', title: T.confirmClearTitle, text: T.confirmClearText,
+        showCancelButton: true, confirmButtonText: T.confirm, cancelButtonText: T.cancel,
+        confirmButtonColor: '#dc2626', cancelButtonColor: '#64748b'
+    });
+    if (!result.isConfirmed) return;
+    const rows = [...document.querySelectorAll('#lineItemsBody tr[data-id]')];
+    for (const row of rows) {
+        const fd = new FormData();
+        fd.append('id', row.dataset.id);
+        const res = await fetch('@Url.Action("RemoveLineItem")', { method: 'POST', body: fd, headers: headers() });
+        const data = await res.json();
+        if (data.success) row.remove();
+    }
+    refreshLineItemCount();
+});
+
+// ── PER-ROW HRS LIVE RECALC ──────────────────────────────────────
+// The per-row "Hrs" cell was sometimes showing 0.0 even when the
+// totals at the bottom were correct — happened when the server's
+// cached WorkloadHours getter was stale OR the user just typed into
+// a Volume / Time input but hadn't pressed Recalculate yet. Cheaper
+// fix: recompute client-side on every input + once on page load so
+// the cell always matches the inputs you can see.
+function recalcRowHrs(row) {
+    if (!row) return;
+    const span = row.querySelector('.workload-hours');
+    if (!span) return;
+    const vol  = Number(row.querySelector('[data-field="volume"]')?.value) || 0;
+    const time = Number(row.querySelector('[data-field="time"]')?.value)   || 0;
+    let weighted = vol;
+    if (row.dataset.complexityEnabled === 'true') {
+        const sPct = Number(row.dataset.simplePct)  || 0;
+        const mPct = Number(row.dataset.mediumPct)  || 0;
+        const cPct = Number(row.dataset.complexPct) || 0;
+        const sM   = Number(row.dataset.simpleMult)  || 1.0;
+        const mM   = Number(row.dataset.mediumMult)  || 1.5;
+        const cM   = Number(row.dataset.complexMult) || 2.5;
+        weighted = vol * sPct / 100 * sM
+                 + vol * mPct / 100 * mM
+                 + vol * cPct / 100 * cM;
+    }
+    const hrs = weighted * time / 60;
+    span.textContent = hrs.toFixed(1);
+}
+function recalcAllRowHrs() {
+    document.querySelectorAll('#lineItemsBody tr[data-id]').forEach(recalcRowHrs);
+}
+// Recompute on every input keystroke (cheap math, no network).
+document.getElementById('lineItemsBody')?.addEventListener('input', e => {
+    if (e.target.classList?.contains('line-item-input')) {
+        recalcRowHrs(e.target.closest('tr[data-id]'));
+    }
+});
+// Initial pass — fixes any per-row cell the server rendered as 0.0.
+recalcAllRowHrs();
+
+// ── SIDE PANEL helpers ────────────────────────────────────────────
+function openPanel(name) {
+    document.getElementById(name + 'Overlay').classList.add('is-open');
+    document.getElementById(name + 'Panel').classList.add('is-open');
+    document.getElementById(name + 'Panel').setAttribute('aria-hidden', 'false');
+}
+function closePanel(name) {
+    document.getElementById(name + 'Overlay').classList.remove('is-open');
+    document.getElementById(name + 'Panel').classList.remove('is-open');
+    document.getElementById(name + 'Panel').setAttribute('aria-hidden', 'true');
+}
+document.querySelectorAll('[data-close-panel]').forEach(b => b.addEventListener('click', () => closePanel(b.dataset.closePanel)));
+document.getElementById('complexityOverlay').addEventListener('click', () => closePanel('complexity'));
+document.getElementById('seasonalOverlay').addEventListener('click', () => closePanel('seasonal'));
+
+// ── COMPLEXITY side panel ─────────────────────────────────────────
+let cxRow = null;
+document.getElementById('lineItemsBody').addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn-complexity');
+    if (!btn) return;
+    cxRow = btn.closest('tr[data-id]');
+    document.getElementById('cxEnabled').checked = cxRow.dataset.complexityEnabled === 'true';
+    document.getElementById('cx_simple_pct').value  = cxRow.dataset.simplePct;
+    document.getElementById('cx_medium_pct').value  = cxRow.dataset.mediumPct;
+    document.getElementById('cx_complex_pct').value = cxRow.dataset.complexPct;
+    document.getElementById('cx_simple_mult').value  = cxRow.dataset.simpleMult;
+    document.getElementById('cx_medium_mult').value  = cxRow.dataset.mediumMult;
+    document.getElementById('cx_complex_mult').value = cxRow.dataset.complexMult;
+    cxUpdateState();
+    cxUpdateSum();
+    openPanel('complexity');
+});
+
+function cxUpdateState() {
+    const on = document.getElementById('cxEnabled').checked;
+    const fields = document.getElementById('cxFields');
+    fields.style.opacity = on ? '1' : '0.4';
+    fields.style.pointerEvents = on ? 'auto' : 'none';
+}
+function cxUpdateSum() {
+    const s = ['simple','medium','complex'].reduce((a,k) => a + (Number(document.getElementById('cx_'+k+'_pct').value) || 0), 0);
+    const el = document.getElementById('cxSum');
+    el.textContent = (isRtl ? 'المجموع: ' : 'Sum: ') + s.toFixed(1) + '%';
+    el.style.color = Math.abs(s - 100) < 0.01 ? '#15803d' : '#b91c1c';
+}
+document.getElementById('cxEnabled').addEventListener('change', cxUpdateState);
+['simple','medium','complex'].forEach(k => document.getElementById('cx_'+k+'_pct').addEventListener('input', cxUpdateSum));
+
+document.getElementById('btnSaveComplexity').addEventListener('click', async () => {
+    if (!cxRow) return;
+    const enabled = document.getElementById('cxEnabled').checked;
+    const g = (id) => Number(document.getElementById(id).value) || 0;
+    const v = {
+        enabled,
+        simplePct: g('cx_simple_pct'), mediumPct: g('cx_medium_pct'), complexPct: g('cx_complex_pct'),
+        simpleMult: g('cx_simple_mult'), mediumMult: g('cx_medium_mult'), complexMult: g('cx_complex_mult')
+    };
+    if (enabled && Math.abs(v.simplePct + v.mediumPct + v.complexPct - 100) > 0.01) {
+        Toast.fire({ icon: 'warning', title: T.mustSumTo100, timer: 3000 });
+        return;
+    }
+    const vol  = Number(cxRow.querySelector('[data-field="volume"]').value) || 0;
+    const time = Number(cxRow.querySelector('[data-field="time"]').value)   || 0;
+    const fd = new FormData();
+    fd.append('id', cxRow.dataset.id);
+    fd.append('annualVolume', String(vol));
+    fd.append('avgProcessingTimeMinutes', String(time));
+    fd.append('complexityEnabled', String(enabled));
+    if (enabled) {
+        fd.append('simplePercent',  String(v.simplePct));
+        fd.append('mediumPercent',  String(v.mediumPct));
+        fd.append('complexPercent', String(v.complexPct));
+        fd.append('simpleMult',  String(v.simpleMult));
+        fd.append('mediumMult',  String(v.mediumMult));
+        fd.append('complexMult', String(v.complexMult));
+    }
+    if (cxRow.dataset.seasonal) fd.append('seasonalDistribution', cxRow.dataset.seasonal);
+    const res = await fetch('@Url.Action("UpdateLineItem")', { method: 'POST', body: fd, headers: headers() });
+    const data = await res.json();
+    if (!data.success) {
+        Swal.fire({ icon: 'error', title: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_Error"].Value)), text: data.error || @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_SaveFailed"].Value)), confirmButtonColor: BRAND });
+        return;
+    }
+    cxRow.dataset.complexityEnabled = String(enabled);
+    cxRow.dataset.simplePct  = v.simplePct;
+    cxRow.dataset.mediumPct  = v.mediumPct;
+    cxRow.dataset.complexPct = v.complexPct;
+    cxRow.dataset.simpleMult  = v.simpleMult;
+    cxRow.dataset.mediumMult  = v.mediumMult;
+    cxRow.dataset.complexMult = v.complexMult;
+    cxRow.querySelector('.workload-hours').textContent = Number(data.workloadHours).toFixed(1);
+    const btn = cxRow.querySelector('.btn-complexity');
+    btn.style.cssText = 'padding:.2rem .45rem;' + (enabled
+        ? 'background:#fef3c7;color:#92400e;border-color:#fde68a;'
+        : 'background:#f1f5f9;color:#64748b;border-color:#e5e7eb;');
+    btn.querySelector('.complexity-label').textContent = enabled ? T.weighted : T.flat;
+    const icon = btn.querySelector('i'); if (icon) icon.setAttribute('data-lucide', enabled ? 'sliders-horizontal' : 'settings-2');
+    if (window.lucide) lucide.createIcons();
+    closePanel('complexity');
+});
+
+// ── SEASONAL side panel ───────────────────────────────────────────
+let seRow = null;
+const monthLabels = isRtl
+    ? ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر']
+    : ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+document.getElementById('lineItemsBody').addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn-seasonal');
+    if (!btn) return;
+    seRow = btn.closest('tr[data-id]');
+    let current = new Array(12).fill(100/12);
+    if (seRow.dataset.seasonal) {
+        try {
+            const parsed = JSON.parse(seRow.dataset.seasonal);
+            if (Array.isArray(parsed) && parsed.length === 12) current = parsed.map(Number);
+        } catch {}
+    }
+    const grid = document.getElementById('seasonalGrid');
+    grid.innerHTML = monthLabels.map((m, i) => `
+        <label style="display:flex;flex-direction:column;font-size: var(--fs-xs);color:#374151;">
+            <span style="font-weight:600;margin-bottom:.15rem;">${m}</span>
+            <input type="number" min="0" max="100" step="0.01" lang="en" inputmode="decimal"
+                   data-month="${i}" value="${Number(current[i]).toFixed(2)}" class="wa-input seasonal-input" style="padding:.3rem .4rem;font-size: var(--fs-xs);" />
+        </label>`).join('');
+    grid.querySelectorAll('.seasonal-input').forEach(el => el.addEventListener('input', seUpdateSum));
+    seUpdateSum();
+    openPanel('seasonal');
+});
+function seUpdateSum() {
+    const inputs = [...document.querySelectorAll('.seasonal-input')];
+    const s = inputs.reduce((a,el) => a + (Number(el.value) || 0), 0);
+    const el = document.getElementById('seasonSum');
+    el.textContent = (isRtl ? 'المجموع: ' : 'Sum: ') + s.toFixed(2) + '%';
+    el.style.color = Math.abs(s - 100) < 0.01 ? '#15803d' : '#b91c1c';
+}
+document.getElementById('btnSeasonReset').addEventListener('click', () => {
+    document.querySelectorAll('.seasonal-input').forEach(el => el.value = (100/12).toFixed(2));
+    seUpdateSum();
+});
+document.getElementById('btnSeasonClear').addEventListener('click', () => {
+    document.querySelectorAll('.seasonal-input').forEach(el => el.value = '0');
+    seUpdateSum();
+});
+document.getElementById('btnSaveSeasonal').addEventListener('click', async () => {
+    if (!seRow) return;
+    const values = [...document.querySelectorAll('.seasonal-input')]
+        .sort((a,b) => Number(a.dataset.month) - Number(b.dataset.month))
+        .map(el => Number(el.value) || 0);
+    const total = values.reduce((a,v) => a+v, 0);
+    let serialized = '';
+    let hasSeasonal = false;
+    if (Math.abs(total) >= 0.01) {
+        if (Math.abs(total - 100) > 0.01) {
+            Toast.fire({ icon: 'warning', title: isRtl ? 'يجب أن يكون المجموع 100٪ أو تصفير الحقول' : 'Values must sum to 100% (or clear all)', timer: 3000 });
+            return;
+        }
+        serialized = JSON.stringify(values);
+        hasSeasonal = true;
+    }
+    const vol  = Number(seRow.querySelector('[data-field="volume"]').value) || 0;
+    const time = Number(seRow.querySelector('[data-field="time"]').value)   || 0;
+    const enabled = seRow.dataset.complexityEnabled === 'true';
+    const fd = new FormData();
+    fd.append('id', seRow.dataset.id);
+    fd.append('annualVolume', String(vol));
+    fd.append('avgProcessingTimeMinutes', String(time));
+    fd.append('complexityEnabled', String(enabled));
+    if (enabled) {
+        fd.append('simplePercent',  seRow.dataset.simplePct);
+        fd.append('mediumPercent',  seRow.dataset.mediumPct);
+        fd.append('complexPercent', seRow.dataset.complexPct);
+        fd.append('simpleMult',  seRow.dataset.simpleMult);
+        fd.append('mediumMult',  seRow.dataset.mediumMult);
+        fd.append('complexMult', seRow.dataset.complexMult);
+    }
+    fd.append('seasonalDistribution', serialized);
+    const res = await fetch('@Url.Action("UpdateLineItem")', { method: 'POST', body: fd, headers: headers() });
+    const data = await res.json();
+    if (!data.success) {
+        Swal.fire({ icon: 'error', title: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_Error"].Value)), text: data.error || @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_SaveFailed"].Value)), confirmButtonColor: BRAND });
+        return;
+    }
+    seRow.dataset.seasonal = serialized;
+    const btn = seRow.querySelector('.btn-seasonal');
+    btn.style.cssText = 'padding:.2rem .45rem;' + (hasSeasonal
+        ? 'background:#ede9fe;color:#5b21b6;border-color:#ddd6fe;'
+        : 'background:#f1f5f9;color:#64748b;border-color:#e5e7eb;');
+    btn.querySelector('.seasonal-label').textContent = hasSeasonal ? T.seasonCustom : T.seasonEven;
+    closePanel('seasonal');
+});
+
+// ── Recalculate ───────────────────────────────────────────────────
+const btnRecalc = document.getElementById('btnRecalculate');
+btnRecalc?.addEventListener('click', async () => {
+    const rows = [...document.querySelectorAll('#lineItemsBody tr[data-id]')];
+    if (rows.length === 0) {
+        Toast.fire({ icon: 'info', title: isRtl ? 'لا توجد بنود للحساب' : 'No line items to calculate' });
+        return;
+    }
+    const originalHtml = btnRecalc.innerHTML;
+    btnRecalc.disabled = true;
+    btnRecalc.style.opacity = '0.7';
+    btnRecalc.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5"></i> ${isRtl ? 'جاري الحساب…' : 'Calculating…'}`;
+    if (window.lucide) lucide.createIcons();
+    try {
+        const updates = rows.map(row => {
+            const fd = new FormData();
+            fd.append('id', row.dataset.id);
+            fd.append('annualVolume', row.querySelector('[data-field="volume"]').value);
+            fd.append('avgProcessingTimeMinutes', row.querySelector('[data-field="time"]').value);
+            const enabled = row.dataset.complexityEnabled === 'true';
+            fd.append('complexityEnabled', String(enabled));
+            if (enabled) {
+                fd.append('simplePercent',  row.dataset.simplePct);
+                fd.append('mediumPercent',  row.dataset.mediumPct);
+                fd.append('complexPercent', row.dataset.complexPct);
+                fd.append('simpleMult',  row.dataset.simpleMult);
+                fd.append('mediumMult',  row.dataset.mediumMult);
+                fd.append('complexMult', row.dataset.complexMult);
+            }
+            if (row.dataset.seasonal) fd.append('seasonalDistribution', row.dataset.seasonal);
+            return fetch('@Url.Action("UpdateLineItem")', { method: 'POST', body: fd, headers: headers() }).then(r => r.json());
+        });
+        const results = await Promise.all(updates);
+        const firstBad = results.find(r => !r.success);
+        if (firstBad) {
+            Swal.fire({ icon: 'error', title: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_Error"].Value)), text: firstBad.error || @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_SomeRowsFailed"].Value)), confirmButtonColor: BRAND });
+            return;
+        }
+        const fd = new FormData();
+        fd.append('scenarioId', scenarioId);
+        const res = await fetch('@Url.Action("Calculate")', { method: 'POST', body: fd, headers: headers() });
+        const data = await res.json();
+        document.getElementById('totalHours').textContent = data.totalWorkloadHours.toFixed(0);
+        document.getElementById('rawFTE').textContent     = data.totalRequiredFTE.toFixed(2);
+        document.getElementById('totalFTE').textContent   = data.totalFTE.toFixed(0);
+        const gapEl = document.getElementById('fteGap');
+        gapEl.textContent = (data.fteGap > 0 ? '+' : '') + data.fteGap.toFixed(0);
+        const positive = data.fteGap > 0;
+        const negative = data.fteGap < 0;
+        const iconWrap = document.getElementById('fteGapIcon');
+        iconWrap.style.background = positive ? '#fef2f2' : (negative ? '#f0fdf4' : '#f1f5f9');
+        iconWrap.style.color      = positive ? '#b91c1c' : (negative ? '#15803d' : '#475569');
+        iconWrap.querySelector('i').setAttribute('data-lucide', positive ? 'trending-up' : (negative ? 'trending-down' : 'minus'));
+        document.getElementById('fteGapLabel').textContent = positive ? T.gapShortage : T.gapSurplus;
+        data.lineItems.forEach(li => {
+            const row = document.querySelector('tr[data-id="' + li.id + '"]');
+            if (row) row.querySelector('.workload-hours').textContent = li.workloadHours.toFixed(1);
+        });
+        if (window.lucide) lucide.createIcons();
+        Toast.fire({ icon: 'success', title: isRtl ? 'تم تحديث الحسابات' : 'FTE recalculated' });
+    } finally {
+        btnRecalc.disabled = false;
+        btnRecalc.style.opacity = '';
+        btnRecalc.innerHTML = originalHtml;
+        if (window.lucide) lucide.createIcons();
+    }
+});
+</script>
+}

@@ -1,0 +1,302 @@
+@model IEnumerable<EnterpriseRisk>
+@using ESEMS.Web.Services.Integrations.Contracts
+@{
+    ViewData["Title"] = Shared["Title_EnterpriseRisks"].Value;
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+
+    // External-mode comes from EnterpriseRisksController.Index when an external risk
+    // system is configured. The local model is empty in that mode; the risks come
+    // from ViewBag.ExternalRisks (List<LinkedRiskDto>) and the Add button deep-links
+    // to the external system instead of the local Create action.
+    var externalMode         = (bool)(ViewBag.ExternalMode ?? false);
+    var externalRisks        = ViewBag.ExternalRisks as IReadOnlyList<LinkedRiskDto> ?? Array.Empty<LinkedRiskDto>();
+    var externalProviderName = ViewBag.ExternalProviderName as string;
+    var externalAddRiskUrl   = ViewBag.ExternalAddRiskUrl as string;
+    var externalIndexUrl     = ViewBag.ExternalIndexUrl as string;
+
+    var critical = externalMode
+        ? externalRisks.Count(r => r.Severity == LinkedRiskSeverity.Critical)
+        : Model.Count(r => r.RiskLevel == RiskLevel.Critical);
+    var high = externalMode
+        ? externalRisks.Count(r => r.Severity == LinkedRiskSeverity.High)
+        : Model.Count(r => r.RiskLevel == RiskLevel.High);
+    var outsideTol = externalMode ? 0 : Model.Count(r => r.IsOutsideTolerance());
+    var reviewDue  = externalMode ? 0 : Model.Count(r => r.IsReviewDue());
+}
+
+<style>
+    .lt-shell { display: flex; flex-direction: column; gap: .6rem; }
+    .lt-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; flex: 0 0 auto; }
+    .lt-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .lt-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .lt-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; border: none; }
+    .lt-btn-primary { background: #005B99; color: #fff; } .lt-btn-primary:hover { background: #003d6b; color: #fff; }
+    .lt-btn-outline { background: #fff; color: #005B99; border: 1px solid #cbd5e1; } .lt-btn-outline:hover { background: #f1f5f9; }
+    .lt-kpi-strip { display: flex; align-items: stretch; gap: .5rem; padding: .55rem .65rem; background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; flex-wrap: wrap; }
+    .lt-kpi { display: flex; align-items: center; gap: .55rem; padding: .25rem .65rem; flex: 1 1 180px; min-width: 180px; border-inline-end: 1px dashed #e5e7eb; }
+    .lt-kpi:last-child { border-inline-end: none; }
+    .lt-kpi-icon { width: 34px; height: 34px; border-radius: .375rem; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .lt-kpi-icon.kpi-red    { background: #fef2f2; color: #dc2626; }
+    .lt-kpi-icon.kpi-orange { background: #fff7ed; color: #c2410c; }
+    .lt-kpi-icon.kpi-amber  { background: #fffbeb; color: #b45309; }
+    .lt-kpi-icon.kpi-purple { background: #f5f3ff; color: #7c3aed; }
+    .lt-kpi-num { font-size: var(--fs-base); font-weight: 700; color: #111827; line-height: 1; }
+    .lt-kpi-label { font-size: var(--fs-xs); color: #6b7280; margin-top: .15rem; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+    @@media (max-width: 768px) { .lt-kpi { flex: 1 1 45%; border-inline-end: none; } }
+
+    .lt-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; display: flex; flex-direction: column; overflow: hidden; }
+    .lt-card-h { display: flex; align-items: center; gap: .5rem; padding: .65rem .85rem; border-bottom: 1px solid #f1f5f9; }
+    .lt-card-h h2 { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .45rem; }
+    .lt-table-wrap { overflow: auto; }
+    .lt-table-wrap table { width: 100%; font-size: var(--fs-sm); border-collapse: collapse; }
+    .lt-table-wrap thead { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
+    .lt-table-wrap th { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; padding: .55rem .75rem; text-align: start; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+    .lt-table-wrap td { padding: .5rem .75rem; border-bottom: 1px solid #f3f4f6; color: #374151; vertical-align: middle; }
+    .lt-table-wrap tbody tr:hover td { background: #f9fafb; }
+    .lt-pill { display: inline-block; padding: .15rem .5rem; font-size: var(--fs-xs); font-weight: 600; border-radius: .25rem; white-space: nowrap; }
+    .lt-pill-Critical { background: #fef2f2; color: #b91c1c; }
+    .lt-pill-High     { background: #fff7ed; color: #c2410c; }
+    .lt-pill-Medium   { background: #fefce8; color: #a16207; }
+    .lt-pill-Low      { background: #ecfdf5; color: #047857; }
+    .lt-link { color: #005B99; font-weight: 600; text-decoration: none; }
+    .lt-link:hover { text-decoration: underline; color: #003d6b; }
+    .lt-actions { display: inline-flex; gap: .35rem; align-items: center; }
+    .lt-actions a { color: #005B99; padding: .2rem; border-radius: .25rem; transition: background .15s; }
+    .lt-actions a:hover { background: #eff6ff; }
+    .lt-action-locked { color: #cbd5e1; padding: .2rem; display: inline-flex; align-items: center; cursor: not-allowed; }
+
+    .lt-heatmap { padding: .85rem; }
+    .lt-heatmap-grid { display: grid; grid-template-columns: 28px repeat(5, 1fr); gap: 4px; max-width: 540px; margin: 0 auto; }
+    .lt-heatmap-cell { padding: .55rem .25rem; border-radius: .25rem; text-align: center; font-size: var(--fs-xs); color: #fff; font-weight: 700; }
+    .lt-heatmap-cell.empty { opacity: .42; }
+    .lt-hm-axis { font-size: var(--fs-xs); font-weight: 600; color: #64748b; padding: .35rem 0; text-align: center; }
+    .lt-hm-legend { display: flex; gap: .85rem; align-items: center; font-size: var(--fs-xs); color: #6b7280; justify-content: center; margin-top: .55rem; flex-wrap: wrap; }
+    .lt-hm-legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-inline-end: .3rem; }
+    .lt-c-low { background: #16a34a; }
+    .lt-c-med { background: #eab308; }
+    .lt-c-high { background: #ea580c; }
+    .lt-c-crit { background: #dc2626; }
+</style>
+
+<div class="lt-shell">
+    <div class="lt-header">
+        <div>
+            <h1><i data-lucide="shield-alert" class="w-5 h-5" style="color:#F46A6A;" aria-hidden="true"></i>@Shared["Title_EnterpriseRisks"]</h1>
+            <p>@Shared["Text_ManageEnterpriseRisks"]</p>
+        </div>
+        <div style="display:flex;gap:.4rem;">
+            @if (externalMode)
+            {
+                @* Add Risk button deep-links to the external system in a new tab. *@
+                if (!string.IsNullOrEmpty(externalIndexUrl))
+                {
+                    <a href="@externalIndexUrl" target="_blank" rel="noopener" class="lt-btn lt-btn-outline" title="@(isRtl ? "افتح في النظام الخارجي" : "Open in") @externalProviderName">
+                        <i data-lucide="external-link" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "إدارة في" : "Manage in") @externalProviderName
+                    </a>
+                }
+                if (!string.IsNullOrEmpty(externalAddRiskUrl))
+                {
+                    <a href="@externalAddRiskUrl" target="_blank" rel="noopener" class="lt-btn lt-btn-primary">
+                        <i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>@Shared["Button_AddRisk"]
+                        <i data-lucide="external-link" class="w-4 h-4" aria-hidden="true" style="margin-inline-start:.25rem;opacity:.8;"></i>
+                    </a>
+                }
+            }
+            else
+            {
+                <a asp-action="Dashboard" class="lt-btn lt-btn-outline"><i data-lucide="layout-dashboard" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "نظرة عامة" : "Overview")</a>
+                <a asp-action="HeatMap" class="lt-btn lt-btn-outline"><i data-lucide="grid" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "خريطة المخاطر" : "Heat Map")</a>
+                <a href="~/api/export/risks/excel" class="lt-btn lt-btn-outline"><i data-lucide="download" class="w-4 h-4" aria-hidden="true"></i>Excel</a>
+                <a asp-action="Create" class="lt-btn lt-btn-primary"><i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>@Shared["Button_AddRisk"]</a>
+            }
+        </div>
+    </div>
+
+    @if (externalMode)
+    {
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:.5rem;padding:.65rem .85rem;display:flex;align-items:center;gap:.5rem;">
+            <i data-lucide="info" style="width:16px;height:16px;color:#1d4ed8;flex-shrink:0;"></i>
+            <span style="font-size: var(--fs-xs);color:#1e3a8a;line-height:1.45;">
+                @(isRtl ? "المخاطر المعروضة هنا مصدرها " : "Risks shown here come from ")<strong>@externalProviderName</strong>@(isRtl ? ". لإضافة أو تعديل، استخدم النظام الخارجي." : ". To add or edit, use the external system.")
+            </span>
+        </div>
+    }
+
+    <div class="lt-kpi-strip">
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-red"><i data-lucide="alert-octagon" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@critical</div><div class="lt-kpi-label">@Shared["Label_Critical"]</div></div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-orange"><i data-lucide="alert-triangle" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@high</div><div class="lt-kpi-label">@Shared["Label_High"]</div></div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-amber"><i data-lucide="shield-off" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@outsideTol</div><div class="lt-kpi-label">@Shared["Label_OutsideTolerance"]</div></div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-purple"><i data-lucide="calendar-clock" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@reviewDue</div><div class="lt-kpi-label">@Shared["Label_ReviewDue"]</div></div>
+        </div>
+    </div>
+
+    @* Heat map needs local likelihood × impact data — hidden in external mode *@
+    @if (!externalMode)
+    {
+    <div class="lt-card">
+        <div class="lt-card-h">
+            <h2><i data-lucide="grid-3x3" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@Shared["Label_RiskHeatMap"]</h2>
+        </div>
+        <div class="lt-heatmap">
+            <div class="lt-heatmap-grid">
+                <div></div>
+                <div class="lt-hm-axis">1</div><div class="lt-hm-axis">2</div><div class="lt-hm-axis">3</div><div class="lt-hm-axis">4</div><div class="lt-hm-axis">5</div>
+                @for (int l = 5; l >= 1; l--)
+                {
+                    <div class="lt-hm-axis">@l</div>
+                    @for (int i = 1; i <= 5; i++)
+                    {
+                        var score = l * i;
+                        var bg = score >= 15 ? "lt-c-crit" : score >= 10 ? "lt-c-high" : score >= 5 ? "lt-c-med" : "lt-c-low";
+                        var sev = score >= 15 ? Shared["Label_Critical"] : score >= 10 ? Shared["Label_High"] : score >= 5 ? Shared["Label_Medium"] : Shared["Label_Low"];
+                        var count = Model.Count(r => r.Likelihood == l && r.Impact == i);
+                        <div class="lt-heatmap-cell @bg @(count == 0 ? "empty" : "")" title="@sev (@score) — @count">@(count > 0 ? count.ToString() : "")</div>
+                    }
+                }
+            </div>
+            <div class="lt-hm-legend">
+                <span><span class="sw lt-c-low"></span>@Shared["Label_Low"]</span>
+                <span><span class="sw lt-c-med"></span>@Shared["Label_Medium"]</span>
+                <span><span class="sw lt-c-high"></span>@Shared["Label_High"]</span>
+                <span><span class="sw lt-c-crit"></span>@Shared["Label_Critical"]</span>
+            </div>
+        </div>
+    </div>
+    } @* end !externalMode heat-map gate *@
+
+    @if (externalMode)
+    {
+        @* External-mode list: simpler columns matching what the LinkedRiskDto carries.
+           No likelihood/impact matrix breakdown — that's the external system's domain. *@
+        <div class="lt-card">
+            <div class="lt-table-wrap">
+                <table class="esems-datatable">
+                    <thead>
+                        <tr>
+                            <th>@Shared["Column_RiskNumber"]</th>
+                            <th>@Shared["Column_Title"]</th>
+                            <th>@(isRtl ? "الخطورة" : "Severity")</th>
+                            <th>@Shared["Column_Status"]</th>
+                            <th>@(isRtl ? "المالك" : "Owner")</th>
+                            <th>@(isRtl ? "أُنشئ" : "Created")</th>
+                            <th style="text-align:end;">@Shared["Column_Actions"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (!externalRisks.Any())
+                        {
+                            <tr><td colspan="7" style="padding:2rem;text-align:center;color:#94a3b8;font-size: var(--fs-sm);">
+                                <i data-lucide="shield-check" style="width:32px;height:32px;color:#cbd5e1;display:block;margin:0 auto .5rem;"></i>
+                                @(isRtl ? "لا توجد مخاطر مسجلة في النظام الخارجي." : "No risks recorded in the external system.")
+                            </td></tr>
+                        }
+                        @foreach (var r in externalRisks)
+                        {
+                            var sevClass = r.Severity switch {
+                                LinkedRiskSeverity.Critical => "lt-pill-Critical",
+                                LinkedRiskSeverity.High     => "lt-pill-High",
+                                LinkedRiskSeverity.Medium   => "lt-pill-Medium",
+                                LinkedRiskSeverity.Low      => "lt-pill-Low",
+                                _                           => "lt-pill-Unknown"
+                            };
+                            <tr>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(r.ExternalUrl))
+                                    {
+                                        <a href="@r.ExternalUrl" target="_blank" rel="noopener" class="lt-link">@r.Code</a>
+                                    }
+                                    else
+                                    {
+                                        <span style="font-family:ui-monospace,monospace;color:#475569;font-weight:600;">@r.Code</span>
+                                    }
+                                </td>
+                                <td style="font-weight:600;color:#111827;">@r.Title</td>
+                                <td><span class="lt-pill @sevClass">@r.Severity</span></td>
+                                <td style="color:#374151;">@r.Status</td>
+                                <td style="color:#6b7280;">@(r.OwnerName ?? "—")</td>
+                                <td style="white-space:nowrap;color:#94a3b8;font-size: var(--fs-xs);">@r.CreatedAt.ToDubaiString("yyyy-MM-dd")</td>
+                                <td style="text-align:end;">
+                                    @if (!string.IsNullOrEmpty(r.ExternalUrl))
+                                    {
+                                        <a href="@r.ExternalUrl" target="_blank" rel="noopener" class="lt-link" title="@(isRtl ? "افتح في النظام الخارجي" : "Open in") @externalProviderName">
+                                            <i data-lucide="external-link" class="w-4 h-4" aria-hidden="true"></i>
+                                        </a>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+    else
+    {
+    <div class="lt-card">
+        <div class="lt-table-wrap">
+            <table class="esems-datatable" id="risksTable">
+                <thead>
+                    <tr>
+                        <th>@Shared["Column_RiskNumber"]</th>
+                        <th>@Shared["Column_Title"]</th>
+                        <th>@Shared["Column_Category"]</th>
+                        <th>@Shared["Column_InherentRisk"]</th>
+                        <th>@Shared["Column_ResidualRisk"]</th>
+                        <th>@Shared["Column_Level"]</th>
+                        <th>@Shared["Column_Owner"]</th>
+                        <th style="text-align:end;">@Shared["Column_Actions"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var risk in Model)
+                    {
+                        var levelCls = $"lt-pill-{risk.RiskLevel}";
+                        <tr>
+                            <td><a asp-action="Details" asp-route-id="@risk.Id" class="lt-link">@risk.RiskNumber</a></td>
+                            <td style="font-weight:600;color:#111827;">@(isRtl ? risk.NameAr : risk.NameEn)</td>
+                            <td style="color:#6b7280;">@(risk.Category != null ? (isRtl ? risk.Category.NameAr : risk.Category.NameEn) : "—")</td>
+                            <td style="white-space:nowrap;color:#374151;font-weight:600;">@risk.Likelihood × @risk.Impact = @risk.InherentRiskScore</td>
+                            <td style="white-space:nowrap;color:#6b7280;">@(risk.ResidualRiskScore.HasValue ? $"{risk.ResidualLikelihood} × {risk.ResidualImpact} = {risk.ResidualRiskScore}" : "—")</td>
+                            <td><span class="lt-pill @levelCls">@risk.RiskLevel</span></td>
+                            <td style="color:#6b7280;">@(risk.Owner?.GetLocalizedFullName() ?? "—")</td>
+                            <td style="text-align:end;">
+                                <span class="lt-actions">
+                                    <a asp-action="Details" asp-route-id="@risk.Id" title="@Shared["Tooltip_ViewDetails"]" aria-label="@Shared["Tooltip_ViewDetails"]"><i data-lucide="eye" class="w-4 h-4" aria-hidden="true"></i></a>
+                                    <a asp-action="Edit" asp-route-id="@risk.Id" title="@Shared["Tooltip_EditRecord"]" aria-label="@Shared["Tooltip_EditRecord"]"><i data-lucide="edit" class="w-4 h-4" aria-hidden="true"></i></a>
+                                    @* M-14 (Tier-3 a11y): role=img is required when applying aria-label
+                                       to an otherwise-generic <span>. Without it, axe flags this as
+                                       aria-prohibited-attr (assistive tech ignores the label). *@
+                                    <span class="lt-action-locked" role="img" title="@(isRtl ? "لا يمكن الحذف — مقفل للتدقيق" : "Cannot delete — audit-locked")" aria-label="@(isRtl ? "مقفل للتدقيق" : "Audit-locked")"><i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i></span>
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                    @if (!Model.Any())
+                    {
+                        <tr><td colspan="8" style="padding:3rem 1rem;text-align:center;color:#94a3b8;">
+                            <i data-lucide="inbox" class="w-10 h-10" aria-hidden="true" style="margin:0 auto .5rem;display:block;color:#cbd5e1;"></i>
+                            <div style="font-weight:500;">@(isRtl ? "لا توجد مخاطر بعد" : "No risks yet")</div>
+                        </td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+    } @* end externalMode/local table branch *@
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">if (window.lucide) lucide.createIcons();</script>
+}

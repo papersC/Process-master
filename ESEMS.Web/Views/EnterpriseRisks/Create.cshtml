@@ -1,0 +1,347 @@
+@model EnterpriseRisk
+@{
+    ViewData["Title"] = Shared["Title_AddRisk"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    var step1 = isRtl ? "تعريف المخاطرة" : "Identify";
+    var step2 = isRtl ? "التقييم والسياق" : "Assess & Context";
+}
+
+<partial name="_WizardStyles" />
+
+@*  EnterpriseRisks-specific extras: 5x5 matrix + risk score display.
+    Kept inline because they don't apply to other wizard pages. *@
+<style>
+    .pc-pill-Critical { background: #fee2e2; color: #991b1b; }
+    .pc-pill-High     { background: #ffedd5; color: #9a3412; }
+    .pc-pill-Medium   { background: #fef3c7; color: #92400e; }
+    .pc-pill-Low      { background: #dcfce7; color: #166534; }
+    .rs-score { font-size: var(--fs-2xl); font-weight: 800; color: #005B99; text-align: center; padding: .25rem 0; line-height: 1; }
+    .rs-score.score-Critical { color: #b91c1c; }
+    .rs-score.score-High     { color: #c2410c; }
+    .rs-score.score-Medium   { color: #a16207; }
+    .rs-score.score-Low      { color: #047857; }
+    .rs-matrix { display: grid; grid-template-columns: 28px repeat(5, 1fr); gap: 4px; max-width: 480px; }
+    .rs-matrix-cell { padding: .55rem .25rem; border-radius: .25rem; text-align: center; font-size: var(--fs-xs); color: #fff; font-weight: 700; cursor: pointer; transition: transform .12s; }
+    .rs-matrix-cell:hover { transform: scale(1.04); }
+    .rs-matrix-cell.selected { outline: 3px solid #fff; outline-offset: -1px; box-shadow: 0 0 0 2px #005B99, 0 4px 8px rgba(0,0,0,.1); }
+    .rs-matrix-axis { font-size: var(--fs-xs); font-weight: 600; color: #64748b; padding: .3rem 0; text-align: center; }
+    .rs-c-low  { background: #16a34a; }
+    .rs-c-med  { background: #eab308; }
+    .rs-c-high { background: #ea580c; }
+    .rs-c-crit { background: #dc2626; }
+    .rs-matrix-legend { display: flex; gap: .85rem; margin-top: .55rem; font-size: var(--fs-xs); color: #6b7280; flex-wrap: wrap; }
+    .rs-matrix-legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-inline-end: .3rem; }
+</style>
+
+<div class="wiz-pageheader">
+    <h1 class="wiz-pagetitle"><i data-lucide="shield-plus" style="width:20px;height:20px;color:#005B99;"></i>@Shared["Title_AddRisk"]</h1>
+    <div style="display:inline-flex;align-items:center;gap:.85rem;">
+        <span class="wiz-stepcount">@(isRtl ? "الخطوة" : "Step") <b id="stepCounter">1</b> @(isRtl ? "من" : "of") 2</span>
+        <a asp-action="Index" class="wiz-cancellink"><i data-lucide="x" style="width:14px;height:14px;"></i> @Shared["Button_Cancel"]</a>
+    </div>
+</div>
+
+<form asp-action="Create" method="post" id="wizardForm" novalidate data-guard-unsaved data-once-submit>
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" style="margin-bottom:.6rem;padding:.6rem .8rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.375rem;color:#b91c1c;font-size: var(--fs-xs);"></div>
+
+    <div class="wiz-grid">
+        <aside class="wiz-rail">
+            <ul class="wiz-steps" id="wizardSteps">
+                <li class="wiz-step active" data-step="1" onclick="wizGoTo(1)">
+                    <span class="wiz-stepnum">1</span>
+                    <span class="wiz-steptext"><span class="wiz-steptitle">@step1</span><span class="wiz-stepsub">@(isRtl ? "الفئة، الاسم، الوصف" : "Category, name, description")</span></span>
+                </li>
+                <li class="wiz-step" data-step="2" onclick="wizGoTo(2)">
+                    <span class="wiz-stepnum">2</span>
+                    <span class="wiz-steptext"><span class="wiz-steptitle">@step2</span><span class="wiz-stepsub">@(isRtl ? "الاحتمالية × الأثر، الضوابط" : "Likelihood × Impact, controls")</span></span>
+                </li>
+            </ul>
+        </aside>
+
+        <section class="wiz-main">
+            <div class="wiz-checklist" data-state="missing"
+                 data-required-checklist
+                 data-required-fields='CategoryId:@(isRtl ? "الفئة" : "Category")|NameEn:@(isRtl ? "اسم المخاطرة" : "Risk name")|DescriptionEn:@(isRtl ? "الوصف" : "Description")'
+                 data-text-prefix='@(isRtl ? "ما زال يلزم: " : "Still need: ")'
+                 data-text-ok='@(isRtl ? "جاهز للحفظ." : "Ready to submit.")'
+                 data-text-sep=' · '>
+                <i data-lucide="circle-dashed" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                <span class="wiz-checklist-text"></span>
+            </div>
+
+            <!-- Step 1 -->
+            <div class="wiz-step-content active" data-step="1">
+                <div class="wiz-stephdr"><i data-lucide="info" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 1: @step1</h2></div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label class="pc-label">@Shared["Label_RiskNumber"]</label>
+                        <input asp-for="RiskNumber" class="pc-input" readonly />
+                        <div class="pc-help">@(isRtl ? "يُولد تلقائيًا عند الحفظ" : "Auto-generated on save")</div>
+                    </div>
+                    <div>
+                        <label asp-for="CategoryId" class="pc-label">@Shared["Label_Category"] <span class="req">*</span></label>
+                        <select asp-for="CategoryId" id="CategorySel" asp-items="@ViewBag.Categories" class="pc-select">
+                            <option value="">@Shared["Placeholder_SelectCategory"]</option>
+                        </select>
+                        <span asp-validation-for="CategoryId" class="pc-err"></span>
+                    </div>
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="NameEn" class="pc-label">@Shared["Label_NameEnglish"] <span class="req">*</span></label>
+                        <input asp-for="NameEn" class="pc-input" />
+                        <span asp-validation-for="NameEn" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NameAr" class="pc-label">@Shared["Label_NameArabic"]</label>
+                        <input asp-for="NameAr" dir="rtl" class="pc-input" />
+                    </div>
+                </div>
+
+                <div class="pc-grid-2">
+                    <div>
+                        <label asp-for="DescriptionEn" class="pc-label">@Shared["Label_DescriptionEnglish"] <span class="req">*</span></label>
+                        <textarea asp-for="DescriptionEn" rows="4" class="pc-textarea"></textarea>
+                        <span asp-validation-for="DescriptionEn" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="DescriptionAr" class="pc-label">@Shared["Label_DescriptionArabic"]</label>
+                        <textarea asp-for="DescriptionAr" dir="rtl" rows="4" class="pc-textarea"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="wiz-step-content" data-step="2">
+                <div class="wiz-stephdr"><i data-lucide="activity" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 2: @step2</h2></div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="Likelihood" class="pc-label">@Shared["Label_Likelihood"] (1-5) <span class="req">*</span></label>
+                        <select asp-for="Likelihood" id="likelihoodSelect" class="pc-select">
+                            <option value="1">1 - @Shared["Likelihood_Rare"]</option>
+                            <option value="2">2 - @Shared["Likelihood_Unlikely"]</option>
+                            <option value="3" selected>3 - @Shared["Likelihood_Possible"]</option>
+                            <option value="4">4 - @Shared["Likelihood_Likely"]</option>
+                            <option value="5">5 - @Shared["Likelihood_AlmostCertain"]</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label asp-for="Impact" class="pc-label">@Shared["Label_Impact"] (1-5) <span class="req">*</span></label>
+                        <select asp-for="Impact" id="impactSelect" class="pc-select">
+                            <option value="1">1 - @Shared["Impact_Insignificant"]</option>
+                            <option value="2">2 - @Shared["Impact_Minor"]</option>
+                            <option value="3" selected>3 - @Shared["Impact_Moderate"]</option>
+                            <option value="4">4 - @Shared["Impact_Major"]</option>
+                            <option value="5">5 - @Shared["Impact_Catastrophic"]</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="pc-row">
+                    <label class="pc-label"><i data-lucide="grid-3x3" class="w-3.5 h-3.5 inline-block" style="color:#005B99;"></i> @Shared["Label_RiskMatrix"]</label>
+                    <div class="pc-help" style="margin-bottom:.5rem;">@(isRtl ? "اختر الخلية لتحديد الاحتمال × الأثر" : "Click to set Likelihood × Impact")</div>
+                    <div class="rs-matrix">
+                        <div></div>
+                        <div class="rs-matrix-axis">1</div><div class="rs-matrix-axis">2</div><div class="rs-matrix-axis">3</div><div class="rs-matrix-axis">4</div><div class="rs-matrix-axis">5</div>
+                        @for (int l = 5; l >= 1; l--)
+                        {
+                            <div class="rs-matrix-axis">@l</div>
+                            @for (int i = 1; i <= 5; i++)
+                            {
+                                var score = l * i;
+                                var bg = score >= 15 ? "rs-c-crit" : score >= 10 ? "rs-c-high" : score >= 5 ? "rs-c-med" : "rs-c-low";
+                                var sev = score >= 15 ? Shared["Label_Critical"] : score >= 10 ? Shared["Label_High"] : score >= 5 ? Shared["Label_Medium"] : Shared["Label_Low"];
+                                <div class="rs-matrix-cell @bg risk-cell" data-likelihood="@l" data-impact="@i" data-score="@score" title="@sev (@score)">@score</div>
+                            }
+                        }
+                    </div>
+                    <div class="rs-matrix-legend">
+                        <span><span class="sw rs-c-low"></span>@Shared["Label_Low"] (1-4)</span>
+                        <span><span class="sw rs-c-med"></span>@Shared["Label_Medium"] (5-9)</span>
+                        <span><span class="sw rs-c-high"></span>@Shared["Label_High"] (10-14)</span>
+                        <span><span class="sw rs-c-crit"></span>@Shared["Label_Critical"] (15-25)</span>
+                    </div>
+                </div>
+
+                <div class="pc-grid-2 pc-row" style="margin-top:1rem;">
+                    <div>
+                        <label asp-for="ProcessId" class="pc-label">@Shared["Label_RelatedProcess"]</label>
+                        <select asp-for="ProcessId" id="ProcessSel" asp-items="@ViewBag.Processes" class="pc-select">
+                            <option value="">@Shared["Placeholder_SelectProcess"]</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label asp-for="ToleranceLevel" class="pc-label">@Shared["Label_ToleranceLevel"]</label>
+                        <select asp-for="ToleranceLevel" id="ToleranceSel" asp-items="@(new SelectList(Enum.GetValues<RiskLevel>().Select(v => new { Value = v.ToString(), Display = Shared[$"RiskLevel_{v}"].Value }), "Value", "Display"))" class="pc-select">
+                            <option value="">@Shared["Placeholder_SelectTolerance"]</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label asp-for="CurrentControls" class="pc-label">@Shared["Label_CurrentControls"]</label>
+                    <textarea asp-for="CurrentControls" rows="3" class="pc-textarea" placeholder="@Shared["Placeholder_CurrentControls"]"></textarea>
+                    <div class="pc-help">@Shared["Help_CurrentControls"]</div>
+                </div>
+            </div>
+
+            <div class="wiz-footer">
+                <button type="button" class="pc-btn pc-btn-ghost" id="prevBtn" disabled>
+                    <i data-lucide="@(isRtl ? "chevron-right" : "chevron-left")" style="width:16px;height:16px;"></i>
+                    @(isRtl ? "السابق" : "Previous")
+                </button>
+                <button type="button" class="pc-btn pc-btn-primary" id="nextBtn">
+                    @(isRtl ? "التالي" : "Next")
+                    <i data-lucide="@(isRtl ? "chevron-left" : "chevron-right")" style="width:16px;height:16px;"></i>
+                </button>
+            </div>
+        </section>
+
+        <aside class="wiz-summary">
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="hash"></i><h3>@Shared["Label_RiskNumber"]</h3></div>
+                <p class="wiz-sum-note">@(isRtl ? "يُولد تلقائيًا عند الحفظ" : "Auto-generated on save")</p>
+                <div class="wiz-sum-codepreview">RSK-—</div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="activity"></i><h3>@(isRtl ? "نقاط المخاطرة" : "Risk Score")</h3></div>
+                <div class="rs-score" id="scoreDisplay">9</div>
+                <div style="text-align:center;margin-top:-.4rem;margin-bottom:.4rem;">
+                    <span class="wiz-sum-pill pc-pill-Medium" id="levelPill">@Shared["RiskLevel_Medium"]</span>
+                </div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="trending-up"></i> @Shared["Label_Likelihood"]</span><span class="wiz-sum-pill" id="sumLike">3</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="alert-circle"></i> @Shared["Label_Impact"]</span><span class="wiz-sum-pill" id="sumImpact">3</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="folder"></i> @Shared["Label_Category"]</span><span class="wiz-sum-pill" id="sumCategory">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="shield"></i> @Shared["Label_ToleranceLevel"]</span><span class="wiz-sum-pill" id="sumTolerance">—</span></div>
+            </div>
+
+            <div class="wiz-sum-actions">
+                <button type="submit" class="pc-btn pc-btn-primary pc-btn-block" id="submitBtn" disabled
+                        title="@(isRtl ? "أكمل جميع الخطوات لتفعيل الزر" : "Complete all steps to enable")">
+                    <i data-lucide="save" style="width:16px;height:16px;"></i>
+                    @Shared["Button_AddRisk"]
+                </button>
+                <a asp-action="Index" class="pc-btn pc-btn-ghost pc-btn-block">
+                    <i data-lucide="x" style="width:16px;height:16px;"></i>
+                    @Shared["Button_Cancel"]
+                </a>
+            </div>
+        </aside>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+        const isRtl = @Html.Raw(isRtl ? "true" : "false");
+        const TOTAL_STEPS = 2;
+        let currentStep = 1, highestVisited = 1;
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const submitBtn = document.getElementById('submitBtn');
+        const stepCounterEl = document.getElementById('stepCounter');
+
+        function validateStep(n) {
+            if (n !== 1) return true;
+            const errors = [];
+            const mark = (id, label) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (!(el.value || '').trim()) { el.classList.add('invalid'); errors.push(label); } else { el.classList.remove('invalid'); }
+            };
+            mark('CategorySel',   isRtl ? "الفئة مطلوبة" : "Category is required");
+            mark('NameEn',        isRtl ? "الاسم بالإنجليزية مطلوب" : "English name is required");
+            mark('DescriptionEn', isRtl ? "الوصف بالإنجليزية مطلوب" : "English description is required");
+            if (errors.length) {
+                Swal.fire({ icon:'warning', title: isRtl ? "حقول مطلوبة" : "Required Fields", html: errors.join('<br>'), confirmButtonColor:'#005B99' });
+                return false;
+            }
+            return true;
+        }
+
+        function showStep(n) {
+            currentStep = Math.max(1, Math.min(TOTAL_STEPS, n));
+            highestVisited = Math.max(highestVisited, currentStep);
+            document.querySelectorAll('.wiz-step').forEach(el => {
+                const s = parseInt(el.dataset.step, 10);
+                el.classList.toggle('active', s === currentStep);
+                el.classList.toggle('completed', s < highestVisited && s !== currentStep);
+            });
+            document.querySelectorAll('.wiz-step-content').forEach(p => {
+                p.classList.toggle('active', parseInt(p.dataset.step, 10) === currentStep);
+            });
+            prevBtn.disabled = (currentStep === 1);
+            nextBtn.classList.toggle('d-none', currentStep === TOTAL_STEPS);
+            if (submitBtn) submitBtn.disabled = (currentStep !== TOTAL_STEPS);
+            if (stepCounterEl) stepCounterEl.textContent = currentStep;
+            if (window.lucide) lucide.createIcons();
+        }
+        window.wizGoTo = function (n) {
+            if (n <= currentStep) { showStep(n); return; }
+            if (n === currentStep + 1) { if (validateStep(currentStep)) showStep(n); return; }
+            if (validateStep(currentStep)) showStep(currentStep + 1);
+        };
+        prevBtn.addEventListener('click', () => showStep(currentStep - 1));
+        nextBtn.addEventListener('click', () => { if (validateStep(currentStep)) showStep(currentStep + 1); });
+
+        // Risk matrix + score (preserved from original)
+        const likelihoodSel = document.getElementById('likelihoodSelect');
+        const impactSel     = document.getElementById('impactSelect');
+        const categorySel   = document.getElementById('CategorySel');
+        const toleranceSel  = document.getElementById('ToleranceSel');
+        const scoreDisplay  = document.getElementById('scoreDisplay');
+        const levelPill     = document.getElementById('levelPill');
+
+        function levelFromScore(s) { return s >= 15 ? 'Critical' : s >= 10 ? 'High' : s >= 5 ? 'Medium' : 'Low'; }
+        const LEVEL_NAMES = {
+            'Critical': @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["RiskLevel_Critical"].Value)),
+            'High':     @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["RiskLevel_High"].Value)),
+            'Medium':   @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["RiskLevel_Medium"].Value)),
+            'Low':      @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["RiskLevel_Low"].Value))
+        };
+
+        function updateAll() {
+            const l = parseInt(likelihoodSel.value) || 3;
+            const i = parseInt(impactSel.value) || 3;
+            const s = l * i;
+            const lvl = levelFromScore(s);
+            scoreDisplay.textContent = s;
+            scoreDisplay.className = 'rs-score score-' + lvl;
+            levelPill.textContent = LEVEL_NAMES[lvl];
+            levelPill.className = 'wiz-sum-pill pc-pill-' + lvl;
+            document.getElementById('sumLike').textContent = l;
+            document.getElementById('sumImpact').textContent = i;
+            document.querySelectorAll('.risk-cell').forEach(c => c.classList.remove('selected'));
+            const sel = document.querySelector(`.risk-cell[data-likelihood="${l}"][data-impact="${i}"]`);
+            if (sel) sel.classList.add('selected');
+            const c = categorySel?.value ? categorySel.options[categorySel.selectedIndex].text.trim() : '';
+            const t = toleranceSel?.value ? toleranceSel.options[toleranceSel.selectedIndex].text.trim() : '';
+            document.getElementById('sumCategory').textContent  = c || '—';
+            document.getElementById('sumTolerance').textContent = t || '—';
+        }
+        document.querySelectorAll('.risk-cell').forEach(c => {
+            c.addEventListener('click', function () {
+                likelihoodSel.value = this.dataset.likelihood;
+                impactSel.value     = this.dataset.impact;
+                updateAll();
+            });
+        });
+        likelihoodSel.addEventListener('change', updateAll);
+        impactSel.addEventListener('change', updateAll);
+        categorySel?.addEventListener('change', updateAll);
+        toleranceSel?.addEventListener('change', updateAll);
+
+        document.getElementById('wizardForm').addEventListener('submit', function (e) {
+            if (!validateStep(1)) { e.preventDefault(); showStep(1); }
+        });
+
+        showStep(1);
+        updateAll();
+    </script>
+}

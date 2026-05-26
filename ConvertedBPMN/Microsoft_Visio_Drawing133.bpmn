@@ -1,0 +1,565 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_4fe172ea"
+                  targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_51b637b3" name="Microsoft_Visio_Drawing133" isExecutable="false">
+    <bpmn:task id="Shape_3" name="استرجاع وسحب المساكن واعادة تأهيلها"/>
+    <bpmn:task id="Shape_7" name="مجلس الإدارة"/>
+    <bpmn:task id="Shape_10" name="مكتب الشؤون القانونية"/>
+    <bpmn:task id="Shape_13" name="قسم الاصول"/>
+    <bpmn:task id="Shape_16" name="المتعامل"/>
+    <bpmn:task id="Shape_44" name="لجنة تقييم الحالة الفنية
+للمساكن المسحوبة \ المسترجعة"/>
+    <bpmn:task id="Shape_47" name="قسم العقود والمشتريات"/>
+    <bpmn:task id="Shape_50" name="قسم معالجة الطلبات"/>
+    <bpmn:task id="Shape_53" name="مكتب المدير التنفيذي"/>
+    <bpmn:task id="Shape_56" name="إدارة اسعاد المتعاملين"/>
+    <bpmn:task id="Shape_201" name="اللجان المعنية (لجنة القروض\ المنح\ اللجنة التنفيذية)"/>
+    <bpmn:task id="Shape_221" name="المخرجات"/>
+    <bpmn:task id="Shape_224" name="المدخلات"/>
+    <bpmn:startEvent id="Shape_61" name="البداية"/>
+    <bpmn:task id="Shape_62" name="كتابة رسالة ومخاطبة خدمة المتعاملين برغبته في ارجاع/ استبدال المسكن/ الأرض المبنية والممنوحة له من المؤسسة."/>
+    <bpmn:task id="Shape_65" name="اجراء التفتيش على المساكن"/>
+    <bpmn:task id="Shape_68" name="تحويل كافة النتائج والمخاطبات للمتعاملين المخالفين إلى مكتب الشؤون القانونية"/>
+    <bpmn:exclusiveGateway id="Shape_71" name="إصدار قرارات السحب للمخالفين"/>
+    <bpmn:exclusiveGateway id="Shape_75" name="صياغة قرار السحب"/>
+    <bpmn:exclusiveGateway id="Shape_81" name="مخاطبة المتعامل بتسليم المسكن بحسب قرارات مجلس الإدارة وتوفير (الفتورة النهائية من ديوا، مفتاح المسكن، خلوه من الأثاث)"/>
+    <bpmn:exclusiveGateway id="Shape_83" name="إخطار المتعامل برفض الطلب وابلاغه بقرار مجلس الإدارة"/>
+    <bpmn:task id="Shape_86" name="استجابة المتعامل والموافقة على تسليم المسكن"/>
+    <bpmn:exclusiveGateway id="Shape_88" name="اصدار رسالة كإنذار بقرار السحب للمتعامل مدته شهر واحد"/>
+    <bpmn:task id="Shape_90" name="هل استجاب المتعامل؟"/>
+    <bpmn:task id="Shape_91" name="تسليم المسكن والتوقيع على تعهد من خلو المسكن من جميع المتعلقات الشخصية"/>
+    <bpmn:task id="Shape_168" name="التنسيق مع دائرة الشؤون القانونية لإجراء اللازم واستصدار أمر تنفيذي معتمد من المحكمة"/>
+    <bpmn:task id="Shape_172" name="ابلاغ قسم الشؤون القانونية باستلام المسكن"/>
+    <bpmn:task id="Shape_176" name="متابعة المفتش المختص وفقاً للمنطقة المخصصة ضمن خطة التفتيش باستكمال باسترجاع المسكن"/>
+    <bpmn:task id="Shape_177" name="متابعة عمليات الصيانة"/>
+    <bpmn:task id="Shape_180" name="تحديث حالة المسكن على نظام تخصيص المسكن (مسكن مسحوب\ مسترجع تحت الصيانة\ جاهز للتخصيص)"/>
+    <bpmn:task id="Shape_182" name="تقييم الحالة الفنية للمسكن ورصد القيمة المالية لأعمال الصيانة ومخاطبة العقود والمشتريات في الحالة الفنية"/>
+    <bpmn:task id="Shape_183" name="تخصيص المساكن"/>
+    <bpmn:endEvent id="Shape_184" name="النهاية"/>
+    <bpmn:task id="Shape_188" name="تسعير المساكن المسترجعة"/>
+    <bpmn:task id="Shape_190" name="دراسة الحالة والاطلاع على أسباب الطلب"/>
+    <bpmn:task id="Shape_192" name="دراسة الطلب و تحويله  الى اللجنة المعنية  (لجنة القروض\ المنح\ اللجنة التنفيذية)"/>
+    <bpmn:task id="Shape_193" name="هل تم الاعتماد؟"/>
+    <bpmn:task id="Shape_203" name="هل تمت الموافقة؟"/>
+    <bpmn:endEvent id="Shape_207" name="النهاية"/>
+    <bpmn:task id="Shape_211" name="هل تم تقديم طلب ابتدال او ارجاع مسكن من قبل المتعامل؟"/>
+    <bpmn:exclusiveGateway id="Shape_225" name="قرار السحب"/>
+    <bpmn:task id="Shape_227" name="رسالة من مدير إدارة المشاريع"/>
+    <bpmn:task id="Shape_229" name="تعهد خلو المسكن"/>
+    <bpmn:task id="Shape_232" name="طلبات المتعاملين"/>
+    <bpmn:sequenceFlow id="Flow_233" sourceRef="Shape_232" targetRef="Shape_61"/>
+    <bpmn:sequenceFlow id="Flow_92" sourceRef="Shape_90" targetRef="Shape_91"/>
+    <bpmn:sequenceFlow id="Flow_89" sourceRef="Shape_86" targetRef="Shape_88"/>
+    <bpmn:sequenceFlow id="Flow_87" sourceRef="Shape_81" targetRef="Shape_86"/>
+    <bpmn:sequenceFlow id="Flow_70" sourceRef="Shape_65" targetRef="Shape_68"/>
+    <bpmn:sequenceFlow id="Flow_166" sourceRef="Shape_88" targetRef="Shape_90"/>
+    <bpmn:sequenceFlow id="Flow_170" sourceRef="Shape_86" targetRef="Shape_91"/>
+    <bpmn:sequenceFlow id="Flow_171" sourceRef="Shape_90" targetRef="Shape_168"/>
+    <bpmn:sequenceFlow id="Flow_173" sourceRef="Shape_91" targetRef="Shape_172"/>
+    <bpmn:sequenceFlow id="Flow_178" sourceRef="Shape_168" targetRef="Shape_176"/>
+    <bpmn:sequenceFlow id="Flow_179" sourceRef="Shape_176" targetRef="Shape_177"/>
+    <bpmn:sequenceFlow id="Flow_181" sourceRef="Shape_177" targetRef="Shape_180"/>
+    <bpmn:sequenceFlow id="Flow_185" sourceRef="Shape_180" targetRef="Shape_183"/>
+    <bpmn:sequenceFlow id="Flow_186" sourceRef="Shape_183" targetRef="Shape_184"/>
+    <bpmn:sequenceFlow id="Flow_187" sourceRef="Shape_172" targetRef="Shape_182"/>
+    <bpmn:sequenceFlow id="Flow_189" sourceRef="Shape_182" targetRef="Shape_188"/>
+    <bpmn:sequenceFlow id="Flow_191" sourceRef="Shape_62" targetRef="Shape_190"/>
+    <bpmn:sequenceFlow id="Flow_195" sourceRef="Shape_193" targetRef="Shape_192"/>
+    <bpmn:sequenceFlow id="Flow_204" sourceRef="Shape_192" targetRef="Shape_203"/>
+    <bpmn:sequenceFlow id="Flow_205" sourceRef="Shape_203" targetRef="Shape_83"/>
+    <bpmn:sequenceFlow id="Flow_206" sourceRef="Shape_193" targetRef="Shape_83"/>
+    <bpmn:sequenceFlow id="Flow_208" sourceRef="Shape_83" targetRef="Shape_207"/>
+    <bpmn:sequenceFlow id="Flow_210" sourceRef="Shape_188" targetRef="Shape_207"/>
+    <bpmn:sequenceFlow id="Flow_212" sourceRef="Shape_61" targetRef="Shape_211"/>
+    <bpmn:sequenceFlow id="Flow_213" sourceRef="Shape_211" targetRef="Shape_65"/>
+    <bpmn:sequenceFlow id="Flow_214" sourceRef="Shape_211" targetRef="Shape_62"/>
+    <bpmn:sequenceFlow id="Flow_215" sourceRef="Shape_68" targetRef="Shape_71"/>
+    <bpmn:sequenceFlow id="Flow_216" sourceRef="Shape_71" targetRef="Shape_75"/>
+    <bpmn:sequenceFlow id="Flow_217" sourceRef="Shape_75" targetRef="Shape_81"/>
+    <bpmn:sequenceFlow id="Flow_226" sourceRef="Shape_75" targetRef="Shape_225"/>
+    <bpmn:sequenceFlow id="Flow_228" sourceRef="Shape_88" targetRef="Shape_227"/>
+    <bpmn:sequenceFlow id="Flow_231" sourceRef="Shape_91" targetRef="Shape_229"/>
+    <bpmn:sequenceFlow id="Flow_194" sourceRef="Shape_190" targetRef="Shape_193"/>
+    <bpmn:laneSet id="LaneSet_1">
+      <bpmn:lane id="Lane_8" name="مكتب الشؤون القانونية">
+        <bpmn:flowNodeRef>Shape_75</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_168</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_176</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_11" name="قسم الاصول">
+        <bpmn:flowNodeRef>Shape_65</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_68</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_81</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_88</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_90</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_172</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_177</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_180</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_183</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_184</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_211</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_5" name="مجلس الإدارة">
+        <bpmn:flowNodeRef>Shape_71</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_14" name="المتعامل">
+        <bpmn:flowNodeRef>Shape_61</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_62</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_86</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_91</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_219" name="المخرجات">
+        <bpmn:flowNodeRef>Shape_7</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_10</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_13</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_16</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_44</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_47</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_50</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_53</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_56</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_201</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_221</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_224</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_225</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_227</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_229</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_54" name="إدارة اسعاد المتعاملين">
+        <bpmn:flowNodeRef>Shape_83</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_207</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_222" name="المدخلات">
+        <bpmn:flowNodeRef>Shape_232</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_48" name="قسم معالجة الطلبات">
+        <bpmn:flowNodeRef>Shape_192</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_51" name="مكتب المدير التنفيذي">
+        <bpmn:flowNodeRef>Shape_190</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_193</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_199" name="اللجان المعنية (لجنة القروض\ المنح\ اللجنة التنفيذية)">
+        <bpmn:flowNodeRef>Shape_203</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_45" name="قسم العقود والمشتريات">
+        <bpmn:flowNodeRef>Shape_188</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_42" name="لجنة تقييم الحالة الفنية
+للمساكن المسحوبة \ المسترجعةلجنة تقييم الحالة الفنية
+للمساكن المسحوبة \ المسترجعة">
+        <bpmn:flowNodeRef>Shape_182</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+  </bpmn:process>
+  <bpmn:collaboration id="Collaboration_dfce7d97">
+    <bpmn:participant id="Participant_1" name="استرجاع وسحب المساكن واعادة تأهيلها" processRef="Process_51b637b3"/>
+  </bpmn:collaboration>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_dfce7d97">
+      <bpmndi:BPMNShape id="Participant_1_di" bpmnElement="Participant_1">
+        <dc:Bounds x="1" y="176" width="2973" height="1379"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_8_di" bpmnElement="Lane_8" isHorizontal="false">
+        <dc:Bounds x="560" y="222" width="301" height="1333"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_11_di" bpmnElement="Lane_11" isHorizontal="false">
+        <dc:Bounds x="860" y="222" width="280" height="1333"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_5_di" bpmnElement="Lane_5" isHorizontal="false">
+        <dc:Bounds x="284" y="222" width="275" height="1333"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_14_di" bpmnElement="Lane_14" isHorizontal="false">
+        <dc:Bounds x="1140" y="222" width="271" height="1333"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_219_di" bpmnElement="Lane_219" isHorizontal="false">
+        <dc:Bounds x="24" y="222" width="261" height="1333"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_54_di" bpmnElement="Lane_54" isHorizontal="false">
+        <dc:Bounds x="2465" y="222" width="256" height="1333"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_222_di" bpmnElement="Lane_222" isHorizontal="false">
+        <dc:Bounds x="2722" y="222" width="252" height="1333"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_48_di" bpmnElement="Lane_48" isHorizontal="false">
+        <dc:Bounds x="1977" y="222" width="247" height="1333"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_51_di" bpmnElement="Lane_51" isHorizontal="false">
+        <dc:Bounds x="2224" y="222" width="242" height="1333"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_199_di" bpmnElement="Lane_199" isHorizontal="false">
+        <dc:Bounds x="1766" y="222" width="211" height="1333"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_45_di" bpmnElement="Lane_45" isHorizontal="false">
+        <dc:Bounds x="1586" y="222" width="180" height="1333"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_42_di" bpmnElement="Lane_42" isHorizontal="false">
+        <dc:Bounds x="1411" y="222" width="175" height="1333"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_3_di" bpmnElement="Shape_3">
+        <dc:Bounds x="0" y="177" width="2973" height="45"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_7_di" bpmnElement="Shape_7">
+        <dc:Bounds x="0" y="223" width="275" height="69"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_10_di" bpmnElement="Shape_10">
+        <dc:Bounds x="-0" y="223" width="301" height="69"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_13_di" bpmnElement="Shape_13">
+        <dc:Bounds x="0" y="223" width="280" height="69"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_16_di" bpmnElement="Shape_16">
+        <dc:Bounds x="0" y="223" width="271" height="69"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_44_di" bpmnElement="Shape_44">
+        <dc:Bounds x="0" y="223" width="175" height="69"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_47_di" bpmnElement="Shape_47">
+        <dc:Bounds x="-0" y="223" width="180" height="69"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_50_di" bpmnElement="Shape_50">
+        <dc:Bounds x="-0" y="223" width="247" height="69"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_53_di" bpmnElement="Shape_53">
+        <dc:Bounds x="0" y="223" width="242" height="69"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_56_di" bpmnElement="Shape_56">
+        <dc:Bounds x="0" y="223" width="256" height="69"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_201_di" bpmnElement="Shape_201">
+        <dc:Bounds x="0" y="223" width="211" height="69"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_221_di" bpmnElement="Shape_221">
+        <dc:Bounds x="-0" y="223" width="261" height="69"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_224_di" bpmnElement="Shape_224">
+        <dc:Bounds x="-0" y="223" width="252" height="69"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_61_di" bpmnElement="Shape_61">
+        <dc:Bounds x="1223" y="292" width="36" height="36"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_62_di" bpmnElement="Shape_62">
+        <dc:Bounds x="1217" y="415" width="128" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_65_di" bpmnElement="Shape_65">
+        <dc:Bounds x="949" y="425" width="123" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_68_di" bpmnElement="Shape_68">
+        <dc:Bounds x="949" y="502" width="123" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_71_di" bpmnElement="Shape_71">
+        <dc:Bounds x="318" y="502" width="50" height="50"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_75_di" bpmnElement="Shape_75">
+        <dc:Bounds x="659" y="658" width="50" height="50"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_81_di" bpmnElement="Shape_81">
+        <dc:Bounds x="949" y="658" width="50" height="50"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_83_di" bpmnElement="Shape_83">
+        <dc:Bounds x="2532" y="736" width="50" height="50"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_86_di" bpmnElement="Shape_86">
+        <dc:Bounds x="1237" y="658" width="108" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_88_di" bpmnElement="Shape_88">
+        <dc:Bounds x="949" y="801" width="50" height="50"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_90_di" bpmnElement="Shape_90">
+        <dc:Bounds x="957" y="923" width="108" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_91_di" bpmnElement="Shape_91">
+        <dc:Bounds x="1229" y="923" width="123" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_168_di" bpmnElement="Shape_168">
+        <dc:Bounds x="649" y="923" width="123" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_172_di" bpmnElement="Shape_172">
+        <dc:Bounds x="949" y="1017" width="123" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_176_di" bpmnElement="Shape_176">
+        <dc:Bounds x="649" y="1017" width="123" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_177_di" bpmnElement="Shape_177">
+        <dc:Bounds x="949" y="1112" width="123" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_180_di" bpmnElement="Shape_180">
+        <dc:Bounds x="949" y="1197" width="123" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_182_di" bpmnElement="Shape_182">
+        <dc:Bounds x="1437" y="1064" width="123" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_183_di" bpmnElement="Shape_183">
+        <dc:Bounds x="949" y="1301" width="123" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_184_di" bpmnElement="Shape_184">
+        <dc:Bounds x="952" y="1385" width="36" height="36"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_188_di" bpmnElement="Shape_188">
+        <dc:Bounds x="1617" y="1064" width="123" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_190_di" bpmnElement="Shape_190">
+        <dc:Bounds x="2311" y="415" width="128" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_192_di" bpmnElement="Shape_192">
+        <dc:Bounds x="2036" y="611" width="128" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_193_di" bpmnElement="Shape_193">
+        <dc:Bounds x="2320" y="611" width="108" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_203_di" bpmnElement="Shape_203">
+        <dc:Bounds x="1817" y="611" width="108" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_207_di" bpmnElement="Shape_207">
+        <dc:Bounds x="2535" y="839" width="36" height="36"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_211_di" bpmnElement="Shape_211">
+        <dc:Bounds x="956" y="340" width="108" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_225_di" bpmnElement="Shape_225">
+        <dc:Bounds x="95" y="663" width="50" height="50"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_227_di" bpmnElement="Shape_227">
+        <dc:Bounds x="95" y="806" width="119" height="40"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_229_di" bpmnElement="Shape_229">
+        <dc:Bounds x="95" y="868" width="119" height="40"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_232_di" bpmnElement="Shape_232">
+        <dc:Bounds x="2789" y="296" width="119" height="40"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_233_di" bpmnElement="Flow_233">
+        <di:waypoint x="2777" y="316"/>
+        <di:waypoint x="2024" y="316"/>
+        <di:waypoint x="2024" y="310"/>
+        <di:waypoint x="1271" y="310"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_92_di" bpmnElement="Flow_92">
+        <di:waypoint x="1077" y="947"/>
+        <di:waypoint x="1147" y="947"/>
+        <di:waypoint x="1217" y="947"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_89_di" bpmnElement="Flow_89">
+        <di:waypoint x="1225" y="682"/>
+        <di:waypoint x="1118" y="682"/>
+        <di:waypoint x="1118" y="826"/>
+        <di:waypoint x="1011" y="826"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_87_di" bpmnElement="Flow_87">
+        <di:waypoint x="1011" y="683"/>
+        <di:waypoint x="1118" y="683"/>
+        <di:waypoint x="1118" y="682"/>
+        <di:waypoint x="1225" y="682"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_70_di" bpmnElement="Flow_70">
+        <di:waypoint x="1010" y="485"/>
+        <di:waypoint x="1010" y="487"/>
+        <di:waypoint x="1010" y="490"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_166_di" bpmnElement="Flow_166">
+        <di:waypoint x="974" y="863"/>
+        <di:waypoint x="974" y="887"/>
+        <di:waypoint x="1011" y="887"/>
+        <di:waypoint x="1011" y="911"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_170_di" bpmnElement="Flow_170">
+        <di:waypoint x="1291" y="718"/>
+        <di:waypoint x="1291" y="814"/>
+        <di:waypoint x="1291" y="911"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_171_di" bpmnElement="Flow_171">
+        <di:waypoint x="945" y="947"/>
+        <di:waypoint x="864" y="947"/>
+        <di:waypoint x="783" y="947"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_173_di" bpmnElement="Flow_173">
+        <di:waypoint x="1217" y="947"/>
+        <di:waypoint x="1151" y="947"/>
+        <di:waypoint x="1151" y="1041"/>
+        <di:waypoint x="1084" y="1041"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_178_di" bpmnElement="Flow_178">
+        <di:waypoint x="710" y="983"/>
+        <di:waypoint x="710" y="994"/>
+        <di:waypoint x="710" y="1005"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_179_di" bpmnElement="Flow_179">
+        <di:waypoint x="783" y="1041"/>
+        <di:waypoint x="860" y="1041"/>
+        <di:waypoint x="860" y="1136"/>
+        <di:waypoint x="937" y="1136"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_181_di" bpmnElement="Flow_181">
+        <di:waypoint x="1011" y="1172"/>
+        <di:waypoint x="1011" y="1178"/>
+        <di:waypoint x="1011" y="1185"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_185_di" bpmnElement="Flow_185">
+        <di:waypoint x="1011" y="1257"/>
+        <di:waypoint x="1011" y="1273"/>
+        <di:waypoint x="1011" y="1289"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_186_di" bpmnElement="Flow_186">
+        <di:waypoint x="1011" y="1361"/>
+        <di:waypoint x="1011" y="1367"/>
+        <di:waypoint x="970" y="1367"/>
+        <di:waypoint x="970" y="1373"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_187_di" bpmnElement="Flow_187">
+        <di:waypoint x="1084" y="1041"/>
+        <di:waypoint x="1255" y="1041"/>
+        <di:waypoint x="1255" y="1088"/>
+        <di:waypoint x="1425" y="1088"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_189_di" bpmnElement="Flow_189">
+        <di:waypoint x="1572" y="1088"/>
+        <di:waypoint x="1588" y="1088"/>
+        <di:waypoint x="1605" y="1088"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_191_di" bpmnElement="Flow_191">
+        <di:waypoint x="1357" y="439"/>
+        <di:waypoint x="1828" y="439"/>
+        <di:waypoint x="2299" y="439"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_195_di" bpmnElement="Flow_195">
+        <di:waypoint x="2308" y="635"/>
+        <di:waypoint x="2242" y="635"/>
+        <di:waypoint x="2176" y="635"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_204_di" bpmnElement="Flow_204">
+        <di:waypoint x="2024" y="635"/>
+        <di:waypoint x="1981" y="635"/>
+        <di:waypoint x="1937" y="635"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_205_di" bpmnElement="Flow_205">
+        <di:waypoint x="1937" y="635"/>
+        <di:waypoint x="2229" y="635"/>
+        <di:waypoint x="2229" y="761"/>
+        <di:waypoint x="2520" y="761"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_206_di" bpmnElement="Flow_206">
+        <di:waypoint x="2441" y="635"/>
+        <di:waypoint x="2481" y="635"/>
+        <di:waypoint x="2481" y="761"/>
+        <di:waypoint x="2520" y="761"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_208_di" bpmnElement="Flow_208">
+        <di:waypoint x="2557" y="798"/>
+        <di:waypoint x="2557" y="812"/>
+        <di:waypoint x="2553" y="812"/>
+        <di:waypoint x="2553" y="827"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_210_di" bpmnElement="Flow_210">
+        <di:waypoint x="1752" y="1088"/>
+        <di:waypoint x="2137" y="1088"/>
+        <di:waypoint x="2137" y="857"/>
+        <di:waypoint x="2523" y="857"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_212_di" bpmnElement="Flow_212">
+        <di:waypoint x="1211" y="310"/>
+        <di:waypoint x="1144" y="310"/>
+        <di:waypoint x="1144" y="364"/>
+        <di:waypoint x="1077" y="364"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_213_di" bpmnElement="Flow_213">
+        <di:waypoint x="1010" y="400"/>
+        <di:waypoint x="1010" y="406"/>
+        <di:waypoint x="1010" y="413"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_214_di" bpmnElement="Flow_214">
+        <di:waypoint x="1077" y="364"/>
+        <di:waypoint x="1141" y="364"/>
+        <di:waypoint x="1141" y="439"/>
+        <di:waypoint x="1205" y="439"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_215_di" bpmnElement="Flow_215">
+        <di:waypoint x="937" y="526"/>
+        <di:waypoint x="659" y="526"/>
+        <di:waypoint x="659" y="527"/>
+        <di:waypoint x="380" y="527"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_216_di" bpmnElement="Flow_216">
+        <di:waypoint x="380" y="527"/>
+        <di:waypoint x="514" y="527"/>
+        <di:waypoint x="514" y="683"/>
+        <di:waypoint x="647" y="683"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_217_di" bpmnElement="Flow_217">
+        <di:waypoint x="721" y="683"/>
+        <di:waypoint x="829" y="683"/>
+        <di:waypoint x="937" y="683"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_226_di" bpmnElement="Flow_226">
+        <di:waypoint x="647" y="683"/>
+        <di:waypoint x="402" y="683"/>
+        <di:waypoint x="402" y="688"/>
+        <di:waypoint x="157" y="688"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_228_di" bpmnElement="Flow_228">
+        <di:waypoint x="937" y="826"/>
+        <di:waypoint x="581" y="826"/>
+        <di:waypoint x="225" y="826"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_231_di" bpmnElement="Flow_231">
+        <di:waypoint x="1217" y="947"/>
+        <di:waypoint x="721" y="947"/>
+        <di:waypoint x="721" y="888"/>
+        <di:waypoint x="225" y="888"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_194_di" bpmnElement="Flow_194">
+        <di:waypoint x="2375" y="475"/>
+        <di:waypoint x="2375" y="537"/>
+        <di:waypoint x="2375" y="537"/>
+        <di:waypoint x="2375" y="599"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

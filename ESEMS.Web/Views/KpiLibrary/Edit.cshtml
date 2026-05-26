@@ -1,0 +1,30 @@
+@model ESEMS.Web.Models.Improvement.KpiDefinition
+@{
+    ViewData["Title"] = "Edit KPI";
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+}
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem;">
+    <h1 style="font-size: var(--fs-base);font-weight:600;color:#111827;margin:0;display:flex;align-items:center;gap:.5rem;">
+        <i data-lucide="edit" style="width:18px;height:18px;color:#005B99;"></i>
+        @(isRtl ? "تعديل المؤشر" : "Edit KPI") · <span style="font-family:monospace;color:#005B99;">@Model.Code</span>
+    </h1>
+    <a asp-action="Index" style="color:#6b7280;text-decoration:none;font-size: var(--fs-xs);">
+        <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" style="width:14px;height:14px;vertical-align:-2px;"></i>
+        @(isRtl ? "رجوع" : "Back")
+    </a>
+</div>
+
+<form asp-action="Edit" asp-route-id="@Model.Id" method="post" style="background:#fff;border:1px solid #e5e7eb;border-radius:.5rem;padding:1rem;max-width:780px;">
+    @Html.AntiForgeryToken()
+    <partial name="_Form" />
+    <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;padding-top:.75rem;border-top:1px solid #f1f5f9;">
+        <a asp-action="Index" style="padding:.42rem .85rem;border:1px solid #d1d5db;color:#374151;border-radius:.375rem;font-size: var(--fs-xs);text-decoration:none;font-weight:600;">@(isRtl ? "إلغاء" : "Cancel")</a>
+        <button type="submit" style="padding:.42rem .85rem;background:#005B99;color:#fff;border:none;border-radius:.375rem;font-size: var(--fs-xs);font-weight:600;cursor:pointer;">@(isRtl ? "حفظ التغييرات" : "Save Changes")</button>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script nonce="@Context.CspNonce()">if (window.lucide) lucide.createIcons();</script>
+}

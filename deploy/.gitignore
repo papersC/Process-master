@@ -1,0 +1,2 @@
+# Don't commit deploy artifacts — regenerated each release
+*.zip

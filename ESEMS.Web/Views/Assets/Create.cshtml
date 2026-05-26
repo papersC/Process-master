@@ -1,0 +1,425 @@
+@model Asset
+@{
+    ViewData["Title"] = Shared["Title_AddAsset"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    var step1 = isRtl ? "الهوية والتصنيف" : "Identity & Classification";
+    var step2 = isRtl ? "الشراء والضمان" : "Purchase & Warranty";
+}
+
+<partial name="_WizardStyles" />
+
+<style>
+    .pc-pill-cri-1 { background: #fef2f2; color: #b91c1c; }
+    .pc-pill-cri-2 { background: #fff7ed; color: #c2410c; }
+    .pc-pill-cri-3 { background: #fefce8; color: #a16207; }
+    .pc-pill-cri-4 { background: #f1f5f9; color: #475569; }
+</style>
+
+<div class="wiz-pageheader">
+    <h1 class="wiz-pagetitle"><i data-lucide="package-plus" style="width:20px;height:20px;color:#005B99;"></i>@ViewData["Title"]</h1>
+    <div style="display:inline-flex;align-items:center;gap:.85rem;">
+        <span class="wiz-stepcount">@(isRtl ? "الخطوة" : "Step") <b id="stepCounter">1</b> @(isRtl ? "من" : "of") 2</span>
+        <a asp-action="Index" class="wiz-cancellink"><i data-lucide="x" style="width:14px;height:14px;"></i> @Shared["Button_BackToList"]</a>
+    </div>
+</div>
+
+<form asp-action="Create" method="post" id="wizardForm" novalidate data-guard-unsaved>
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" style="margin-bottom:.6rem;padding:.6rem .8rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.375rem;color:#b91c1c;font-size: var(--fs-xs);"></div>
+
+    <div class="wiz-grid">
+        <aside class="wiz-rail">
+            <ul class="wiz-steps" id="wizardSteps">
+                <li class="wiz-step active" data-step="1" onclick="wizGoTo(1)">
+                    <span class="wiz-stepnum">1</span>
+                    <span class="wiz-steptext"><span class="wiz-steptitle">@step1</span><span class="wiz-stepsub">@(isRtl ? "الكود، الفئة، الاسم، الموقع" : "Tag, category, name, location")</span></span>
+                </li>
+                <li class="wiz-step" data-step="2" onclick="wizGoTo(2)">
+                    <span class="wiz-stepnum">2</span>
+                    <span class="wiz-steptext"><span class="wiz-steptitle">@step2</span><span class="wiz-stepsub">@(isRtl ? "التاريخ، التكلفة، الإهلاك" : "Date, cost, depreciation")</span></span>
+                </li>
+            </ul>
+        </aside>
+
+        <section class="wiz-main">
+            <div class="wiz-checklist" data-state="missing"
+                 data-required-checklist
+                 data-required-fields='NameEn:@(isRtl ? "اسم الأصل بالإنجليزية" : "English asset name")'
+                 data-text-prefix='@(isRtl ? "ما زال يلزم: " : "Still need: ")'
+                 data-text-ok='@(isRtl ? "جاهز للحفظ." : "Ready to submit.")'
+                 data-text-sep=' · '>
+                <i data-lucide="circle-dashed" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                <span class="wiz-checklist-text"></span>
+            </div>
+
+            <!-- Step 1 -->
+            <div class="wiz-step-content active" data-step="1">
+                <div class="wiz-stephdr"><i data-lucide="info" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 1: @step1</h2></div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="AssetTag" class="pc-label">@Shared["Label_AssetTag"] <span class="req">*</span></label>
+                        <input asp-for="AssetTag" id="AssetTag" class="pc-input" />
+                        <span asp-validation-for="AssetTag" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="CategoryId" class="pc-label">@Shared["Label_Category"] <span class="req">*</span></label>
+                        <select asp-for="CategoryId" id="CategorySel" asp-items="@ViewBag.Categories" class="pc-select">
+                            <option value="">@Shared["Placeholder_SelectCategory"]</option>
+                        </select>
+                        <span asp-validation-for="CategoryId" class="pc-err"></span>
+                    </div>
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="NameEn" class="pc-label">@Shared["Label_NameEnglish"] <span class="req">*</span></label>
+                        <input asp-for="NameEn" id="NameEn" class="pc-input" />
+                        <span asp-validation-for="NameEn" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NameAr" class="pc-label">@Shared["Label_NameArabic"]</label>
+                        <input asp-for="NameAr" dir="rtl" class="pc-input" />
+                    </div>
+                </div>
+
+                <div class="pc-grid-3 pc-row">
+                    <div>
+                        <label asp-for="Manufacturer" class="pc-label">@Shared["Label_Manufacturer"]</label>
+                        <input asp-for="Manufacturer" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="Model" class="pc-label">@Shared["Label_Model"]</label>
+                        <input asp-for="Model" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="SerialNumber" class="pc-label">@Shared["Label_SerialNumber"]</label>
+                        <input asp-for="SerialNumber" class="pc-input" />
+                    </div>
+                </div>
+
+                <div class="pc-grid-3 pc-row">
+                    <div>
+                        <label asp-for="Criticality" class="pc-label">@Shared["Label_Criticality"] <span class="req">*</span></label>
+                        <select asp-for="Criticality" id="CriSel" class="pc-select">
+                            <option value="1">@Shared["Criticality_Critical"]</option>
+                            <option value="2">@Shared["Criticality_High"]</option>
+                            <option value="3" selected>@Shared["Criticality_Medium"]</option>
+                            <option value="4">@Shared["Criticality_Low"]</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label asp-for="Location" class="pc-label">@Shared["Label_Location"]</label>
+                        <input asp-for="Location" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="AssignedToUnitId" class="pc-label">@Shared["Label_AssignedTo"]</label>
+                        <select asp-for="AssignedToUnitId" id="UnitSel" asp-items="@ViewBag.OrganizationUnits" class="pc-select">
+                            <option value="">@Shared["Placeholder_SelectUnit"]</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="pc-grid-2">
+                    <div>
+                        <label asp-for="DescriptionEn" class="pc-label">@Shared["Label_DescriptionEnglish"]</label>
+                        <textarea asp-for="DescriptionEn" rows="3" class="pc-textarea"></textarea>
+                        <div class="pc-help">@Shared["Help_AssetDescription"]</div>
+                    </div>
+                    <div>
+                        <label asp-for="DescriptionAr" class="pc-label">@Shared["Label_DescriptionArabic"]</label>
+                        <textarea asp-for="DescriptionAr" dir="rtl" rows="3" class="pc-textarea"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="wiz-step-content" data-step="2">
+                <div class="wiz-stephdr"><i data-lucide="dollar-sign" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 2: @step2</h2></div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="PurchaseDate" class="pc-label">@Shared["Label_PurchaseDate"]</label>
+                        <input asp-for="PurchaseDate" type="date" id="PurchaseDateInp" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="PurchaseCost" class="pc-label">@Shared["Label_PurchaseCost"] (AED)</label>
+                        <input asp-for="PurchaseCost" type="number" step="0.01" id="PurchaseCost" class="pc-input" />
+                    </div>
+                </div>
+
+                <div class="pc-grid-2">
+                    <div>
+                        <label asp-for="WarrantyExpiryDate" class="pc-label">@Shared["Label_WarrantyExpiryDate"]</label>
+                        <input asp-for="WarrantyExpiryDate" type="date" id="WarrantyInp" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="DepreciationRate" class="pc-label">@Shared["Label_DepreciationRate"] (%)</label>
+                        <input asp-for="DepreciationRate" type="number" step="0.1" id="DeprInp" class="pc-input" />
+                    </div>
+                </div>
+
+                @* Real-estate block. Collapsed by default via <details>/<summary>
+                   so the wizard stays uncluttered for IT/equipment assets.
+                   All fields are nullable on the model — populate only the
+                   ones that apply to the chosen category (project/villa/
+                   building/plot). *@
+                <details style="margin-top:1rem;border-top:1px solid #e5e7eb;padding-top:.85rem;">
+                    <summary style="cursor:pointer;font-weight:600;font-size:var(--fs-sm);color:#005B99;display:flex;align-items:center;gap:.4rem;">
+                        <i data-lucide="home" style="width:16px;height:16px;" aria-hidden="true"></i>
+                        @Shared["Section_RealEstate"]
+                        <span style="color:#9ca3af;font-weight:400;font-size:var(--fs-xs);">— @(isRtl ? "اختياري — للمشاريع الإسكانية / الفلل / المباني" : "Optional — for housing projects / villas / buildings")</span>
+                    </summary>
+
+                    <div style="margin-top:.85rem;display:grid;grid-template-columns:1fr 1fr;gap:.75rem;">
+                        <div>
+                            <label asp-for="PlotNumber" class="pc-label">@Shared["Label_PlotNumber"]</label>
+                            <input asp-for="PlotNumber" class="pc-input" />
+                        </div>
+                        <div>
+                            <label asp-for="TitleDeedNumber" class="pc-label">@Shared["Label_TitleDeed"]</label>
+                            <input asp-for="TitleDeedNumber" class="pc-input" />
+                        </div>
+                        <div>
+                            <label asp-for="Emirate" class="pc-label">@Shared["Label_Emirate"]</label>
+                            <input asp-for="Emirate" class="pc-input" placeholder="@(isRtl ? "دبي" : "Dubai")" />
+                        </div>
+                        <div>
+                            <label asp-for="District" class="pc-label">@Shared["Label_District"]</label>
+                            <input asp-for="District" class="pc-input" />
+                        </div>
+                        <div>
+                            <label asp-for="LandAreaSqm" class="pc-label">@Shared["Label_LandAreaSqm"]</label>
+                            <input asp-for="LandAreaSqm" type="number" step="0.01" min="0" class="pc-input" />
+                        </div>
+                        <div>
+                            <label asp-for="BuiltUpAreaSqm" class="pc-label">@Shared["Label_BuiltUpAreaSqm"]</label>
+                            <input asp-for="BuiltUpAreaSqm" type="number" step="0.01" min="0" class="pc-input" />
+                        </div>
+                        <div>
+                            <label asp-for="Floors" class="pc-label">@Shared["Label_Floors"]</label>
+                            <input asp-for="Floors" type="number" min="0" class="pc-input" />
+                        </div>
+                        <div>
+                            <label asp-for="Units" class="pc-label">@Shared["Label_DwellingUnits"]</label>
+                            <input asp-for="Units" type="number" min="0" class="pc-input" />
+                        </div>
+                        <div>
+                            <label asp-for="Bedrooms" class="pc-label">@Shared["Label_Bedrooms"]</label>
+                            <input asp-for="Bedrooms" type="number" min="0" class="pc-input" />
+                        </div>
+                        <div>
+                            <label asp-for="ConstructionStatus" class="pc-label">@Shared["Label_ConstructionStatus"]</label>
+                            <select asp-for="ConstructionStatus" class="pc-input">
+                                <option value="">—</option>
+                                @foreach (var cs in Enum.GetValues<ConstructionStatus>())
+                                {
+                                    <option value="@cs">@Shared[$"ConstructionStatus_{cs}"]</option>
+                                }
+                            </select>
+                        </div>
+                        <div>
+                            <label asp-for="GpsLatitude" class="pc-label">@Shared["Label_GpsLatitude"]</label>
+                            <input asp-for="GpsLatitude" type="number" step="0.000001" class="pc-input" placeholder="25.276987" />
+                        </div>
+                        <div>
+                            <label asp-for="GpsLongitude" class="pc-label">@Shared["Label_GpsLongitude"]</label>
+                            <input asp-for="GpsLongitude" type="number" step="0.000001" class="pc-input" placeholder="55.296249" />
+                        </div>
+                    </div>
+                </details>
+
+                @* Information-asset block. Same collapsible <details>/<summary>
+                   pattern as Real Estate so the wizard stays clean for IT /
+                   equipment assets. Populate when the asset's Category is
+                   AST-INFO-* (database, document set, dataset, app data). *@
+                <details style="margin-top:1rem;border-top:1px solid #e5e7eb;padding-top:.85rem;">
+                    <summary style="cursor:pointer;font-weight:600;font-size:var(--fs-sm);color:#005B99;display:flex;align-items:center;gap:.4rem;">
+                        <i data-lucide="database" style="width:16px;height:16px;" aria-hidden="true"></i>
+                        @Shared["Section_InformationAsset"]
+                        <span style="color:#9ca3af;font-weight:400;font-size:var(--fs-xs);">— @(isRtl ? "اختياري — للبيانات / المستندات / مجموعات البيانات (ISO 27001 / PDPL)" : "Optional — for data / documents / datasets (ISO 27001 / PDPL)")</span>
+                    </summary>
+
+                    <div style="margin-top:.85rem;display:grid;grid-template-columns:1fr 1fr;gap:.75rem;">
+                        <div>
+                            <label asp-for="Classification" class="pc-label">@Shared["Label_Classification"]</label>
+                            <select asp-for="Classification" class="pc-input">
+                                <option value="">—</option>
+                                @foreach (var ic in Enum.GetValues<InformationClassification>())
+                                {
+                                    <option value="@ic">@Shared[$"InformationClassification_{ic}"]</option>
+                                }
+                            </select>
+                        </div>
+                        <div>
+                            <label asp-for="RetentionMonths" class="pc-label">@Shared["Label_RetentionMonths"]</label>
+                            <input asp-for="RetentionMonths" type="number" min="0" class="pc-input" />
+                        </div>
+                        <div>
+                            @* F-RA-007: replace raw numeric input with a user picker. *@
+                            <label asp-for="DataOwnerUserId" class="pc-label">@Shared["Label_DataOwner"]</label>
+                            <select asp-for="DataOwnerUserId" asp-items="@ViewBag.Users" class="pc-select">
+                                <option value="">@(isRtl ? "— لا يوجد —" : "— None —")</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label asp-for="DataCustodianUserId" class="pc-label">@Shared["Label_DataCustodian"]</label>
+                            <select asp-for="DataCustodianUserId" asp-items="@ViewBag.Users" class="pc-select">
+                                <option value="">@(isRtl ? "— لا يوجد —" : "— None —")</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label asp-for="StorageSystem" class="pc-label">@Shared["Label_StorageSystem"]</label>
+                            <input asp-for="StorageSystem" class="pc-input" placeholder="@(isRtl ? "مثلاً: SAP, SharePoint" : "e.g. SAP, SharePoint")" />
+                        </div>
+                        <div>
+                            <label asp-for="DataFormat" class="pc-label">@Shared["Label_DataFormat"]</label>
+                            <input asp-for="DataFormat" class="pc-input" placeholder="@(isRtl ? "مثلاً: قاعدة SQL، PDF" : "e.g. SQL database, PDF set")" />
+                        </div>
+                        <div>
+                            <label asp-for="RecordCount" class="pc-label">@Shared["Label_RecordCount"]</label>
+                            <input asp-for="RecordCount" type="number" min="0" class="pc-input" />
+                        </div>
+                        <div>
+                            <label asp-for="RegulatoryTags" class="pc-label">@Shared["Label_RegulatoryTags"]</label>
+                            <input asp-for="RegulatoryTags" class="pc-input" placeholder="PII, PDPL, FinancialRecord" />
+                        </div>
+                    </div>
+                </details>
+            </div>
+
+            <div class="wiz-footer">
+                <button type="button" class="pc-btn pc-btn-ghost" id="prevBtn" disabled>
+                    <i data-lucide="@(isRtl ? "chevron-right" : "chevron-left")" style="width:16px;height:16px;"></i>
+                    @(isRtl ? "السابق" : "Previous")
+                </button>
+                <button type="button" class="pc-btn pc-btn-primary" id="nextBtn">
+                    @(isRtl ? "التالي" : "Next")
+                    <i data-lucide="@(isRtl ? "chevron-left" : "chevron-right")" style="width:16px;height:16px;"></i>
+                </button>
+            </div>
+        </section>
+
+        <aside class="wiz-summary">
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="tag"></i><h3>@Shared["Label_AssetTag"]</h3></div>
+                <div class="wiz-sum-codepreview" id="tagPreview">—</div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="layers"></i><h3>@(isRtl ? "السياق" : "Context")</h3></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="alert-triangle"></i> @Shared["Label_Criticality"]</span><span class="wiz-sum-pill pc-pill-cri-3" id="sumCri">@Shared["Criticality_Medium"]</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="bookmark"></i> @Shared["Label_Category"]</span><span class="wiz-sum-pill" id="sumCat">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="building-2"></i> @Shared["Label_AssignedTo"]</span><span class="wiz-sum-pill" id="sumUnit">—</span></div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="dollar-sign"></i><h3>@(isRtl ? "الشراء" : "Purchase")</h3></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="calendar"></i> @Shared["Label_PurchaseDate"]</span><span class="wiz-sum-pill" id="sumDate">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="banknote"></i> @Shared["Label_PurchaseCost"]</span><span class="wiz-sum-pill" id="sumCost">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="shield"></i> @Shared["Label_WarrantyExpiryDate"]</span><span class="wiz-sum-pill" id="sumWarr">—</span></div>
+            </div>
+
+            <div class="wiz-sum-actions">
+                <button type="submit" class="pc-btn pc-btn-primary pc-btn-block" id="submitBtn" disabled
+                        title="@(isRtl ? "أكمل جميع الخطوات لتفعيل الزر" : "Complete all steps to enable")">
+                    <i data-lucide="save" style="width:16px;height:16px;"></i>
+                    @Shared["Button_AddAsset"]
+                </button>
+                <a asp-action="Index" class="pc-btn pc-btn-ghost pc-btn-block">
+                    <i data-lucide="x" style="width:16px;height:16px;"></i>
+                    @Shared["Button_Cancel"]
+                </a>
+            </div>
+        </aside>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+        const isRtl = @Html.Raw(isRtl ? "true" : "false");
+        const TOTAL_STEPS = 2;
+        let currentStep = 1, highestVisited = 1;
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const submitBtn = document.getElementById('submitBtn');
+        const stepCounterEl = document.getElementById('stepCounter');
+
+        function validateStep(n) {
+            if (n !== 1) return true;
+            const errors = [];
+            const mark = (id, label) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (!(el.value || '').trim()) { el.classList.add('invalid'); errors.push(label); } else { el.classList.remove('invalid'); }
+            };
+            mark('AssetTag',    isRtl ? "رمز الأصل مطلوب" : "Asset tag is required");
+            mark('CategorySel', isRtl ? "الفئة مطلوبة" : "Category is required");
+            mark('NameEn',      isRtl ? "الاسم بالإنجليزية مطلوب" : "English name is required");
+            if (errors.length) {
+                Swal.fire({ icon:'warning', title: isRtl ? "حقول مطلوبة" : "Required Fields", html: errors.join('<br>'), confirmButtonColor:'#005B99' });
+                return false;
+            }
+            return true;
+        }
+
+        function showStep(n) {
+            currentStep = Math.max(1, Math.min(TOTAL_STEPS, n));
+            highestVisited = Math.max(highestVisited, currentStep);
+            document.querySelectorAll('.wiz-step').forEach(el => {
+                const s = parseInt(el.dataset.step, 10);
+                el.classList.toggle('active', s === currentStep);
+                el.classList.toggle('completed', s < highestVisited && s !== currentStep);
+            });
+            document.querySelectorAll('.wiz-step-content').forEach(p => {
+                p.classList.toggle('active', parseInt(p.dataset.step, 10) === currentStep);
+            });
+            prevBtn.disabled = (currentStep === 1);
+            nextBtn.classList.toggle('d-none', currentStep === TOTAL_STEPS);
+            if (submitBtn) submitBtn.disabled = (currentStep !== TOTAL_STEPS);
+            if (stepCounterEl) stepCounterEl.textContent = currentStep;
+            if (window.lucide) lucide.createIcons();
+        }
+        window.wizGoTo = function (n) {
+            if (n <= currentStep) { showStep(n); return; }
+            if (n === currentStep + 1) { if (validateStep(currentStep)) showStep(n); return; }
+            if (validateStep(currentStep)) showStep(currentStep + 1);
+        };
+        prevBtn.addEventListener('click', () => showStep(currentStep - 1));
+        nextBtn.addEventListener('click', () => { if (validateStep(currentStep)) showStep(currentStep + 1); });
+
+        const CRI = {
+            '1': { label: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Criticality_Critical"].Value)), cls: 'pc-pill-cri-1' },
+            '2': { label: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Criticality_High"].Value)),     cls: 'pc-pill-cri-2' },
+            '3': { label: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Criticality_Medium"].Value)),   cls: 'pc-pill-cri-3' },
+            '4': { label: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Criticality_Low"].Value)),      cls: 'pc-pill-cri-4' }
+        };
+        function refresh() {
+            const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v || '—'; };
+            set('tagPreview', (document.getElementById('AssetTag')?.value || '').trim());
+            const c = CRI[document.getElementById('CriSel')?.value] || CRI['3'];
+            const sc = document.getElementById('sumCri');
+            sc.textContent = c.label; sc.className = 'wiz-sum-pill ' + c.cls;
+            const cat = document.getElementById('CategorySel');
+            set('sumCat', cat?.value ? cat.options[cat.selectedIndex].textContent.trim() : '');
+            const u = document.getElementById('UnitSel');
+            set('sumUnit', u?.value ? u.options[u.selectedIndex].textContent.trim() : '');
+            set('sumDate', document.getElementById('PurchaseDateInp')?.value);
+            const cv = (document.getElementById('PurchaseCost')?.value || '').trim();
+            set('sumCost', cv && cv !== '0' ? cv + ' AED' : '');
+            set('sumWarr', document.getElementById('WarrantyInp')?.value);
+        }
+        ['AssetTag','CriSel','CategorySel','UnitSel','PurchaseDateInp','PurchaseCost','WarrantyInp'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', refresh);
+            document.getElementById(id)?.addEventListener('input', refresh);
+        });
+        document.getElementById('wizardForm').addEventListener('submit', function (e) {
+            if (!validateStep(1)) { e.preventDefault(); showStep(1); }
+        });
+
+        showStep(1);
+        refresh();
+    </script>
+}

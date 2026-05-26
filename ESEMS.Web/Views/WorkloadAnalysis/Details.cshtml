@@ -1,0 +1,553 @@
+@model WorkloadScenario
+@inject ESEMS.Web.Services.Integrations.Contracts.IProcessPerformanceProvider PerfProvider
+@functions {
+    string StatusLabel(WorkloadScenarioStatus s, bool rtl) => s switch {
+        WorkloadScenarioStatus.Draft => rtl ? "مسودة" : "Draft",
+        WorkloadScenarioStatus.InReview => rtl ? "قيد المراجعة" : "In Review",
+        WorkloadScenarioStatus.Approved => rtl ? "معتمد" : "Approved",
+        WorkloadScenarioStatus.Archived => rtl ? "مؤرشف" : "Archived",
+        _ => s.ToString()
+    };
+
+    // Sprint-1 token 4: stop leaking schema names into the audit-trail UI.
+    // Splits "WorkloadScenario" → "Workload Scenario", "AvgProcessingTimeMinutes"
+    // → "Avg Processing Time Minutes", and applies a small overrides map for
+    // domain-specific names that would humanise awkwardly otherwise
+    // ("WorkloadLineItem" stays as "Line Item" not "Workload Line Item"
+    // because the parent entity is already on the row).
+    static readonly System.Collections.Generic.Dictionary<string, string> _auditEntityOverrides =
+        new System.Collections.Generic.Dictionary<string, string>(System.StringComparer.OrdinalIgnoreCase) {
+        { "WorkloadScenario",  "Scenario" },
+        { "WorkloadLineItem",  "Line Item" },
+        { "WorkloadConfig",    "Configuration" }
+    };
+    static readonly System.Collections.Generic.Dictionary<string, string> _auditPropertyOverrides =
+        new System.Collections.Generic.Dictionary<string, string>(System.StringComparer.OrdinalIgnoreCase) {
+        { "AnnualVolume",                "Annual Volume" },
+        { "AvgProcessingTimeMinutes",    "Avg. Processing Time" },
+        { "SimpleMult",                  "Simple Multiplier" },
+        { "MediumMult",                  "Medium Multiplier" },
+        { "ComplexMult",                 "Complex Multiplier" },
+        { "SimpleVolumePercent",         "Simple Volume %" },
+        { "MediumVolumePercent",         "Medium Volume %" },
+        { "ComplexVolumePercent",        "Complex Volume %" },
+        { "ComplexityEnabled",           "Complexity Mode" },
+        { "UpdatedAt",                   "Updated" },
+        { "CreatedAt",                   "Created" },
+        { "UpdatedById",                 "Updated By" },
+        { "CreatedById",                 "Created By" }
+    };
+
+    string HumanisePascal(string name) {
+        if (string.IsNullOrEmpty(name)) return name ?? string.Empty;
+        // Insert a space before each uppercase letter that follows a lowercase
+        // letter or another uppercase that's followed by lowercase. So
+        // "WorkloadScenario" → "Workload Scenario", "FTEHours" → "FTE Hours".
+        return System.Text.RegularExpressions.Regex.Replace(
+            name, "(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ");
+    }
+    string AuditEntityLabel(string name)
+        => string.IsNullOrEmpty(name) ? string.Empty
+        : _auditEntityOverrides.TryGetValue(name, out var v) ? v
+        : HumanisePascal(name);
+    string AuditPropertiesLabel(string csv) {
+        if (string.IsNullOrWhiteSpace(csv)) return string.Empty;
+        var parts = csv.Split(',', System.StringSplitOptions.RemoveEmptyEntries | System.StringSplitOptions.TrimEntries);
+        var labels = parts.Select(p => _auditPropertyOverrides.TryGetValue(p, out var v) ? v : HumanisePascal(p));
+        return string.Join(", ", labels);
+    }
+}
+@{
+    ViewData["Title"] = Model.Name;
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    var config = Model.Config;
+    var lineItems = Model.LineItems?.OrderBy(li => li.CreatedAt).ToList() ?? new List<WorkloadLineItem>();
+
+    var perms = new HashSet<string>(User.FindAll("Permission").Select(c => c.Value));
+    bool HasPerm(string p) => perms.Contains("*.*") || perms.Contains("Workload.*") || perms.Contains(p);
+    var canEdit = HasPerm("Workload.Edit");
+    var canCreate = HasPerm("Workload.Create");
+    var isEditable = ESEMS.Web.Services.Workload.WorkloadScenarioStatusMachine.IsEditable(Model.Status);
+
+    var auditLogs = ViewBag.AuditLogs as List<ESEMS.Web.Models.Common.AuditLog>
+        ?? new List<ESEMS.Web.Models.Common.AuditLog>();
+
+    var arrowBack = isRtl ? "arrow-right" : "arrow-left";
+}
+
+<partial name="_WaStyles" />
+
+<div class="wa-page">
+    @* Sticky scenario header — code pill, name, status, fiscal year, owning unit, actions. *@
+    <div class="wa-stickyhead">
+        <div class="wa-titlerow">
+            <div class="wa-titlemain">
+                <a asp-action="Index" class="wa-btn wa-btn-ghost wa-btn-sm" style="padding:.25rem .45rem;" title="@(isRtl ? "العودة" : "Back")" aria-label="@(isRtl ? "العودة" : "Back")"><i data-lucide="@arrowBack" class="w-4 h-4" aria-hidden="true"></i></a>
+                <span class="id-chip">@Model.Code</span>
+                <h1 class="wa-title" title="@Model.Name">@Model.Name</h1>
+                <span class="wa-status-pill wa-status-@Model.Status">@StatusLabel(Model.Status, isRtl)</span>
+                <span class="wa-breadcrumb">FY @Model.FiscalYear</span>
+                @if (Model.OwningUnit != null)
+                {
+                    <span class="wa-breadcrumb">· @Model.OwningUnit.Name</span>
+                }
+            </div>
+            <div class="wa-actions">
+                @if (canEdit && isEditable)
+                {
+                    <a asp-action="Edit" asp-route-id="@Model.Id" class="wa-btn wa-btn-primary"><i data-lucide="pencil" class="w-3.5 h-3.5"></i>@(isRtl ? "تعديل" : "Edit")</a>
+                }
+                @if (canCreate)
+                {
+                    <form asp-action="Clone" asp-route-id="@Model.Id" method="post" class="d-inline" id="cloneForm" style="display:inline;">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="newFiscalYear" id="cloneYear" value="@(Model.FiscalYear + 1)" />
+                        <button type="button" id="btnClone" class="wa-btn wa-btn-outline" style="color:#6d28d9;border-color:#c4b5fd;"><i data-lucide="copy" class="w-3.5 h-3.5"></i>@(isRtl ? "نسخ" : "Clone")</button>
+                    </form>
+                }
+                <button type="button" id="btnCompare" class="wa-btn wa-btn-outline"><i data-lucide="columns-2" class="w-3.5 h-3.5"></i>@(isRtl ? "مقارنة" : "Compare")</button>
+                <a asp-action="ExportScenario" asp-route-id="@Model.Id" class="wa-btn wa-btn-outline"><i data-lucide="download" class="w-3.5 h-3.5"></i>CSV</a>
+                <a asp-action="ExportScenarioPdf" asp-route-id="@Model.Id" class="wa-btn wa-btn-outline"><i data-lucide="file-text" class="w-3.5 h-3.5"></i>PDF</a>
+            </div>
+        </div>
+
+        @* Anchor nav — quick jumps to sections within the single pane. *@
+        <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.4rem;font-size: var(--fs-xs);">
+            <a href="#summary" class="wa-anchor">@(isRtl ? "ملخص" : "Summary")</a>
+            <a href="#fte" class="wa-anchor">@(isRtl ? "حساب الموظفين" : "FTE Breakdown")</a>
+            <a href="#lineitems" class="wa-anchor">@(isRtl ? "بنود حجم العمل" : "Line Items") (@lineItems.Count)</a>
+            @if (lineItems.Any()) { <a href="#chart" class="wa-anchor">@(isRtl ? "التوزيع" : "Distribution")</a> }
+            @if (PerfProvider.IsEnabled) { <a href="#linked-kpis-workload" class="wa-anchor">@(isRtl ? "مؤشرات الأداء" : "KPIs")</a> }
+            <a href="#audit" class="wa-anchor">@(isRtl ? "السجل" : "Audit") (@auditLogs.Count)</a>
+        </div>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div style="padding:.55rem .8rem;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:.375rem;font-size: var(--fs-xs);display:flex;align-items:center;gap:.4rem;">
+            <i data-lucide="check-circle" class="w-4 h-4"></i><span>@TempData["Success"]</span>
+        </div>
+    }
+
+    @* SUMMARY KPIs *@
+    <div class="wa-card" id="summary">
+        <div class="wa-card-head">
+            <div class="wa-card-title"><i data-lucide="gauge" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "ملخص السيناريو" : "Scenario Summary")</div>
+        </div>
+        <div class="wa-card-body">
+            <div class="wa-kpis">
+                <div class="wa-kpi">
+                    <div class="wa-kpi-icon" style="background:#eff6ff;color:#1d4ed8;"><i data-lucide="clock" class="w-4 h-4"></i></div>
+                    <div class="wa-kpi-text">
+                        <div class="wa-kpi-label">@(isRtl ? "ساعات العمل الإجمالية" : "Total Workload Hours")</div>
+                        <div class="wa-kpi-value">@Model.TotalWorkloadHours.ToString("N0")</div>
+                        <div class="wa-kpi-sub">@(isRtl ? "مجموع البنود" : "sum of line items")</div>
+                    </div>
+                </div>
+                <div class="wa-kpi">
+                    <div class="wa-kpi-icon" style="background:#f0fdf4;color:#15803d;"><i data-lucide="users" class="w-4 h-4"></i></div>
+                    <div class="wa-kpi-text">
+                        <div class="wa-kpi-label">@(isRtl ? "إجمالي الموظفين المطلوبين" : "Total FTE Required")</div>
+                        <div class="wa-kpi-value">@Model.TotalFTE.ToString("N0")</div>
+                        <div class="wa-kpi-sub">@(isRtl ? "بعد النمو والإشراف" : "after growth + supervision")</div>
+                    </div>
+                </div>
+                <div class="wa-kpi">
+                    <div class="wa-kpi-icon" style="background:#f5f3ff;color:#6d28d9;"><i data-lucide="user-check" class="w-4 h-4"></i></div>
+                    <div class="wa-kpi-text">
+                        <div class="wa-kpi-label">@(isRtl ? "العدد الحالي" : "Current Headcount")</div>
+                        <div class="wa-kpi-value">@(Model.CurrentHeadcount?.ToString("N0") ?? "—")</div>
+                        <div class="wa-kpi-sub">@(isRtl ? "موظفون فعليون" : "actual on-roll")</div>
+                    </div>
+                </div>
+                @{
+                    var gapPositive = Model.FTEGap > 0;
+                    var gapCls = gapPositive ? "wa-kpi-bad" : (Model.FTEGap < 0 ? "wa-kpi-good" : "");
+                    var gapBg  = gapPositive ? "#fef2f2" : (Model.FTEGap < 0 ? "#f0fdf4" : "#f1f5f9");
+                    var gapFg  = gapPositive ? "#b91c1c" : (Model.FTEGap < 0 ? "#15803d" : "#475569");
+                    var gapIcon = gapPositive ? "trending-up" : (Model.FTEGap < 0 ? "trending-down" : "minus");
+                    var gapMeaning = gapPositive
+                        ? (isRtl ? "نقص في التوظيف" : "Shortage")
+                        : (Model.FTEGap < 0 ? (isRtl ? "فائض في التوظيف" : "Surplus") : (isRtl ? "متوازن" : "Balanced"));
+                }
+                <div class="wa-kpi @gapCls">
+                    <div class="wa-kpi-icon" style="background:@gapBg;color:@gapFg;"><i data-lucide="@gapIcon" class="w-4 h-4"></i></div>
+                    <div class="wa-kpi-text">
+                        <div class="wa-kpi-label">@(isRtl ? "الفجوة" : "FTE Gap")</div>
+                        <div class="wa-kpi-value">@(gapPositive ? "+" : "")@Model.FTEGap.ToString("N0")</div>
+                        <div class="wa-kpi-sub">@gapMeaning</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* FTE BREAKDOWN *@
+    <div class="wa-card" id="fte">
+        <div class="wa-card-head">
+            <div class="wa-card-title"><i data-lucide="calculator" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "تفصيل حساب الموارد البشرية" : "FTE Calculation Breakdown")</div>
+        </div>
+        <div class="wa-card-body">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.5rem;">
+                <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:.375rem;padding:.6rem .75rem;">
+                    <div style="font-size: var(--fs-xs);color:#6b7280;text-transform:uppercase;letter-spacing:.04em;">@(isRtl ? "ساعات صافية / موظف / سنة" : "Net Hours / FTE / Year")</div>
+                    <div style="font-size: var(--fs-lg);font-weight:700;color:#111827;margin-top:.2rem;">@(config?.NetAvailableHoursPerFTE.ToString("N0") ?? "—") <span style="font-size: var(--fs-xs);font-weight:500;color:#6b7280;">hrs</span></div>
+                </div>
+                <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:.375rem;padding:.6rem .75rem;">
+                    <div style="font-size: var(--fs-xs);color:#6b7280;text-transform:uppercase;letter-spacing:.04em;">@(isRtl ? "الموظفون المباشرون" : "Direct FTE (raw)")</div>
+                    <div style="font-size: var(--fs-lg);font-weight:700;color:#111827;margin-top:.2rem;">@Model.TotalRequiredFTE.ToString("N2")</div>
+                </div>
+                <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:.375rem;padding:.6rem .75rem;">
+                    <div style="font-size: var(--fs-xs);color:#6b7280;text-transform:uppercase;letter-spacing:.04em;">@(isRtl ? "بعد النمو" : "After Growth")</div>
+                    <div style="font-size: var(--fs-lg);font-weight:700;color:#111827;margin-top:.2rem;">@Model.AdjustedFTE.ToString("N2")</div>
+                    @if (Model.GrowthRatePercent > 0 && Model.ProjectionYears > 0)
+                    {
+                        <div style="font-size: var(--fs-xs);color:#94a3b8;margin-top:.15rem;">+@Model.GrowthRatePercent% × @Model.ProjectionYears yr</div>
+                    }
+                </div>
+                <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:.375rem;padding:.6rem .75rem;">
+                    <div style="font-size: var(--fs-xs);color:#6b7280;text-transform:uppercase;letter-spacing:.04em;">@(isRtl ? "المشرفون" : "Supervisory FTE")</div>
+                    <div style="font-size: var(--fs-lg);font-weight:700;color:#111827;margin-top:.2rem;">@Model.SupervisoryFTE.ToString("N2")</div>
+                    <div style="font-size: var(--fs-xs);color:#94a3b8;margin-top:.15rem;">1 : @(config?.SupervisoryRatio ?? 8)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* LINE ITEMS — sticky thead, dense, total in tfoot *@
+    <div class="wa-card" id="lineitems">
+        <div class="wa-card-head">
+            <div class="wa-card-title"><i data-lucide="list" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "بنود حجم العمل" : "Workload Line Items") <span class="wa-card-count">@lineItems.Count</span></div>
+            @if (canEdit && isEditable)
+            {
+                <a asp-action="Edit" asp-route-id="@Model.Id" class="wa-btn wa-btn-ghost wa-btn-sm"><i data-lucide="pencil" class="w-3 h-3"></i>@(isRtl ? "تعديل البنود" : "Edit items")</a>
+            }
+        </div>
+        <div class="wa-card-body" style="padding:0;">
+            @if (lineItems.Any())
+            {
+                <div class="wa-table-wrap" style="max-height:55vh;">
+                    <table class="wa-table">
+                        <thead>
+                            <tr>
+                                <th style="width:32px;">#</th>
+                                <th>@(isRtl ? "العملية / الخدمة" : "Process / Service")</th>
+                                <th class="wa-num">@(isRtl ? "الحجم السنوي" : "Annual Volume")</th>
+                                <th class="wa-num">@(isRtl ? "وقت المعالجة" : "Time (min)")</th>
+                                <th>@(isRtl ? "التعقيد" : "Complexity")</th>
+                                <th class="wa-num">@(isRtl ? "ساعات العمل" : "Workload Hrs")</th>
+                                <th class="wa-num">@(isRtl ? "الموظفون" : "FTE Req")</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @{int idx = 1;}
+                            @foreach (var li in lineItems)
+                            {
+                                <tr>
+                                    <td style="color:#94a3b8;font-weight:500;">@idx</td>
+                                    <td style="font-weight:600;color:#111827;">
+                                        @li.Name
+                                        @if (li.Process != null)
+                                        {
+                                            <span style="margin-inline-start:.35rem;font-size: var(--fs-xs);background:#eff6ff;color:#1d4ed8;padding:.08rem .35rem;border-radius:.2rem;font-weight:700;">@(isRtl ? "عملية" : "PROCESS")</span>
+                                        }
+                                        @if (li.Service != null)
+                                        {
+                                            <span style="margin-inline-start:.35rem;font-size: var(--fs-xs);background:#f0fdf4;color:#15803d;padding:.08rem .35rem;border-radius:.2rem;font-weight:700;">@(isRtl ? "خدمة" : "SERVICE")</span>
+                                        }
+                                    </td>
+                                    <td class="wa-num wa-mono">@li.AnnualVolume.ToString("N0")</td>
+                                    <td class="wa-num wa-mono">@li.AvgProcessingTimeMinutes.ToString("N1")</td>
+                                    <td>
+                                        @if (li.ComplexityEnabled)
+                                        {
+                                            var s  = li.SimpleVolumePercent  ?? 0m;
+                                            var m  = li.MediumVolumePercent  ?? 0m;
+                                            var c  = li.ComplexVolumePercent ?? 0m;
+                                            var sm = li.SimpleMult  ?? 1.0m;
+                                            var mm = li.MediumMult  ?? 1.5m;
+                                            var cm = li.ComplexMult ?? 2.5m;
+                                            var tip = isRtl
+                                                ? $"بسيط {s}% (×{sm})، متوسط {m}% (×{mm})، معقّد {c}% (×{cm})"
+                                                : $"Simple {s}% (×{sm}), Medium {m}% (×{mm}), Complex {c}% (×{cm})";
+                                            <span style="display:inline-flex;align-items:center;gap:.25rem;font-size: var(--fs-xs);background:#fffbeb;color:#92400e;padding:.1rem .4rem;border-radius:.2rem;font-weight:600;" title="@tip">
+                                                <i data-lucide="sliders-horizontal" class="w-3 h-3"></i>
+                                                @($"{s:0}/{m:0}/{c:0}")
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span style="font-size: var(--fs-xs);color:#94a3b8;">@(isRtl ? "عادي" : "Flat")</span>
+                                        }
+                                    </td>
+                                    <td class="wa-num wa-mono" style="font-weight:700;">@li.WorkloadHours.ToString("N0")</td>
+                                    <td class="wa-num wa-mono" style="font-weight:700;color:#005B99;">@li.RequiredFTE.ToString("N2")</td>
+                                </tr>
+                                idx++;
+                            }
+                        </tbody>
+                        <tfoot style="background:#f8fafc;font-weight:700;">
+                            <tr>
+                                <td colspan="2" style="padding:.55rem .75rem;border-top:1px solid #e5e7eb;">@(isRtl ? "الإجمالي" : "Total")</td>
+                                <td class="wa-num wa-mono" style="border-top:1px solid #e5e7eb;">@lineItems.Sum(li => li.AnnualVolume).ToString("N0")</td>
+                                <td colspan="2" style="border-top:1px solid #e5e7eb;color:#cbd5e1;">—</td>
+                                <td class="wa-num wa-mono" style="border-top:1px solid #e5e7eb;">@lineItems.Sum(li => li.WorkloadHours).ToString("N0")</td>
+                                <td class="wa-num wa-mono" style="border-top:1px solid #e5e7eb;color:#005B99;">@lineItems.Sum(li => li.RequiredFTE).ToString("N2")</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="wa-empty">
+                    <div class="wa-empty-icon"><i data-lucide="inbox" class="w-10 h-10"></i></div>
+                    <div class="wa-empty-title">@(isRtl ? "لا توجد بنود بعد" : "No line items yet")</div>
+                    @if (canEdit && isEditable)
+                    {
+                        <div class="wa-empty-msg">@(isRtl ? "أضف عمليات أو خدمات من صفحة التعديل." : "Add processes or services from the edit page.")</div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    @* Chart only renders when there's actual data to plot. With every
+       line item at 0 hours the chart was painting an empty 11-tick grid
+       (0.0 ... 1.0) that swallowed the viewport — fixed by guarding on
+       Sum(WorkloadHours) > 0 instead of Any(). When line items exist but
+       no readings yet, show a compact hint instead. *@
+    @if (lineItems.Any(li => li.WorkloadHours > 0))
+    {
+        <div class="wa-card" id="chart">
+            <div class="wa-card-head">
+                <div class="wa-card-title"><i data-lucide="bar-chart-2" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "توزيع ساعات العمل حسب البند" : "Workload Distribution by Line Item")</div>
+            </div>
+            <div class="wa-card-body">
+                <div class="wa-chart-wrap wa-chart-md"><canvas id="lineItemHoursChart"></canvas></div>
+            </div>
+        </div>
+    }
+    else if (lineItems.Any())
+    {
+        <div class="wa-card" id="chart">
+            <div class="wa-card-head">
+                <div class="wa-card-title"><i data-lucide="bar-chart-2" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "توزيع ساعات العمل حسب البند" : "Workload Distribution by Line Item")</div>
+            </div>
+            <div class="wa-card-body" style="padding:1rem 1.1rem;">
+                <div style="display:flex;align-items:center;gap:.65rem;padding:.6rem .8rem;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;color:#475569;font-size:var(--fs-xs);">
+                    <i data-lucide="info" class="w-4 h-4" style="color:#94a3b8;flex-shrink:0;" aria-hidden="true"></i>
+                    <span>
+                        @(isRtl
+                            ? "لا توجد ساعات عمل بعد — أدخل الحجم السنوي ووقت المعالجة لكل بند من صفحة التعديل لرسم التوزيع."
+                            : "No workload hours yet — enter annual volume and processing time for each line item on the Edit page to plot the distribution.")
+                    </span>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* External-system KPIs. Renders nothing when integration is disabled. Workload
+       scenarios don't carry direct risks (those live on the linked processes/services),
+       so only the KPIs panel is wired here. *@
+    @if (PerfProvider.IsEnabled)
+    {
+        <div id="linked-kpis-workload">
+            @await Html.PartialAsync("Integrations/_LinkedKpis", new LinkedPanelArgs {
+                EntityType = LinkedEntityType.Workload,
+                EntityId   = Model.Id,
+                AnchorId   = "linked-kpis-workload"
+            })
+        </div>
+    }
+
+    @* AUDIT TRAIL *@
+    <div class="wa-card" id="audit">
+        <div class="wa-card-head">
+            <div class="wa-card-title"><i data-lucide="history" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "سجل التغييرات" : "Audit Trail") <span class="wa-card-count">@(auditLogs.Count == 20 ? $"last {auditLogs.Count}" : auditLogs.Count.ToString())</span></div>
+        </div>
+        <div class="wa-card-body" style="padding:0;">
+            @if (!auditLogs.Any())
+            {
+                <div class="wa-empty">
+                    <div class="wa-empty-icon"><i data-lucide="scroll-text" class="w-10 h-10"></i></div>
+                    <div class="wa-empty-title">@(isRtl ? "لا توجد تغييرات بعد" : "No changes recorded yet")</div>
+                </div>
+            }
+            else
+            {
+                <div class="wa-table-wrap" style="max-height:340px;">
+                    <table class="wa-table">
+                        <thead>
+                            <tr>
+                                <th>@(isRtl ? "متى" : "When")</th>
+                                <th>@(isRtl ? "المستخدم" : "User")</th>
+                                <th>@(isRtl ? "الإجراء" : "Action")</th>
+                                <th>@(isRtl ? "الكيان" : "Entity")</th>
+                                <th>@(isRtl ? "الحقول المتغيّرة" : "Changed Fields")</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var log in auditLogs)
+                            {
+                                var (badgeBg, badgeFg) = log.Action switch {
+                                    ESEMS.Web.Models.Enums.AuditAction.Create => ("#dcfce7", "#166534"),
+                                    ESEMS.Web.Models.Enums.AuditAction.Update => ("#eff6ff", "#1d4ed8"),
+                                    ESEMS.Web.Models.Enums.AuditAction.Delete => ("#fef2f2", "#b91c1c"),
+                                    _ => ("#f1f5f9", "#64748b")
+                                };
+                                <tr>
+                                    <td style="white-space:nowrap;color:#6b7280;font-size: var(--fs-xs);">@log.Timestamp.ToDubaiString("yyyy-MM-dd HH:mm")</td>
+                                    <td style="color:#374151;">@(log.UserName ?? log.UserId ?? "—")</td>
+                                    <td><span style="display:inline-block;padding:.1rem .45rem;font-size: var(--fs-xs);font-weight:700;border-radius:.2rem;background:@badgeBg;color:@badgeFg;">@log.Action</span></td>
+                                    <td style="color:#6b7280;">@AuditEntityLabel(log.EntityType)</td>
+                                    <td style="color:#94a3b8;font-size: var(--fs-xs);">@(string.IsNullOrEmpty(log.ChangedProperties) ? "—" : AuditPropertiesLabel(log.ChangedProperties))</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Anchor pill style — used in the sticky header. */
+    .wa-anchor { display:inline-flex; align-items:center; padding:.2rem .55rem; background:#f1f5f9; color:#475569; border-radius:.25rem; text-decoration:none; font-weight:600; transition:background .12s, color .12s; }
+    .wa-anchor:hover { background:#e2e8f0; color:#1e293b; }
+    /* Pulse the target card when navigating via anchor. */
+    .wa-card:target { animation: wa-target-pulse 1.6s ease-out 1; }
+    @@keyframes wa-target-pulse { 0% { box-shadow: 0 0 0 0 rgba(0,91,153,.4); } 70% { box-shadow: 0 0 0 6px rgba(0,91,153,0); } 100% { box-shadow: 0 0 0 0 rgba(0,91,153,0); } }
+    html { scroll-behavior: smooth; scroll-padding-top: 90px; }
+</style>
+
+@section Scripts {
+<script src="~/lib/chartjs/chart.umd.js" asp-append-version="true"></script>
+<script nonce="@Context.CspNonce()">
+(function() {
+    if (window.lucide) lucide.createIcons();
+    const isRtl = @(isRtl ? "true" : "false");
+    const canvas = document.getElementById('lineItemHoursChart');
+    if (canvas && typeof Chart !== 'undefined') {
+        let labels = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(lineItems.Select(li => li.Name).ToList()));
+        let hours  = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(lineItems.Select(li => Math.Round(li.WorkloadHours, 1)).ToList()));
+
+        // Audit fix: above ~15 items the bar chart becomes unreadable — labels
+        // overlap, bars compress to slivers. Roll up the long tail into an
+        // "Others" bucket so the top 14 stay distinct + a summary bar shows
+        // remaining workload. The dataset stays sorted by hours desc.
+        const TOP_N = 14;
+        if (labels.length > TOP_N) {
+            const pairs = labels.map((l, i) => ({ l, h: Number(hours[i] || 0) }))
+                                .sort((a, b) => b.h - a.h);
+            const top = pairs.slice(0, TOP_N);
+            const tail = pairs.slice(TOP_N);
+            const othersSum = Math.round(tail.reduce((a, p) => a + p.h, 0) * 10) / 10;
+            labels = [...top.map(p => p.l), (isRtl ? `أخرى (${tail.length})` : `Others (${tail.length})`)];
+            hours = [...top.map(p => p.h), othersSum];
+        }
+
+        // Audit fix: a single-bar chart is visual noise — it adds chart
+        // chrome (axes, gridlines, legend) for one number. Below a useful
+        // threshold (2 categories or a dominant >95% bar), replace with an
+        // inline summary chip strip the user can read at a glance.
+        const total = hours.reduce((a, b) => a + Number(b || 0), 0);
+        const dominantIdx = hours.findIndex(v => total > 0 && (Number(v) / total) >= 0.95);
+        // "Others" is always the last bucket when rolled up — tint it slate
+        // so users see it's a rollup, not a peer line item.
+        const othersIdx = labels.length > TOP_N + 1 ? -1 : (labels[labels.length - 1]?.startsWith?.('Others') || labels[labels.length - 1]?.startsWith?.('أخرى') ? labels.length - 1 : -1);
+
+        if (labels.length <= 1 || (labels.length === 2 && total === 0)) {
+            canvas.style.display = 'none';
+            const parent = canvas.parentElement;
+            if (parent) {
+                const summary = document.createElement('div');
+                summary.style.cssText = 'display:flex;align-items:center;justify-content:center;height:100%;color:#64748b;font-size:var(--fs-sm);text-align:center;padding:1rem;';
+                summary.textContent = labels.length === 0
+                    ? (isRtl ? 'لا توجد بنود لعرضها' : 'No line items to display')
+                    : (isRtl ? `بند واحد: ${labels[0]} — ${hours[0]} ساعة` : `One line item: ${labels[0]} — ${hours[0]} hrs`);
+                parent.appendChild(summary);
+            }
+        } else {
+            new Chart(canvas.getContext('2d'), {
+                type: 'bar',
+                data: { labels: labels, datasets: [{
+                    label: isRtl ? 'ساعات العمل' : 'Workload Hours',
+                    data: hours,
+                    backgroundColor: hours.map((_, i) => i === othersIdx ? 'rgba(148,163,184,.7)' : (i === dominantIdx ? 'rgba(241,180,76,.78)' : 'rgba(0,91,153,.78)')),
+                    borderColor: hours.map((_, i) => i === othersIdx ? '#94a3b8' : (i === dominantIdx ? '#F1B44C' : '#005B99')),
+                    borderWidth: 1, borderRadius: 4
+                }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false, indexAxis: labels.length > 8 ? 'y' : 'x',
+                    plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(0,0,0,.85)', padding: 10 } },
+                    scales: { x: { beginAtZero: true, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { font: { size: 10 } } } }
+                }
+            });
+        }
+    }
+
+    const btnCompare = document.getElementById('btnCompare');
+    if (btnCompare) {
+        btnCompare.addEventListener('click', () => {
+            window.location.href = '@Url.Action("Compare")?left=@Model.Id';
+        });
+    }
+
+    const btn = document.getElementById('btnClone');
+    if (btn) {
+        btn.addEventListener('click', async () => {
+            const current = Number(document.getElementById('cloneYear').value) || new Date().getFullYear() + 1;
+            const { value: year, isConfirmed } = await Swal.fire({
+                title: isRtl ? 'نسخ السيناريو' : 'Clone Scenario',
+                text:  isRtl ? 'اختر السنة المالية للنسخة الجديدة' : 'Target fiscal year for the new copy',
+                input: 'number', inputValue: current,
+                inputAttributes: { min: 2000, max: 2100, step: 1, lang: 'en' },
+                showCancelButton: true,
+                confirmButtonText: isRtl ? 'نسخ' : 'Clone',
+                cancelButtonText:  isRtl ? 'إلغاء' : 'Cancel',
+                confirmButtonColor: '#005B99', cancelButtonColor:  '#64748b',
+                inputValidator: v => { const n = Number(v); if (!n || n < 2000 || n > 2100) return isRtl ? 'أدخل سنة صحيحة' : 'Enter a valid year'; }
+            });
+            if (!isConfirmed) return;
+            document.getElementById('cloneYear').value = year;
+            document.getElementById('cloneForm').submit();
+        });
+    }
+
+    // Audit fix: the .wa-anchor row reads as a tab strip but had no active
+    // state, so the user couldn't tell which section they were in. Wire a
+    // small scroll-spy: whichever target section (#summary / #fte / etc.) is
+    // closest to the top of the viewport gets the .is-active class. The
+    // brand-blue underline that visually marks "current" is in site.css.
+    const anchors = [...document.querySelectorAll('.wa-anchor[href^="#"]')];
+    if (anchors.length > 0) {
+        const targets = anchors
+            .map(a => ({ a, el: document.querySelector(a.getAttribute('href')) }))
+            .filter(t => t.el);
+
+        function highlightActiveAnchor() {
+            const offset = 100; // sticky-header height
+            let best = null;
+            let bestDelta = Infinity;
+            for (const t of targets) {
+                const delta = Math.abs(t.el.getBoundingClientRect().top - offset);
+                if (t.el.getBoundingClientRect().top - offset <= 1 && delta < bestDelta) {
+                    bestDelta = delta;
+                    best = t.a;
+                }
+            }
+            for (const t of targets) t.a.classList.toggle('is-active', t.a === best);
+        }
+
+        highlightActiveAnchor();
+        let raf = null;
+        window.addEventListener('scroll', () => {
+            if (raf) cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(highlightActiveAnchor);
+        }, { passive: true });
+    }
+})();
+</script>
+}

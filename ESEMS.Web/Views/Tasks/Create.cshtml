@@ -1,0 +1,317 @@
+@model ProcessTask
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = Shared["Action_CreateTask"].Value;
+    var parentProcessId = ViewBag.ParentProcessId as string;
+    var step1 = isRtl ? "الهوية والتسلسل" : "Identity & Hierarchy";
+    var step2 = isRtl ? "التصنيف والحالة" : "Classification & Status";
+    var step3 = isRtl ? "التقديرات والوثائق" : "Estimates & Documentation";
+}
+
+<partial name="_WizardStyles" />
+
+<div class="wiz-pageheader">
+    <h1 class="wiz-pagetitle"><i data-lucide="check-square" style="width:20px;height:20px;color:#005B99;"></i>@ViewData["Title"]</h1>
+    <div style="display:inline-flex;align-items:center;gap:.85rem;">
+        <span class="wiz-stepcount">@(isRtl ? "الخطوة" : "Step") <b id="stepCounter">1</b> @(isRtl ? "من" : "of") 3</span>
+        <a asp-controller="Processes" asp-action="Details" asp-route-id="@parentProcessId" class="wiz-cancellink"><i data-lucide="x" style="width:14px;height:14px;"></i> @Shared["Action_Back"]</a>
+    </div>
+</div>
+
+<form asp-action="Create" method="post" id="wizardForm" novalidate>
+    <div asp-validation-summary="ModelOnly" style="margin-bottom:.6rem;padding:.6rem .8rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.375rem;color:#b91c1c;font-size: var(--fs-xs);"></div>
+
+    <div class="wiz-grid">
+        <aside class="wiz-rail">
+            <ul class="wiz-steps" id="wizardSteps">
+                <li class="wiz-step active" data-step="1" onclick="wizGoTo(1)">
+                    <span class="wiz-stepnum">1</span>
+                    <span class="wiz-steptext"><span class="wiz-steptitle">@step1</span><span class="wiz-stepsub">@(isRtl ? "الكود، النشاط، الاسم" : "Code, activity, name")</span></span>
+                </li>
+                <li class="wiz-step" data-step="2" onclick="wizGoTo(2)">
+                    <span class="wiz-stepnum">2</span>
+                    <span class="wiz-steptext"><span class="wiz-steptitle">@step2</span><span class="wiz-stepsub">@(isRtl ? "القناة، الوحدة، الإجراء، الأتمتة" : "Channel, unit, procedure, automation")</span></span>
+                </li>
+                <li class="wiz-step" data-step="3" onclick="wizGoTo(3)">
+                    <span class="wiz-stepnum">3</span>
+                    <span class="wiz-steptext"><span class="wiz-steptitle">@step3</span><span class="wiz-stepsub">@(isRtl ? "المدة، التكلفة، الوثيقة" : "Duration, cost, documentation")</span></span>
+                </li>
+            </ul>
+        </aside>
+
+        <section class="wiz-main">
+            <!-- Step 1 -->
+            <div class="wiz-step-content active" data-step="1">
+                <div class="wiz-stephdr"><i data-lucide="file-text" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 1: @step1</h2></div>
+
+                <div class="pc-grid-4 pc-row">
+                    <div>
+                        <label asp-for="Code" class="pc-label">@Shared["Column_Code"] <span class="req">*</span></label>
+                        <input asp-for="Code" id="CodeInp" class="pc-input" />
+                        <span asp-validation-for="Code" class="pc-err"></span>
+                    </div>
+                    <div style="grid-column: span 2;">
+                        <label asp-for="ActivityId" class="pc-label">@Shared["Label_ParentActivity"] <span class="req">*</span></label>
+                        <select asp-for="ActivityId" id="ActivitySel" asp-items="ViewBag.Activities" class="pc-select"></select>
+                        <span asp-validation-for="ActivityId" class="pc-err"></span>
+                    </div>
+                    <input asp-for="DisplayOrder" type="hidden" />
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="NameEn" class="pc-label">@Shared["Label_NameEn"] <span class="req">*</span></label>
+                        <input asp-for="NameEn" id="NameEn" class="pc-input" />
+                        <span asp-validation-for="NameEn" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NameAr" class="pc-label">@Shared["Label_NameAr"] <span class="req">*</span></label>
+                        <input asp-for="NameAr" id="NameAr" dir="rtl" class="pc-input" />
+                        <span asp-validation-for="NameAr" class="pc-err"></span>
+                    </div>
+                </div>
+
+                <div class="pc-grid-2">
+                    <div>
+                        <label asp-for="DescriptionEn" class="pc-label">@Shared["Label_DescriptionEn"]</label>
+                        <textarea asp-for="DescriptionEn" rows="3" class="pc-textarea"></textarea>
+                    </div>
+                    <div>
+                        <label asp-for="DescriptionAr" class="pc-label">@Shared["Label_DescriptionAr"]</label>
+                        <textarea asp-for="DescriptionAr" dir="rtl" rows="3" class="pc-textarea"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="wiz-step-content" data-step="2">
+                <div class="wiz-stephdr"><i data-lucide="settings" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 2: @step2</h2></div>
+
+                <div class="pc-grid-4 pc-row">
+                    <div>
+                        <label asp-for="ChannelType" class="pc-label">@Shared["Label_ChannelType"] <span class="req">*</span></label>
+                        <select asp-for="ChannelType" id="ChannelSel" asp-items="@(new SelectList(Enum.GetValues<ChannelType>().Select(v => new { Value = v.ToString(), Display = Shared[$"ChannelType_{v}"].Value }), "Value", "Display"))" class="pc-select"></select>
+                        <span asp-validation-for="ChannelType" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="OwningUnitId" class="pc-label">@Shared["Column_OwningUnit"] <span class="req">*</span></label>
+                        <select asp-for="OwningUnitId" id="UnitSel" asp-items="ViewBag.OrganizationUnits" class="pc-select">
+                            <option value="">-- Select Owner Unit --</option>
+                        </select>
+                        <span asp-validation-for="OwningUnitId" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="SystemId" class="pc-label">@Shared["Label_System"]</label>
+                        <select asp-for="SystemId" id="SystemSel" asp-items="ViewBag.Systems" class="pc-select">
+                            <option value="">@Shared["Option_Optional"]</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label asp-for="Tags" class="pc-label">@Shared["Column_Tags"]</label>
+                        <input asp-for="Tags" placeholder="@(isRtl ? "مثال: رقمي، إجراء تشغيل قياسي" : "e.g. digital, SOP")" class="pc-input" />
+                    </div>
+                </div>
+
+                <div class="pc-grid-4">
+                    <div>
+                        <label asp-for="ProcedureStatus" class="pc-label">@Shared["Label_ProcedureStatus"] <span class="req">*</span></label>
+                        <select asp-for="ProcedureStatus" id="ProcSel" asp-items="@(new SelectList(Enum.GetValues<ProcedureStatus>().Select(v => new { Value = v.ToString(), Display = Shared[$"ProcedureStatus_{v}"].Value }), "Value", "Display"))" class="pc-select"></select>
+                        <span asp-validation-for="ProcedureStatus" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="AutomationStatus" class="pc-label">@Shared["Label_AutomationStatus"] <span class="req">*</span></label>
+                        <select asp-for="AutomationStatus" id="AutoSel" asp-items="@(new SelectList(Enum.GetValues<AutomationStatus>().Select(v => new { Value = v.ToString(), Display = Shared[$"AutomationStatus_{v}"].Value }), "Value", "Display"))" class="pc-select"></select>
+                        <span asp-validation-for="AutomationStatus" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="AutomabilityStatus" class="pc-label">@Shared["Label_AutomabilityStatus"]</label>
+                        <select asp-for="AutomabilityStatus" asp-items="@(new SelectList(Enum.GetValues<AutomabilityStatus>().Select(v => new { Value = v.ToString(), Display = Shared[$"AutomabilityStatus_{v}"].Value }), "Value", "Display"))" class="pc-select"></select>
+                    </div>
+                    <div>
+                        <label asp-for="CurrentProposedStatus" class="pc-label">@Shared["Label_CurrentProposedStatus"]</label>
+                        <select asp-for="CurrentProposedStatus" asp-items="@(new SelectList(Enum.GetValues<CurrentProposedStatus>().Select(v => new { Value = v.ToString(), Display = Shared[$"CurrentProposedStatus_{v}"].Value }), "Value", "Display"))" class="pc-select"></select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="wiz-step-content" data-step="3">
+                <div class="wiz-stephdr"><i data-lucide="gauge" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 3: @step3</h2></div>
+
+                <div class="pc-grid-3 pc-row">
+                    <div>
+                        <label asp-for="EstimatedDuration" class="pc-label">@Shared["Label_EstimatedDuration"]</label>
+                        <input asp-for="EstimatedDuration" type="number" step="0.01" id="DurInp" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="DurationUnit" class="pc-label">@Shared["Label_TimeUnit"]</label>
+                        <select asp-for="DurationUnit" id="DurUnitSel" asp-items="@(new SelectList(Enum.GetValues<TimeUnit>().Select(t => new { Value = t.ToString(), Display = Shared[$"TimeUnit_{t}"].Value }), "Value", "Display"))" class="pc-select">
+                            <option value="">@Shared["Option_Optional"]</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label asp-for="EstimatedCost" class="pc-label">@Shared["Label_EstimatedCost"]</label>
+                        <input asp-for="EstimatedCost" type="number" step="0.01" id="CostInp" class="pc-input" />
+                    </div>
+                </div>
+
+                <div class="pc-grid-3">
+                    <div>
+                        <label asp-for="LinkedServices" class="pc-label">@Shared["Label_LinkedServices"]</label>
+                        <input asp-for="LinkedServices" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="DocumentReference" class="pc-label">@Shared["Label_DocumentReference"]</label>
+                        <input asp-for="DocumentReference" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="DocumentLanguage" class="pc-label">@Shared["Label_DocumentLanguage"]</label>
+                        <input asp-for="DocumentLanguage" class="pc-input" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="wiz-footer">
+                <button type="button" class="pc-btn pc-btn-ghost" id="prevBtn" disabled>
+                    <i data-lucide="@(isRtl ? "chevron-right" : "chevron-left")" style="width:16px;height:16px;"></i>
+                    @(isRtl ? "السابق" : "Previous")
+                </button>
+                <button type="button" class="pc-btn pc-btn-primary" id="nextBtn">
+                    @(isRtl ? "التالي" : "Next")
+                    <i data-lucide="@(isRtl ? "chevron-left" : "chevron-right")" style="width:16px;height:16px;"></i>
+                </button>
+            </div>
+        </section>
+
+        <aside class="wiz-summary">
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="hash"></i><h3>@Shared["Column_Code"]</h3></div>
+                <div class="wiz-sum-codepreview" id="codePreview">—</div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="git-branch"></i><h3>@(isRtl ? "السياق" : "Context")</h3></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="layers"></i> @Shared["Label_ParentActivity"]</span><span class="wiz-sum-pill" id="sumActivity">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="globe"></i> @Shared["Label_ChannelType"]</span><span class="wiz-sum-pill" id="sumChannel">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="building-2"></i> @Shared["Column_OwningUnit"]</span><span class="wiz-sum-pill" id="sumUnit">—</span></div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="circle"></i><h3>@(isRtl ? "الحالة" : "Status")</h3></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="file-check"></i> @Shared["Label_ProcedureStatus"]</span><span class="wiz-sum-pill" id="sumProc">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="bot"></i> @Shared["Label_AutomationStatus"]</span><span class="wiz-sum-pill" id="sumAuto">—</span></div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="gauge"></i><h3>@(isRtl ? "التقديرات" : "Estimates")</h3></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="clock"></i> @Shared["Label_EstimatedDuration"]</span><span class="wiz-sum-pill" id="sumDur">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="banknote"></i> @Shared["Label_EstimatedCost"]</span><span class="wiz-sum-pill" id="sumCost">—</span></div>
+            </div>
+
+            <div class="wiz-sum-actions">
+                <button type="submit" class="pc-btn pc-btn-primary pc-btn-block" id="submitBtn" disabled
+                        title="@(isRtl ? "أكمل جميع الخطوات لتفعيل الزر" : "Complete all steps to enable")">
+                    <i data-lucide="save" style="width:16px;height:16px;"></i>
+                    @Shared["Button_Save"]
+                </button>
+                <a asp-controller="Processes" asp-action="Details" asp-route-id="@parentProcessId" class="pc-btn pc-btn-ghost pc-btn-block">
+                    <i data-lucide="x" style="width:16px;height:16px;"></i>
+                    @Shared["Button_Cancel"]
+                </a>
+            </div>
+        </aside>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+        const isRtl = @Html.Raw(isRtl ? "true" : "false");
+        const TOTAL_STEPS = 3;
+        let currentStep = 1, highestVisited = 1;
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const submitBtn = document.getElementById('submitBtn');
+        const stepCounterEl = document.getElementById('stepCounter');
+
+        function validateStep(n) {
+            const errors = [];
+            const mark = (id, label) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (!(el.value || '').trim()) { el.classList.add('invalid'); errors.push(label); } else { el.classList.remove('invalid'); }
+            };
+            if (n === 1) {
+                mark('CodeInp',     isRtl ? "الكود مطلوب" : "Code is required");
+                mark('ActivitySel', isRtl ? "النشاط الأم مطلوب" : "Parent activity is required");
+                mark('NameEn',      isRtl ? "الاسم بالإنجليزية مطلوب" : "English name is required");
+                mark('NameAr',      isRtl ? "الاسم بالعربية مطلوب"   : "Arabic name is required");
+            }
+            if (n === 2) {
+                mark('UnitSel', isRtl ? "وحدة المالك مطلوبة" : "Owning unit is required");
+            }
+            if (errors.length) {
+                Swal.fire({ icon:'warning', title: isRtl ? "حقول مطلوبة" : "Required Fields", html: errors.join('<br>'), confirmButtonColor:'#005B99' });
+                return false;
+            }
+            return true;
+        }
+
+        function showStep(n) {
+            currentStep = Math.max(1, Math.min(TOTAL_STEPS, n));
+            highestVisited = Math.max(highestVisited, currentStep);
+            document.querySelectorAll('.wiz-step').forEach(el => {
+                const s = parseInt(el.dataset.step, 10);
+                el.classList.toggle('active', s === currentStep);
+                el.classList.toggle('completed', s < highestVisited && s !== currentStep);
+            });
+            document.querySelectorAll('.wiz-step-content').forEach(p => {
+                p.classList.toggle('active', parseInt(p.dataset.step, 10) === currentStep);
+            });
+            prevBtn.disabled = (currentStep === 1);
+            nextBtn.classList.toggle('d-none', currentStep === TOTAL_STEPS);
+            if (submitBtn) submitBtn.disabled = (currentStep !== TOTAL_STEPS);
+            if (stepCounterEl) stepCounterEl.textContent = currentStep;
+            if (window.lucide) lucide.createIcons();
+        }
+        window.wizGoTo = function (n) {
+            if (n <= currentStep) { showStep(n); return; }
+            if (n === currentStep + 1) { if (validateStep(currentStep)) showStep(n); return; }
+            if (validateStep(currentStep)) showStep(currentStep + 1);
+        };
+        prevBtn.addEventListener('click', () => showStep(currentStep - 1));
+        nextBtn.addEventListener('click', () => { if (validateStep(currentStep)) showStep(currentStep + 1); });
+
+        function refresh() {
+            const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v || '—'; };
+            set('codePreview', (document.getElementById('CodeInp')?.value || '').trim());
+            const a = document.getElementById('ActivitySel');
+            set('sumActivity', a?.value ? a.options[a.selectedIndex]?.text?.trim() : '');
+            const c = document.getElementById('ChannelSel');
+            set('sumChannel', c?.value ? c.options[c.selectedIndex]?.text?.trim() : '');
+            const u = document.getElementById('UnitSel');
+            set('sumUnit', u?.value ? u.options[u.selectedIndex]?.text?.trim() : '');
+            const p = document.getElementById('ProcSel');
+            set('sumProc', p?.value ? p.options[p.selectedIndex]?.text?.trim() : '');
+            const au = document.getElementById('AutoSel');
+            set('sumAuto', au?.value ? au.options[au.selectedIndex]?.text?.trim() : '');
+            const d = (document.getElementById('DurInp')?.value || '').trim();
+            const du = document.getElementById('DurUnitSel');
+            const duText = du?.value ? du.options[du.selectedIndex]?.text?.trim() : '';
+            set('sumDur', d && d !== '0' ? (d + (duText ? ' ' + duText : '')) : '');
+            const co = (document.getElementById('CostInp')?.value || '').trim();
+            set('sumCost', co && co !== '0' ? co + ' AED' : '');
+        }
+        ['CodeInp','ActivitySel','ChannelSel','UnitSel','ProcSel','AutoSel','DurInp','DurUnitSel','CostInp'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', refresh);
+            document.getElementById(id)?.addEventListener('input', refresh);
+        });
+        document.getElementById('wizardForm').addEventListener('submit', function (e) {
+            if (!validateStep(1) || !validateStep(2)) { e.preventDefault(); }
+        });
+
+        showStep(1);
+        refresh();
+    </script>
+}

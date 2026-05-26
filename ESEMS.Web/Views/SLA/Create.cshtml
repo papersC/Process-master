@@ -1,0 +1,279 @@
+@model SLADefinition
+@{
+    ViewData["Title"] = Shared["Title_AddSLA"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    var step1 = isRtl ? "الهوية والخدمة" : "Identity & Service";
+    var step2 = isRtl ? "الهدف والجدول" : "Target & Schedule";
+}
+
+<partial name="_WizardStyles" />
+
+<style>
+    .wiz-target-preview { font-family: monospace; font-size: var(--fs-sm); font-weight: 700; color: #005B99; background: #eff6ff; padding: .55rem .65rem; border-radius: .25rem; text-align: center; margin-bottom: .55rem; }
+    .wiz-sum-pill-warn { background: #fef3c7; color: #92400e; }
+</style>
+
+<div class="wiz-pageheader">
+    <h1 class="wiz-pagetitle"><i data-lucide="gauge" style="width:20px;height:20px;color:#005B99;"></i>@ViewData["Title"]</h1>
+    <div style="display:inline-flex;align-items:center;gap:.85rem;">
+        <span class="wiz-stepcount">@(isRtl ? "الخطوة" : "Step") <b id="stepCounter">1</b> @(isRtl ? "من" : "of") 2</span>
+        <a asp-action="Index" class="wiz-cancellink"><i data-lucide="x" style="width:14px;height:14px;"></i> @(isRtl ? "رجوع" : "Back")</a>
+    </div>
+</div>
+
+<form asp-action="Create" method="post" id="wizardForm" novalidate>
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" style="margin-bottom:.6rem;padding:.6rem .8rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.375rem;color:#b91c1c;font-size: var(--fs-xs);"></div>
+
+    <div class="wiz-grid">
+        <aside class="wiz-rail">
+            <ul class="wiz-steps" id="wizardSteps">
+                <li class="wiz-step active" data-step="1" onclick="wizGoTo(1)">
+                    <span class="wiz-stepnum">1</span>
+                    <span class="wiz-steptext"><span class="wiz-steptitle">@step1</span><span class="wiz-stepsub">@(isRtl ? "الاسم، الخدمة، الوصف" : "Name, service, description")</span></span>
+                </li>
+                <li class="wiz-step" data-step="2" onclick="wizGoTo(2)">
+                    <span class="wiz-stepnum">2</span>
+                    <span class="wiz-steptext"><span class="wiz-steptitle">@step2</span><span class="wiz-stepsub">@(isRtl ? "المقياس، التكرار، المسؤولية" : "Metric, frequency, ownership")</span></span>
+                </li>
+            </ul>
+        </aside>
+
+        <section class="wiz-main">
+            <!-- Step 1 -->
+            <div class="wiz-step-content active" data-step="1">
+                <div class="wiz-stephdr"><i data-lucide="file-text" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 1: @step1</h2></div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="Code" class="pc-label">@Shared["Label_Code"]</label>
+                        <input asp-for="Code" class="pc-input" readonly />
+                        <div class="pc-help">@(isRtl ? "يُولد تلقائيًا عند الحفظ" : "Auto-generated on save")</div>
+                    </div>
+                    <div>
+                        <label asp-for="ServiceId" class="pc-label">@Shared["Label_Service"]</label>
+                        <select asp-for="ServiceId" id="ServiceSel" asp-items="@ViewBag.Services" class="pc-select">
+                            <option value="">@Shared["Placeholder_SelectService"]</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="NameEn" class="pc-label">@Shared["Label_NameEnglish"] <span class="req">*</span></label>
+                        <input asp-for="NameEn" id="NameEn" class="pc-input" />
+                        <span asp-validation-for="NameEn" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NameAr" class="pc-label">@Shared["Label_NameArabic"]</label>
+                        <input asp-for="NameAr" dir="rtl" class="pc-input" />
+                    </div>
+                </div>
+
+                <div>
+                    <label asp-for="DescriptionEn" class="pc-label">@Shared["Label_DescriptionEnglish"]</label>
+                    <textarea asp-for="DescriptionEn" rows="3" class="pc-textarea"></textarea>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="wiz-step-content" data-step="2">
+                <div class="wiz-stephdr"><i data-lucide="target" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 2: @step2</h2></div>
+
+                <div class="pc-row">
+                    <label asp-for="MetricName" class="pc-label">@Shared["Label_MetricName"] <span class="req">*</span></label>
+                    <input asp-for="MetricName" id="MetricName" class="pc-input" placeholder="@(isRtl ? "مثال: زمن الاستجابة، التوفر" : "e.g., Response Time, Availability")" />
+                    <span asp-validation-for="MetricName" class="pc-err"></span>
+                </div>
+
+                <div class="pc-grid-3 pc-row">
+                    <div>
+                        <label asp-for="TargetValue" class="pc-label">@Shared["Label_TargetValue"] <span class="req">*</span></label>
+                        <input asp-for="TargetValue" type="number" step="0.01" id="TargetValue" class="pc-input" />
+                        <span asp-validation-for="TargetValue" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="Unit" class="pc-label">@Shared["Label_Unit"] <span class="req">*</span></label>
+                        <select asp-for="Unit" id="UnitSel" class="pc-select">
+                            <option value="Hours">@Shared["Unit_Hours"]</option>
+                            <option value="Minutes">@Shared["Unit_Minutes"]</option>
+                            <option value="%">@Shared["Unit_Percentage"]</option>
+                            <option value="Days">@Shared["Unit_Days"]</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label asp-for="WarningThreshold" class="pc-label">@Shared["Label_WarningThreshold"] (%)</label>
+                        <input asp-for="WarningThreshold" type="number" step="1" min="0" max="100" id="WarningThreshold" class="pc-input" placeholder="80" />
+                    </div>
+                </div>
+
+                <div class="pc-grid-3 pc-row">
+                    <div>
+                        <label asp-for="MeasurementFrequency" class="pc-label">@Shared["Label_MeasurementFrequency"]</label>
+                        <select asp-for="MeasurementFrequency" id="FreqSel" class="pc-select">
+                            <option value="Daily">@Shared["Frequency_Daily"]</option>
+                            <option value="Weekly">@Shared["Frequency_Weekly"]</option>
+                            <option value="Monthly">@Shared["Frequency_Monthly"]</option>
+                            <option value="Quarterly">@Shared["Frequency_Quarterly"]</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label asp-for="ResponsibleUnitId" class="pc-label">@Shared["Label_ResponsibleUnit"]</label>
+                        <select asp-for="ResponsibleUnitId" id="UnitOwnerSel" asp-items="@ViewBag.OrganizationUnits" class="pc-select">
+                            <option value="">@Shared["Placeholder_SelectUnit"]</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label asp-for="EffectiveFrom" class="pc-label">@Shared["Label_EffectiveFrom"] <span class="req">*</span></label>
+                        <input asp-for="EffectiveFrom" type="date" class="pc-input" />
+                    </div>
+                </div>
+
+                <div>
+                    <label asp-for="PenaltyForBreach" class="pc-label">@Shared["Label_PenaltyForBreach"]</label>
+                    <textarea asp-for="PenaltyForBreach" rows="2" class="pc-textarea" placeholder="@(isRtl ? "وصف الإجراء أو الجزاء عند انتهاك SLA" : "Describe the action or penalty when SLA is breached")"></textarea>
+                </div>
+            </div>
+
+            <div class="wiz-footer">
+                <button type="button" class="pc-btn pc-btn-ghost" id="prevBtn" disabled>
+                    <i data-lucide="@(isRtl ? "chevron-right" : "chevron-left")" style="width:16px;height:16px;"></i>
+                    @(isRtl ? "السابق" : "Previous")
+                </button>
+                <button type="button" class="pc-btn pc-btn-primary" id="nextBtn">
+                    @(isRtl ? "التالي" : "Next")
+                    <i data-lucide="@(isRtl ? "chevron-left" : "chevron-right")" style="width:16px;height:16px;"></i>
+                </button>
+            </div>
+        </section>
+
+        <aside class="wiz-summary">
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="hash"></i><h3>@(isRtl ? "رمز SLA" : "SLA Code")</h3></div>
+                <p class="wiz-sum-note">@(isRtl ? "يُولد تلقائيًا عند الحفظ" : "Auto-generated on save")</p>
+                <div class="wiz-sum-codepreview">SLA-—</div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="target"></i><h3>@(isRtl ? "معاينة الهدف" : "Target Preview")</h3></div>
+                <div class="wiz-target-preview" id="targetPreview">@(isRtl ? "أدخل المقياس..." : "Enter metric…")</div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="alert-triangle"></i> @Shared["Label_WarningThreshold"]</span><span class="wiz-sum-pill wiz-sum-pill-warn" id="sumWarn">80%</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="repeat"></i> @Shared["Label_MeasurementFrequency"]</span><span class="wiz-sum-pill" id="sumFreq">Daily</span></div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="link-2"></i><h3>@(isRtl ? "السياق" : "Context")</h3></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="briefcase"></i> @(isRtl ? "خدمة" : "Service")</span><span class="wiz-sum-pill" id="sumService">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="building-2"></i> @(isRtl ? "وحدة" : "Unit")</span><span class="wiz-sum-pill" id="sumUnitOwner">—</span></div>
+            </div>
+
+            <div class="wiz-sum-actions">
+                <button type="submit" class="pc-btn pc-btn-primary pc-btn-block" id="submitBtn" disabled
+                        title="@(isRtl ? "أكمل جميع الخطوات لتفعيل الزر" : "Complete all steps to enable")">
+                    <i data-lucide="save" style="width:16px;height:16px;"></i>
+                    @Shared["Button_CreateSLA"]
+                </button>
+                <a asp-action="Index" class="pc-btn pc-btn-ghost pc-btn-block">
+                    <i data-lucide="x" style="width:16px;height:16px;"></i>
+                    @Shared["Button_Cancel"]
+                </a>
+            </div>
+        </aside>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+        const isRtl = @Html.Raw(isRtl ? "true" : "false");
+        const TOTAL_STEPS = 2;
+        let currentStep = 1, highestVisited = 1;
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const submitBtn = document.getElementById('submitBtn');
+        const stepCounterEl = document.getElementById('stepCounter');
+
+        function validateStep(n) {
+            if (n !== 1) return true;
+            const errors = [];
+            const mark = (id, label) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (!(el.value || '').trim()) { el.classList.add('invalid'); errors.push(label); } else { el.classList.remove('invalid'); }
+            };
+            mark('NameEn', isRtl ? "الاسم بالإنجليزية مطلوب" : "English name is required");
+            if (errors.length) {
+                Swal.fire({ icon:'warning', title: isRtl ? "حقول مطلوبة" : "Required Fields", html: errors.join('<br>'), confirmButtonColor:'#005B99' });
+                return false;
+            }
+            return true;
+        }
+
+        function showStep(n) {
+            currentStep = Math.max(1, Math.min(TOTAL_STEPS, n));
+            highestVisited = Math.max(highestVisited, currentStep);
+            document.querySelectorAll('.wiz-step').forEach(el => {
+                const s = parseInt(el.dataset.step, 10);
+                el.classList.toggle('active', s === currentStep);
+                el.classList.toggle('completed', s < highestVisited && s !== currentStep);
+            });
+            document.querySelectorAll('.wiz-step-content').forEach(p => {
+                p.classList.toggle('active', parseInt(p.dataset.step, 10) === currentStep);
+            });
+            prevBtn.disabled = (currentStep === 1);
+            nextBtn.classList.toggle('d-none', currentStep === TOTAL_STEPS);
+            if (submitBtn) submitBtn.disabled = (currentStep !== TOTAL_STEPS);
+            if (stepCounterEl) stepCounterEl.textContent = currentStep;
+            if (window.lucide) lucide.createIcons();
+        }
+        window.wizGoTo = function (n) {
+            if (n <= currentStep) { showStep(n); return; }
+            if (n === currentStep + 1) { if (validateStep(currentStep)) showStep(n); return; }
+            if (validateStep(currentStep)) showStep(currentStep + 1);
+        };
+        prevBtn.addEventListener('click', () => showStep(currentStep - 1));
+        nextBtn.addEventListener('click', () => { if (validateStep(currentStep)) showStep(currentStep + 1); });
+
+        function refreshTarget() {
+            const m = (document.getElementById('MetricName')?.value || '').trim();
+            const t = (document.getElementById('TargetValue')?.value || '').trim();
+            const u = document.getElementById('UnitSel')?.value || '';
+            const tEmpty = !t || t === '0';
+            if (!m && tEmpty) {
+                document.getElementById('targetPreview').textContent = isRtl ? "أدخل المقياس..." : "Enter metric…";
+                return;
+            }
+            const op = (u === '%') ? '≥' : '≤';
+            document.getElementById('targetPreview').textContent = `${m || '—'} ${op} ${t || '—'} ${u}`.trim();
+        }
+        function refreshContext() {
+            const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v || '—'; };
+            const w = (document.getElementById('WarningThreshold')?.value || '').trim();
+            set('sumWarn', (w ? w : '80') + '%');
+            const f = document.getElementById('FreqSel');
+            set('sumFreq', f?.options[f.selectedIndex]?.text?.trim());
+            const s = document.getElementById('ServiceSel');
+            set('sumService', s?.value ? s.options[s.selectedIndex]?.text?.trim() : '');
+            const o = document.getElementById('UnitOwnerSel');
+            set('sumUnitOwner', o?.value ? o.options[o.selectedIndex]?.text?.trim() : '');
+        }
+        ['MetricName','TargetValue','UnitSel'].forEach(id => {
+            const el = document.getElementById(id);
+            el?.addEventListener('input', refreshTarget);
+            el?.addEventListener('change', refreshTarget);
+        });
+        ['WarningThreshold','FreqSel','ServiceSel','UnitOwnerSel'].forEach(id => {
+            const el = document.getElementById(id);
+            el?.addEventListener('input', refreshContext);
+            el?.addEventListener('change', refreshContext);
+        });
+        document.getElementById('wizardForm').addEventListener('submit', function (e) {
+            if (!validateStep(1)) { e.preventDefault(); showStep(1); }
+        });
+
+        showStep(1);
+        refreshTarget();
+        refreshContext();
+    </script>
+}

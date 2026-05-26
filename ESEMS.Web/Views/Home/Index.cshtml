@@ -1,0 +1,27 @@
+﻿@{
+    ViewData["Title"] = Shared["Title_Home"].Value ?? "Home";
+}
+
+<div class="esems-container">
+    <div class="text-center py-5">
+        <div class="mb-4">
+            <i data-lucide="building-2" style="width: 64px; height: 64px; color: var(--esems-color-primary);"></i>
+        </div>
+	        <h1 class="esems-page-title mb-3">@Shared["App_ESEMS_FullName"]</h1>
+	        <p class="esems-body-secondary mb-4">@Shared["Org_MBRHE_Establishment"]</p>
+        <div class="d-flex justify-content-center gap-3">
+            <a asp-controller="Dashboard" asp-action="Index" class="btn btn-primary">
+                <i data-lucide="layout-dashboard" style="width: 16px; height: 16px;"></i>
+	                @Shared["Nav_Dashboard"]
+            </a>
+            <a asp-controller="Processes" asp-action="Index" class="btn btn-outline-primary">
+                <i data-lucide="git-branch" style="width: 16px; height: 16px;"></i>
+	                @Shared["Nav_Processes"]
+            </a>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">lucide.createIcons();</script>
+}

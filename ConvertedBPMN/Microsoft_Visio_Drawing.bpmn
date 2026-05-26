@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_5958f47d"
+                  targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_cb93180c" name="Microsoft_Visio_Drawing" isExecutable="false">
+    <bpmn:task id="Shape_6" name="قياس رضا الشركاء"/>
+    <bpmn:task id="Shape_3" name="المخرجات"/>
+    <bpmn:task id="Shape_14" name="الوحدات التنظيمية المعنية"/>
+    <bpmn:task id="Shape_17" name="قسم الدراسات المجتمعية"/>
+    <bpmn:task id="Shape_20" name="قسم الشراكات"/>
+    <bpmn:task id="Shape_23" name="المدخلات"/>
+    <bpmn:task id="Shape_11" name="Phase"/>
+    <bpmn:task id="Shape_24" name="استبيان قياس رضا الشركاء"/>
+    <bpmn:task id="Shape_26" name="إرسال طلب لإطلاق استبيان قياس رضا الشركاء &quot;مؤشر سعادة الشركاء&quot;"/>
+    <bpmn:task id="Shape_27" name="تنفيذ استطلاعات الرأي والدراسات"/>
+    <bpmn:task id="Shape_31" name="استلام النتائج والاطلاع عليها لتحديد فرص التحسين"/>
+    <bpmn:task id="Shape_32" name="وضع خطة لإغلاق فرص التحسين"/>
+    <bpmn:task id="Shape_34" name="متابعة تنفيذ إغلاق فرص التحسين مع الوحدات التنظيمية المعنية"/>
+    <bpmn:task id="Shape_37" name="العمل على إغلاق فرص التحسين بالتعاون مع قسم الشراكات"/>
+    <bpmn:startEvent id="Shape_41" name="البداية"/>
+    <bpmn:endEvent id="Shape_43" name="النهاية"/>
+    <bpmn:task id="Shape_45" name="قياس مؤشر سعادة الشركاء"/>
+    <bpmn:sequenceFlow id="Flow_44" sourceRef="Shape_34" targetRef="Shape_43"/>
+    <bpmn:sequenceFlow id="Flow_42" sourceRef="Shape_41" targetRef="Shape_26"/>
+    <bpmn:sequenceFlow id="Flow_40" sourceRef="Shape_34" targetRef="Shape_26"/>
+    <bpmn:sequenceFlow id="Flow_38" sourceRef="Shape_37" targetRef="Shape_34"/>
+    <bpmn:sequenceFlow id="Flow_36" sourceRef="Shape_32" targetRef="Shape_37"/>
+    <bpmn:sequenceFlow id="Flow_28" sourceRef="Shape_24" targetRef="Shape_26"/>
+    <bpmn:sequenceFlow id="Flow_29" sourceRef="Shape_26" targetRef="Shape_27"/>
+    <bpmn:sequenceFlow id="Flow_30" sourceRef="Shape_27" targetRef="Shape_31"/>
+    <bpmn:sequenceFlow id="Flow_33" sourceRef="Shape_31" targetRef="Shape_32"/>
+    <bpmn:laneSet id="LaneSet_1">
+      <bpmn:lane id="Lane_1" name="المخرجات">
+      </bpmn:lane>
+      <bpmn:lane id="Lane_12" name="الوحدات التنظيمية المعنية">
+        <bpmn:flowNodeRef>Shape_37</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_15" name="قسم الدراسات المجتمعية">
+      </bpmn:lane>
+      <bpmn:lane id="Lane_18" name="قسم الشراكات">
+        <bpmn:flowNodeRef>Shape_26</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_31</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_32</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_34</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_41</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_43</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_21" name="المدخلات">
+        <bpmn:flowNodeRef>Shape_24</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+  </bpmn:process>
+  <bpmn:collaboration id="Collaboration_c477d27f">
+    <bpmn:participant id="Participant_1" name="قياس رضا الشركاء" processRef="Process_cb93180c"/>
+  </bpmn:collaboration>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_c477d27f">
+      <bpmndi:BPMNShape id="Participant_1_di" bpmnElement="Participant_1">
+        <dc:Bounds x="1" y="176" width="779" height="707"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_1_di" bpmnElement="Lane_1" isHorizontal="false">
+        <dc:Bounds x="94" y="222" width="10" height="661"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_12_di" bpmnElement="Lane_12" isHorizontal="false">
+        <dc:Bounds x="245" y="222" width="10" height="661"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_15_di" bpmnElement="Lane_15" isHorizontal="false">
+        <dc:Bounds x="397" y="222" width="10" height="661"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_18_di" bpmnElement="Lane_18" isHorizontal="false">
+        <dc:Bounds x="548" y="222" width="10" height="661"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_21_di" bpmnElement="Lane_21" isHorizontal="false">
+        <dc:Bounds x="699" y="222" width="10" height="661"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_6_di" bpmnElement="Shape_6">
+        <dc:Bounds x="0" y="177" width="779" height="45"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_3_di" bpmnElement="Shape_3">
+        <dc:Bounds x="-48" y="223" width="96" height="45"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_14_di" bpmnElement="Shape_14">
+        <dc:Bounds x="-48" y="223" width="96" height="45"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_17_di" bpmnElement="Shape_17">
+        <dc:Bounds x="-48" y="223" width="96" height="45"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_20_di" bpmnElement="Shape_20">
+        <dc:Bounds x="-48" y="223" width="96" height="45"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_23_di" bpmnElement="Shape_23">
+        <dc:Bounds x="-48" y="223" width="96" height="45"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_11_di" bpmnElement="Shape_11">
+        <dc:Bounds x="-319" y="556" width="661" height="40"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_24_di" bpmnElement="Shape_24">
+        <dc:Bounds x="656" y="380" width="96" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_26_di" bpmnElement="Shape_26">
+        <dc:Bounds x="505" y="380" width="96" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_27_di" bpmnElement="Shape_27">
+        <dc:Bounds x="359" y="380" width="96" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_31_di" bpmnElement="Shape_31">
+        <dc:Bounds x="505" y="484" width="96" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_32_di" bpmnElement="Shape_32">
+        <dc:Bounds x="505" y="583" width="96" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_34_di" bpmnElement="Shape_34">
+        <dc:Bounds x="505" y="721" width="96" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_37_di" bpmnElement="Shape_37">
+        <dc:Bounds x="202" y="626" width="96" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_41_di" bpmnElement="Shape_41">
+        <dc:Bounds x="505" y="286" width="36" height="36"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_43_di" bpmnElement="Shape_43">
+        <dc:Bounds x="505" y="791" width="36" height="36"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_45_di" bpmnElement="Shape_45">
+        <dc:Bounds x="46" y="626" width="96" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_44_di" bpmnElement="Flow_44">
+        <di:waypoint x="553" y="781"/>
+        <di:waypoint x="553" y="780"/>
+        <di:waypoint x="523" y="780"/>
+        <di:waypoint x="523" y="779"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_42_di" bpmnElement="Flow_42">
+        <di:waypoint x="523" y="334"/>
+        <di:waypoint x="523" y="351"/>
+        <di:waypoint x="553" y="351"/>
+        <di:waypoint x="553" y="368"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_40_di" bpmnElement="Flow_40">
+        <di:waypoint x="553" y="709"/>
+        <di:waypoint x="553" y="574"/>
+        <di:waypoint x="553" y="440"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_38_di" bpmnElement="Flow_38">
+        <di:waypoint x="310" y="650"/>
+        <di:waypoint x="402" y="650"/>
+        <di:waypoint x="402" y="745"/>
+        <di:waypoint x="493" y="745"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_36_di" bpmnElement="Flow_36">
+        <di:waypoint x="493" y="607"/>
+        <di:waypoint x="402" y="607"/>
+        <di:waypoint x="402" y="650"/>
+        <di:waypoint x="310" y="650"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_28_di" bpmnElement="Flow_28">
+        <di:waypoint x="644" y="404"/>
+        <di:waypoint x="628" y="404"/>
+        <di:waypoint x="613" y="404"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_29_di" bpmnElement="Flow_29">
+        <di:waypoint x="493" y="404"/>
+        <di:waypoint x="480" y="404"/>
+        <di:waypoint x="467" y="404"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_30_di" bpmnElement="Flow_30">
+        <di:waypoint x="467" y="404"/>
+        <di:waypoint x="480" y="404"/>
+        <di:waypoint x="480" y="508"/>
+        <di:waypoint x="493" y="508"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_33_di" bpmnElement="Flow_33">
+        <di:waypoint x="553" y="544"/>
+        <di:waypoint x="553" y="558"/>
+        <di:waypoint x="553" y="571"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

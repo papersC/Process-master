@@ -1,0 +1,131 @@
+@model SLADefinition
+@{
+    ViewData["Title"] = Model.Code;
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+}
+
+<!-- Page Header -->
+<div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+    <div class="flex items-center gap-4">
+        <a asp-action="Index" class="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+            <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" class="w-5 h-5 text-gray-600"></i>
+        </a>
+        <div>
+            <div class="flex items-center gap-3">
+                <h1 class="text-2xl font-bold text-gray-900">@Model.Code</h1>
+                <span class="px-3 py-1 text-sm font-medium rounded-full @(Model.IsEffective() ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600")">
+                    @(Model.IsEffective() ? Shared["Status_Active"] : Shared["Status_Inactive"])
+                </span>
+            </div>
+            <p class="text-sm text-gray-500 mt-1">@(isRtl ? Model.NameAr : Model.NameEn)</p>
+        </div>
+    </div>
+    <div class="flex items-center gap-2">
+        <a asp-action="Edit" asp-route-id="@Model.Id" class="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+            <i data-lucide="edit" class="w-4 h-4"></i>
+            @Shared["Button_Edit"]
+        </a>
+    </div>
+</div>
+
+<!-- Main Content Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Left Column -->
+    <div class="lg:col-span-2 space-y-6">
+        <!-- SLA Target -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">@Shared["Label_SLATarget"]</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="text-center p-4 bg-blue-50 rounded-lg">
+                    <p class="text-xs text-gray-500 mb-1">@Shared["Label_Metric"]</p>
+                    <p class="text-lg font-bold text-blue-700">@Model.MetricName</p>
+                </div>
+                <div class="text-center p-4 bg-green-50 rounded-lg">
+                    <p class="text-xs text-gray-500 mb-1">@Shared["Label_Target"]</p>
+                    <p class="text-lg font-bold text-green-700">@Model.TargetValue @Model.Unit</p>
+                </div>
+                <div class="text-center p-4 bg-amber-50 rounded-lg">
+                    <p class="text-xs text-gray-500 mb-1">@Shared["Label_Warning"]</p>
+                    <p class="text-lg font-bold text-amber-700">@(Model.WarningThreshold.HasValue ? $"{Model.WarningThreshold}%" : "-")</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Description -->
+        @if (!string.IsNullOrEmpty(Model.DescriptionEn) || !string.IsNullOrEmpty(Model.DescriptionAr))
+        {
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">@Shared["Label_Description"]</h3>
+                <p class="text-gray-700 whitespace-pre-wrap">@(isRtl ? Model.DescriptionAr : Model.DescriptionEn)</p>
+            </div>
+        }
+
+        <!-- Breach History -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-gray-900">@Shared["Label_BreachHistory"]</h3>
+                <span class="px-3 py-1 text-sm font-medium rounded-full bg-gray-100 text-gray-600">@(Model.Breaches?.Count ?? 0) @Shared["Label_Total"]</span>
+            </div>
+            @if (Model.Breaches?.Any() == true)
+            {
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+                            <tr>
+                                <th class="px-3 py-2 text-start text-xs font-medium text-white uppercase">@Shared["Column_Date"]</th>
+                                <th class="px-3 py-2 text-start text-xs font-medium text-white uppercase">@Shared["Column_Actual"]</th>
+                                <th class="px-3 py-2 text-start text-xs font-medium text-white uppercase">@Shared["Column_Variance"]</th>
+                                <th class="px-3 py-2 text-start text-xs font-medium text-white uppercase">@Shared["Column_Severity"]</th>
+                                <th class="px-3 py-2 text-start text-xs font-medium text-white uppercase">@Shared["Column_Status"]</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            @foreach (var breach in Model.Breaches.Take(10))
+                            {
+                                var severityClass = breach.Severity switch { 1 => "bg-red-100 text-red-800", 2 => "bg-orange-100 text-orange-800", 3 => "bg-yellow-100 text-yellow-800", _ => "bg-gray-100 text-gray-800" };
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-3 py-2 text-sm text-gray-500">@breach.BreachDate.ToDubaiString("MMM dd, yyyy")</td>
+                                    <td class="px-3 py-2 text-sm font-medium">@breach.ActualValue @Model.Unit</td>
+                                    <td class="px-3 py-2 text-sm text-red-600">+@breach.Variance (@breach.VariancePercentage.ToString("F1")%)</td>
+                                    <td class="px-3 py-2"><span class="px-2 py-1 text-xs font-medium rounded-full @severityClass">@(breach.Severity switch { 1 => "Critical", 2 => "High", 3 => "Medium", _ => "Low" })</span></td>
+                                    <td class="px-3 py-2"><span class="px-2 py-1 text-xs font-medium rounded-full @(breach.IsResolved ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800")">@(breach.IsResolved ? Shared["Status_Resolved"] : Shared["Status_Open"])</span></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <p class="text-center text-gray-500 py-8">@Shared["Text_NoBreachesRecorded"]</p>
+            }
+        </div>
+    </div>
+
+    <!-- Right Column -->
+    <div class="space-y-6">
+        <!-- Details Card -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">@Shared["Label_Details"]</h3>
+            <div class="space-y-3">
+                @if (Model.Service != null) { <div class="flex justify-between"><span class="text-sm text-gray-500">@Shared["Label_Service"]</span><span class="text-sm font-medium">@(isRtl ? Model.Service.NameAr : Model.Service.NameEn)</span></div> }
+                @if (Model.ResponsibleUnit != null) { <div class="flex justify-between"><span class="text-sm text-gray-500">@Shared["Label_ResponsibleUnit"]</span><span class="text-sm font-medium">@(isRtl ? Model.ResponsibleUnit.NameAr : Model.ResponsibleUnit.NameEn)</span></div> }
+                <div class="flex justify-between"><span class="text-sm text-gray-500">@Shared["Label_Frequency"]</span><span class="text-sm font-medium">@Model.MeasurementFrequency</span></div>
+                <div class="flex justify-between"><span class="text-sm text-gray-500">@Shared["Label_EffectiveFrom"]</span><span class="text-sm font-medium">@Model.EffectiveFrom.ToDubaiString("MMM dd, yyyy")</span></div>
+                @if (Model.EffectiveTo.HasValue) { <div class="flex justify-between"><span class="text-sm text-gray-500">@Shared["Label_EffectiveTo"]</span><span class="text-sm font-medium">@Model.EffectiveTo.Value.ToDubaiString("MMM dd, yyyy")</span></div> }
+            </div>
+        </div>
+
+        <!-- Escalation -->
+        @if (!string.IsNullOrEmpty(Model.PenaltyForBreach) || !string.IsNullOrEmpty(Model.EscalationProcedure))
+        {
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 border-s-4 border-s-red-500">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">@Shared["Label_Escalation"]</h3>
+                @if (!string.IsNullOrEmpty(Model.PenaltyForBreach)) { <div class="mb-3"><span class="text-sm font-medium text-gray-700">@Shared["Label_Penalty"]:</span><p class="text-sm text-gray-600 mt-1">@Model.PenaltyForBreach</p></div> }
+                @if (!string.IsNullOrEmpty(Model.EscalationProcedure)) { <div><span class="text-sm font-medium text-gray-700">@Shared["Label_EscalationProcedure"]:</span><p class="text-sm text-gray-600 mt-1">@Model.EscalationProcedure</p></div> }
+            </div>
+        }
+    </div>
+</div>
+

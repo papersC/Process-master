@@ -1,0 +1,206 @@
+@model IEnumerable<ESEMS.Web.Models.Services.StrategicObjective>
+@{
+    ViewData["Title"] = "Strategic Objectives";
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    var externalMode      = ViewBag.ExternalMode as bool? ?? false;
+    var externalProvider  = ViewBag.ExternalProviderName as string;
+    var externalIndexUrl  = ViewBag.ExternalIndexUrl as string;
+    var externalCreateUrl = ViewBag.ExternalCreateUrl as string;
+
+    string LevelBadge(int level) => level switch
+    {
+        1 => isRtl ? "استراتيجي" : "Strategic",
+        2 => isRtl ? "تكتيكي"     : "Tactical",
+        3 => isRtl ? "تشغيلي"     : "Operational",
+        _ => isRtl ? "هدف"        : "Objective"
+    };
+    string LevelClass(int level) => level switch
+    {
+        1 => "background:#dbeafe;color:#1e40af;",
+        2 => "background:#fef3c7;color:#92400e;",
+        3 => "background:#dcfce7;color:#166534;",
+        _ => "background:#f3f4f6;color:#374151;"
+    };
+}
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem;">
+    <div>
+        <h1 style="font-size: var(--fs-lg);font-weight:600;color:#111827;margin:0;display:flex;align-items:center;gap:.5rem;">
+            <i data-lucide="target" style="width:20px;height:20px;color:#005B99;"></i>
+            @(isRtl ? "الأهداف الاستراتيجية" : "Strategic Objectives")
+        </h1>
+        <p style="margin:.2rem 0 0;font-size: var(--fs-xs);color:#6b7280;">
+            @(isRtl
+                ? "هرم استراتيجي / تكتيكي / تشغيلي تربط به الخدمات والعمليات."
+                : "Strategic / Tactical / Operational hierarchy linked to services + processes.")
+        </p>
+    </div>
+    @if (externalMode)
+    {
+        @if (!string.IsNullOrEmpty(externalCreateUrl))
+        {
+            <a href="@externalCreateUrl" target="_blank" rel="noopener" class="btn" style="background:#fff;border:1px solid #cbd5e1;color:#005B99;padding:.42rem .85rem;border-radius:.375rem;font-size: var(--fs-xs);font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;">
+                <i data-lucide="external-link" style="width:14px;height:14px;"></i>
+                @(isRtl ? $"إضافة في {externalProvider}" : $"Add in {externalProvider}")
+            </a>
+        }
+    }
+    else
+    {
+        <a asp-action="Create" class="btn btn-primary" style="background:#005B99;border:none;color:#fff;padding:.42rem .85rem;border-radius:.375rem;font-size: var(--fs-xs);font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;">
+            <i data-lucide="plus" style="width:14px;height:14px;"></i>
+            @(isRtl ? "إضافة هدف" : "Add Objective")
+        </a>
+    }
+</div>
+
+@if (externalMode)
+{
+    <div style="padding:.65rem .85rem;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;border-radius:.375rem;margin-bottom:.6rem;font-size: var(--fs-xs);display:flex;align-items:center;gap:.5rem;">
+        <i data-lucide="info" style="width:16px;height:16px;flex-shrink:0;"></i>
+        <span style="flex:1;">
+            @(isRtl
+                ? $"تتم إدارة الأهداف الاستراتيجية في النظام الخارجي ({externalProvider}). الإضافة والتعديل والإيقاف معطلة هنا."
+                : $"Strategic objectives are managed in the external system ({externalProvider}). Add / Edit / Retire are disabled here.")
+        </span>
+        @if (!string.IsNullOrEmpty(externalIndexUrl))
+        {
+            <a href="@externalIndexUrl" target="_blank" rel="noopener" style="color:#1e3a8a;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:.3rem;flex-shrink:0;">
+                @(isRtl ? "افتح النظام" : "Open system")
+                <i data-lucide="external-link" style="width:13px;height:13px;"></i>
+            </a>
+        }
+    </div>
+}
+
+@if (TempData["Success"] is string success)
+{
+    <div style="padding:.6rem .8rem;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;border-radius:.375rem;margin-bottom:.6rem;font-size: var(--fs-xs);">@success</div>
+}
+@if (TempData["Info"] is string info)
+{
+    <div style="padding:.6rem .8rem;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;border-radius:.375rem;margin-bottom:.6rem;font-size: var(--fs-xs);">@info</div>
+}
+
+<div style="background:#fff;border:1px solid #e5e7eb;border-radius:.5rem;overflow:hidden;">
+    <table style="width:100%;border-collapse:collapse;font-size: var(--fs-xs);">
+        <thead>
+            <tr style="background:#f9fafb;border-bottom:1px solid #e5e7eb;">
+                <th style="text-align:start;padding:.55rem .75rem;color:#374151;font-weight:600;">@(isRtl ? "الكود" : "Code")</th>
+                <th style="text-align:start;padding:.55rem .75rem;color:#374151;font-weight:600;">@(isRtl ? "الاسم" : "Name")</th>
+                <th style="text-align:start;padding:.55rem .75rem;color:#374151;font-weight:600;">@(isRtl ? "المستوى" : "Level")</th>
+                <th style="text-align:start;padding:.55rem .75rem;color:#374151;font-weight:600;">@(isRtl ? "الأب" : "Parent")</th>
+                <th style="text-align:end;padding:.55rem .75rem;color:#374151;font-weight:600;">@(isRtl ? "السنة" : "Year")</th>
+                <th style="text-align:end;padding:.55rem .75rem;color:#374151;font-weight:600;">
+                    <span style="display:inline-flex;align-items:center;gap:.3rem;justify-content:flex-end;">
+                        @(isRtl ? "التقدم" : "Progress")
+                        <i data-lucide="info" style="width:13px;height:13px;color:#9ca3af;cursor:help;"
+                           title="@(isRtl ? "التقدم = القيمة الحالية ÷ القيمة المستهدفة × ١٠٠. يُدخَل يدويًا في تفاصيل الهدف، ولا يُجمَّع تلقائيًا من المبادرات المرتبطة." : "Progress = Current ÷ Target × 100. Entered manually on the objective; it is not auto-rolled from linked initiatives.")"></i>
+                    </span>
+                </th>
+                <th style="text-align:start;padding:.55rem .75rem;color:#374151;font-weight:600;">@(isRtl ? "الحالة" : "Status")</th>
+                <th style="text-align:end;padding:.55rem .75rem;color:#374151;font-weight:600;">@(isRtl ? "إجراءات" : "Actions")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Any())
+            {
+                <tr><td colspan="8" style="text-align:center;padding:1.25rem;color:#9ca3af;font-size: var(--fs-xs);">
+                    @(isRtl ? "لا توجد أهداف بعد. أضف هدفاً لتبدأ." : "No objectives yet. Add one to get started.")
+                </td></tr>
+            }
+            else
+            {
+                @foreach (var o in Model)
+                {
+                    var pct = o.GetProgressPercentage();
+                    <tr style="border-bottom:1px solid #f1f5f9;@(o.IsActive ? "" : "opacity:.6;")">
+                        <td style="padding:.5rem .75rem;font-family:monospace;font-weight:600;color:#005B99;">@o.Code</td>
+                        <td style="padding:.5rem .75rem;color:#111827;">@(isRtl ? o.NameAr : o.NameEn)</td>
+                        <td style="padding:.5rem .75rem;">
+                            <span style="display:inline-block;padding:.1rem .45rem;border-radius:.25rem;font-size: var(--fs-xs);font-weight:700;@LevelClass(o.Level)">@LevelBadge(o.Level)</span>
+                        </td>
+                        <td style="padding:.5rem .75rem;color:#374151;">@(o.Parent is null ? "—" : (isRtl ? o.Parent.NameAr : o.Parent.NameEn))</td>
+                        <td style="padding:.5rem .75rem;text-align:end;color:#374151;">@(o.TargetYear?.ToString() ?? "—")</td>
+                        <td style="padding:.5rem .75rem;text-align:end;color:#374151;"
+                            title="@(isRtl ? $"{o.CurrentValue?.ToString("0.#") ?? "—"} ÷ {o.TargetValue?.ToString("0.#") ?? "—"} {o.UnitOfMeasure}" : $"{o.CurrentValue?.ToString("0.#") ?? "—"} / {o.TargetValue?.ToString("0.#") ?? "—"} {o.UnitOfMeasure}")">
+                            @if (pct.HasValue)
+                            {
+                                <div style="font-weight:600;">@pct.Value.ToString("0.#")%</div>
+                                <div style="font-size:11px;color:#9ca3af;margin-top:2px;line-height:1;">
+                                    @(o.CurrentValue?.ToString("0.#") ?? "—") / @(o.TargetValue?.ToString("0.#") ?? "—")
+                                    @if (!string.IsNullOrEmpty(o.UnitOfMeasure)) { <span>@o.UnitOfMeasure</span> }
+                                </div>
+                            }
+                            else
+                            {
+                                <span>—</span>
+                            }
+                        </td>
+                        <td style="padding:.5rem .75rem;">
+                            @if (o.IsActive)
+                            {
+                                <span style="display:inline-block;padding:.1rem .4rem;background:#dcfce7;color:#166534;border-radius:.25rem;font-size: var(--fs-xs);font-weight:700;">@(isRtl ? "نشط" : "Active")</span>
+                            }
+                            else
+                            {
+                                <span style="display:inline-block;padding:.1rem .4rem;background:#f3f4f6;color:#6b7280;border-radius:.25rem;font-size: var(--fs-xs);font-weight:700;">@(isRtl ? "متقاعد" : "Retired")</span>
+                            }
+                        </td>
+                        <td style="padding:.5rem .75rem;text-align:end;">
+                            @if (externalMode)
+                            {
+                                <span style="color:#9ca3af;font-size: var(--fs-xs);font-style:italic;">@(isRtl ? "للعرض فقط" : "Read-only")</span>
+                            }
+                            else
+                            {
+                                <span class="so-actions" style="display:inline-flex;gap:.35rem;align-items:center;">
+                                    <a asp-action="Details" asp-route-id="@o.Id"
+                                       title="@(isRtl ? "عرض" : "View")"
+                                       aria-label="@(isRtl ? "عرض" : "View")"
+                                       style="color:#005B99;padding:.2rem;border-radius:.25rem;text-decoration:none;display:inline-flex;align-items:center;">
+                                        <i data-lucide="eye" style="width:16px;height:16px;"></i>
+                                    </a>
+                                    <a asp-action="Edit" asp-route-id="@o.Id"
+                                       title="@(isRtl ? "تعديل" : "Edit")"
+                                       aria-label="@(isRtl ? "تعديل" : "Edit")"
+                                       style="color:#005B99;padding:.2rem;border-radius:.25rem;text-decoration:none;display:inline-flex;align-items:center;">
+                                        <i data-lucide="edit" style="width:16px;height:16px;"></i>
+                                    </a>
+                                    @if (o.IsActive)
+                                    {
+                                        <form asp-action="Retire" asp-route-id="@o.Id" method="post" style="display:inline;">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit"
+                                                    title="@(isRtl ? "تقاعد" : "Retire")"
+                                                    aria-label="@(isRtl ? "تقاعد" : "Retire")"
+                                                    style="background:transparent;border:none;color:#92400e;padding:.2rem;border-radius:.25rem;cursor:pointer;display:inline-flex;align-items:center;">
+                                                <i data-lucide="archive" style="width:16px;height:16px;"></i>
+                                            </button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        <form asp-action="Restore" asp-route-id="@o.Id" method="post" style="display:inline;">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit"
+                                                    title="@(isRtl ? "استعادة" : "Restore")"
+                                                    aria-label="@(isRtl ? "استعادة" : "Restore")"
+                                                    style="background:transparent;border:none;color:#15803d;padding:.2rem;border-radius:.25rem;cursor:pointer;display:inline-flex;align-items:center;">
+                                                <i data-lucide="rotate-ccw" style="width:16px;height:16px;"></i>
+                                            </button>
+                                        </form>
+                                    }
+                                </span>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">if (window.lucide) lucide.createIcons();</script>
+}

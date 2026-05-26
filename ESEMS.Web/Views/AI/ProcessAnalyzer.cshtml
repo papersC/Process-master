@@ -1,0 +1,507 @@
+@using System.Text.Json
+@{
+    ViewData["Title"] = Shared["Title_ProcessAnalyzer"].Value;
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+    var processGroupsJson = JsonSerializer.Serialize(ViewBag.ProcessGroups ?? new List<object>());
+    var processesJson    = JsonSerializer.Serialize(ViewBag.Processes ?? new List<object>());
+}
+
+@*  Slim left rail (process picker + analyze) + wide right canvas (BPMN + AI prose).
+    Drops the heavy _ModuleBanner partial in favour of the project's compact
+    inline header. Every element id used by the @section Scripts block below
+    is preserved verbatim so the existing JS / controller wiring keeps working. *@
+
+@section Styles {
+    <link rel="stylesheet" href="~/lib/bpmn-js/bpmn-js.css">
+    <link rel="stylesheet" href="~/lib/bpmn-js/diagram-js.css">
+    <link rel="stylesheet" href="~/lib/bpmn-js/bpmn-embedded.css">
+    <style>
+        /* Page chrome — matches the project's compact list-page header. */
+        .pa-shell { display: flex; flex-direction: column; gap: .6rem; }
+        .pa-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; flex-wrap: wrap; }
+        .pa-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+        .pa-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+
+        /* Body — slim rail + canvas. */
+        .pa-body { display: grid; grid-template-columns: 320px 1fr; gap: .85rem; min-height: 0; }
+        @@media (max-width: 1023px) { .pa-body { grid-template-columns: 1fr; } }
+
+        .pa-rail { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: .85rem .9rem; display: flex; flex-direction: column; gap: .85rem; align-self: start; }
+        .pa-canvas { display: flex; flex-direction: column; gap: .6rem; min-width: 0; }
+
+        /* Generic card used inside both rail + canvas. */
+        .pa-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: .85rem 1rem; }
+        .pa-section-title { font-size: var(--fs-sm); font-weight: 700; color: #111827; display: flex; align-items: center; gap: .45rem; margin: 0 0 .65rem; }
+        .pa-section-title i { color: #005B99; width: 16px; height: 16px; }
+
+        .pa-label { display: block; font-size: var(--fs-xs); font-weight: 600; color: #374151; margin-bottom: .35rem; }
+
+        /* Compact level toggle (2-up). */
+        .pa-level-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem; }
+        .pa-level-btn { padding: .55rem .35rem; font-size: var(--fs-xs); font-weight: 600; border-radius: 6px; border: 1px solid #d1d5db; color: #374151; background: #fff; transition: all .12s; display: flex; flex-direction: column; align-items: center; gap: .2rem; cursor: pointer; }
+        .pa-level-btn:hover { border-color: #005B99; color: #005B99; }
+        .pa-level-btn.active { border-color: #005B99; background: #f0f7fc; color: #005B99; }
+        .pa-level-btn i { width: 16px; height: 16px; }
+
+        .pa-select { width: 100%; border-radius: 5px; border: 1px solid #d1d5db; padding: .42rem .55rem; font-size: var(--fs-xs); background: #fff; }
+        .pa-select:focus { outline: 2px solid #005B99; outline-offset: -1px; border-color: transparent; }
+
+        /* Focus chips (wrap horizontally inside the rail). */
+        .pa-focus-row { display: flex; flex-wrap: wrap; gap: .3rem; }
+        .pa-focus-chip { display: inline-flex; align-items: center; gap: .3rem; padding: .25rem .55rem; font-size: 11px; font-weight: 600; border-radius: 999px; border: 1px solid #e5e7eb; background: #fff; color: #475569; cursor: pointer; transition: all .12s; }
+        .pa-focus-chip:hover { border-color: #005B99; color: #005B99; }
+        .pa-focus-chip.active { border-color: #005B99; background: #005B99; color: #fff; }
+        .pa-focus-chip i { width: 11px; height: 11px; }
+
+        /* Analyze button — primary action. */
+        .pa-analyze-btn { width: 100%; background: #005B99; color: #fff; padding: .55rem .75rem; border-radius: 6px; font-weight: 700; font-size: var(--fs-sm); border: none; transition: all .12s; display: flex; align-items: center; justify-content: center; gap: .4rem; cursor: pointer; }
+        .pa-analyze-btn:hover:not(:disabled) { background: #003d6b; }
+        .pa-analyze-btn:disabled { opacity: .55; cursor: not-allowed; }
+
+        /* Process info mini-card (inside the rail). */
+        .pa-info { padding: .65rem .7rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; }
+        .pa-info-name { font-size: var(--fs-xs); font-weight: 700; color: #003d6b; line-height: 1.3; }
+        .pa-info-stats { display: grid; grid-template-columns: 1fr 1fr; gap: .3rem; margin-top: .55rem; }
+        .pa-stat { display: flex; align-items: center; gap: .3rem; font-size: 11px; color: #475569; padding: .25rem .4rem; background: #fff; border-radius: 4px; border: 1px solid #f1f5f9; }
+        .pa-stat i { width: 12px; height: 12px; color: #005B99; }
+        .pa-stat b { color: #111827; font-weight: 700; }
+        .pa-bpmn-badge { display: inline-flex; align-items: center; gap: .25rem; padding: .1rem .5rem; font-size: 10px; font-weight: 700; background: rgba(0,91,153,.1); color: #005B99; border-radius: 999px; border: 1px solid rgba(0,91,153,.2); margin-inline-start: .35rem; vertical-align: middle; }
+
+        /* Canvas — BPMN viewer panel. */
+        #bpmnViewer { height: 320px; width: 100%; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; position: relative; }
+        #bpmnViewer .bjs-powered-by { display: none !important; }
+        .pa-bpmn-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .55rem; }
+
+        /* Action button (small ghost) used in canvas tile headers + footer. */
+        .pa-action-btn { display: inline-flex; align-items: center; gap: .3rem; padding: .35rem .65rem; background: #fff; color: #374151; border-radius: 5px; border: 1px solid #d1d5db; font-size: var(--fs-xs); font-weight: 600; transition: all .12s; cursor: pointer; text-decoration: none; }
+        .pa-action-btn:hover { background: #f1f5f9; color: #1f2937; }
+        .pa-action-btn.primary { background: #005B99; color: #fff; border-color: #005B99; }
+        .pa-action-btn.primary:hover { background: #003d6b; color: #fff; }
+        .pa-action-btn i { width: 13px; height: 13px; }
+
+        /* Loading / empty / error states. */
+        .pa-results-empty { text-align: center; padding: 2.5rem 1rem; color: #6b7280; }
+        .pa-results-empty i { display: block; margin: 0 auto .85rem; opacity: .35; }
+        .pa-spinner { width: 36px; height: 36px; border: 3px solid rgba(0,91,153,.15); border-top-color: #005B99; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto .85rem; }
+        @@keyframes spin { to { transform: rotate(360deg); } }
+        .pa-stage { display: flex; align-items: center; justify-content: center; gap: .5rem; padding: .45rem .75rem; background: rgba(0,91,153,.05); border: 1px dashed rgba(0,91,153,.25); border-radius: 5px; font-size: 11px; color: #005B99; margin-top: .65rem; }
+        .pa-stage .dot { width: 6px; height: 6px; border-radius: 50%; background: #005B99; animation: pulse 1.2s infinite; }
+        @@keyframes pulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+
+        /* AI prose styling (markdown-rendered). */
+        .pa-prose { color: #111827; line-height: 1.6; font-size: var(--fs-sm); }
+        .pa-prose h1, .pa-prose h2, .pa-prose h3 { color: #003d6b; font-weight: 700; margin-top: 1.1rem; margin-bottom: .45rem; }
+        .pa-prose h1 { font-size: var(--fs-base); border-bottom: 2px solid rgba(0,91,153,.2); padding-bottom: .35rem; }
+        .pa-prose h2 { font-size: var(--fs-sm); }
+        .pa-prose h3 { font-size: var(--fs-sm); }
+        .pa-prose ul, .pa-prose ol { margin-left: 1.25rem; margin-bottom: .65rem; }
+        .pa-prose li { margin-bottom: .2rem; }
+        .pa-prose strong { color: #003d6b; }
+        .pa-prose p { margin-bottom: .65rem; }
+    </style>
+}
+
+<div class="pa-shell">
+    <div class="pa-header">
+        <div>
+            <h1>
+                <i data-lucide="brain-circuit" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>
+                @Shared["Title_ProcessAnalyzer"]
+            </h1>
+            <p>@Shared["Text_ProcessAnalyzerDescription"]</p>
+        </div>
+    </div>
+
+    <div class="pa-body">
+
+        @* ── LEFT RAIL: pick + focus + analyze ─────────── *@
+        <aside class="pa-rail">
+            <div>
+                <label class="pa-label">@Shared["Label_AnalysisLevel"]</label>
+                <div class="pa-level-grid">
+                    <button id="btnLevelL2" type="button" class="pa-level-btn">
+                        <i data-lucide="building-2" aria-hidden="true"></i>
+                        <span>L2 · @Shared["Label_Department"]</span>
+                    </button>
+                    <button id="btnLevelL3" type="button" class="pa-level-btn active">
+                        <i data-lucide="workflow" aria-hidden="true"></i>
+                        <span>L3 · @Shared["Label_Process"]</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="processGroupContainer" style="display:none;">
+                <label for="processGroupSelect" class="pa-label">@Shared["Label_ProcessGroup"]</label>
+                <select id="processGroupSelect" class="pa-select">
+                    <option value="">@Shared["Placeholder_SelectProcessGroup"]</option>
+                </select>
+            </div>
+
+            <div id="processContainer">
+                <label for="processSelect" class="pa-label">@Shared["Label_Process"]</label>
+                <select id="processSelect" class="pa-select">
+                    <option value="">@Shared["Placeholder_SelectProcess"]</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="pa-label">@(isRtl ? "تركيز التحليل" : "Analysis focus")</label>
+                <div class="pa-focus-row">
+                    <button type="button" class="pa-focus-chip active" data-focus="">
+                        <i data-lucide="layers" aria-hidden="true"></i>
+                        @(isRtl ? "شامل" : "Comprehensive")
+                    </button>
+                    <button type="button" class="pa-focus-chip" data-focus="efficiency">
+                        <i data-lucide="zap" aria-hidden="true"></i>
+                        @(isRtl ? "الكفاءة" : "Efficiency")
+                    </button>
+                    <button type="button" class="pa-focus-chip" data-focus="risk">
+                        <i data-lucide="shield-alert" aria-hidden="true"></i>
+                        @(isRtl ? "المخاطر" : "Risk")
+                    </button>
+                    <button type="button" class="pa-focus-chip" data-focus="automation">
+                        <i data-lucide="cpu" aria-hidden="true"></i>
+                        @(isRtl ? "الأتمتة" : "Automation")
+                    </button>
+                    <button type="button" class="pa-focus-chip" data-focus="customer">
+                        <i data-lucide="users" aria-hidden="true"></i>
+                        @(isRtl ? "العميل" : "Customer")
+                    </button>
+                </div>
+            </div>
+
+            <button id="btnAnalyze" type="button" disabled class="pa-analyze-btn" title="@(isRtl ? "اختر عملية أولاً" : "Select a process first")">
+                <i data-lucide="sparkles" style="width:16px;height:16px;" aria-hidden="true"></i>
+                <span id="analyzeButtonText">@Shared["Button_AnalyzeProcess"]</span>
+            </button>
+
+            @* Process info preview — populates on selection / after analysis. *@
+            <div id="processInfo" class="pa-info" style="display:none;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:.35rem;flex-wrap:wrap;">
+                    <span id="processName" class="pa-info-name"></span>
+                    <span id="bpmnBadge" class="pa-bpmn-badge" style="display:none;">
+                        <i data-lucide="git-branch" aria-hidden="true"></i> BPMN
+                    </span>
+                </div>
+                <div class="pa-info-stats">
+                    <div class="pa-stat"><i data-lucide="activity" aria-hidden="true"></i><b id="activityCount">0</b> @Shared["Label_Activities"]</div>
+                    <div class="pa-stat"><i data-lucide="alert-triangle" aria-hidden="true"></i><b id="riskCount">0</b> @Shared["Label_Risks"]</div>
+                    <div class="pa-stat"><i data-lucide="alert-circle" aria-hidden="true"></i><b id="incidentCount">0</b> @Shared["Nav_Incidents"]</div>
+                    <div class="pa-stat"><i data-lucide="search" aria-hidden="true"></i><b id="problemCount">0</b> @Shared["Nav_Problems"]</div>
+                </div>
+            </div>
+        </aside>
+
+        @* ── RIGHT CANVAS: BPMN + AI analysis prose ────── *@
+        <main class="pa-canvas">
+
+            @* BPMN viewer — only shown when the picked process has a diagram. *@
+            <div id="bpmnPanel" class="pa-card" style="display:none;">
+                <div class="pa-bpmn-header">
+                    <div class="pa-section-title" style="margin-bottom:0;">
+                        <i data-lucide="git-branch" aria-hidden="true"></i>
+                        @(isRtl ? "مخطط العملية" : "Process Diagram")
+                    </div>
+                    <a id="btnOpenBpmn" href="#" target="_blank" class="pa-action-btn">
+                        <i data-lucide="external-link" aria-hidden="true"></i>
+                        @(isRtl ? "فتح في المحرر" : "Open in editor")
+                    </a>
+                </div>
+                <div id="bpmnViewer"></div>
+            </div>
+
+            @* Analysis prose / loading / empty / error states. *@
+            <div class="pa-card" style="flex:1;min-height:280px;display:flex;flex-direction:column;">
+                <div class="pa-section-title">
+                    <i data-lucide="file-text" aria-hidden="true"></i>
+                    @Shared["Label_AnalysisResults"]
+                </div>
+
+                <div id="loadingState" style="display:none;flex:1;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;">
+                    <div class="pa-spinner"></div>
+                    <p style="margin:0;color:#6b7280;font-size:var(--fs-xs);">@Shared["Text_AnalyzingProcess"]</p>
+                    <div class="pa-stage" id="stageLabel">
+                        <span class="dot"></span>
+                        <span id="stageText">@(isRtl ? "جمع البيانات…" : "Gathering context…")</span>
+                    </div>
+                </div>
+
+                <div id="emptyState" class="pa-results-empty" style="flex:1;">
+                    <i data-lucide="brain-circuit" style="width:56px;height:56px;color:#d1d5db;" aria-hidden="true"></i>
+                    <p style="margin:0;font-size:var(--fs-xs);">@Shared["Text_SelectProcessToAnalyze"]</p>
+                </div>
+
+                <div id="errorState" class="pa-results-empty" style="display:none;flex:1;">
+                    <i data-lucide="alert-triangle" style="width:48px;height:48px;color:#dc2626;" aria-hidden="true"></i>
+                    <div style="font-weight:700;margin-bottom:.25rem;color:#991b1b;font-size:var(--fs-sm);">@(isRtl ? "فشل التحليل" : "Analysis failed")</div>
+                    <p id="errorMessage" style="margin:0 0 .75rem;color:#6b7280;font-size:var(--fs-xs);"></p>
+                    <button id="btnRetry" type="button" class="pa-action-btn primary">
+                        <i data-lucide="refresh-cw" aria-hidden="true"></i>
+                        @(isRtl ? "إعادة المحاولة" : "Retry")
+                    </button>
+                </div>
+
+                <div id="analysisResults" style="display:none;flex:1;display:none;flex-direction:column;min-height:0;">
+                    <div id="analysisContent" class="pa-prose" style="flex:1;overflow-y:auto;"></div>
+                    <div style="display:flex;flex-wrap:wrap;gap:.4rem;padding-top:.65rem;margin-top:.65rem;border-top:1px solid #f1f5f9;">
+                        <button id="btnCopy" type="button" class="pa-action-btn">
+                            <i data-lucide="copy" aria-hidden="true"></i> @Shared["Button_Copy"]
+                        </button>
+                        <button id="btnDownload" type="button" class="pa-action-btn">
+                            <i data-lucide="download" aria-hidden="true"></i> @Shared["Button_Download"]
+                        </button>
+                        <button id="btnNewAnalysis" type="button" class="pa-action-btn primary" style="margin-inline-start:auto;">
+                            <i data-lucide="plus" aria-hidden="true"></i> @(isRtl ? "تحليل جديد" : "New analysis")
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+@section Scripts {
+<script src="~/lib/marked/marked.min.js" asp-append-version="true"></script>
+<script src="~/lib/bpmn-js/bpmn-modeler.production.min.js" asp-append-version="true"></script>
+<script nonce="@Context.CspNonce()">
+    document.addEventListener('DOMContentLoaded', function() {
+        const btnLevelL2 = document.getElementById('btnLevelL2');
+        const btnLevelL3 = document.getElementById('btnLevelL3');
+        const processGroupContainer = document.getElementById('processGroupContainer');
+        const processContainer = document.getElementById('processContainer');
+        const processGroupSelect = document.getElementById('processGroupSelect');
+        const processSelect = document.getElementById('processSelect');
+        const btnAnalyze = document.getElementById('btnAnalyze');
+        const analyzeButtonText = document.getElementById('analyzeButtonText');
+        const processInfo = document.getElementById('processInfo');
+        const loadingState = document.getElementById('loadingState');
+        const emptyState = document.getElementById('emptyState');
+        const errorState = document.getElementById('errorState');
+        const errorMessage = document.getElementById('errorMessage');
+        const analysisResults = document.getElementById('analysisResults');
+        const analysisContent = document.getElementById('analysisContent');
+        const bpmnPanel = document.getElementById('bpmnPanel');
+        const btnOpenBpmn = document.getElementById('btnOpenBpmn');
+        const stageText = document.getElementById('stageText');
+
+        let currentAnalysis = '';
+        let currentProcessCode = '';
+        let currentLevel = 'L3';
+        let currentFocus = '';
+        let bpmnViewer = null;
+        const isRtl = '@isRtl' === 'True';
+
+        const processGroups = @Html.Raw(processGroupsJson);
+        const processes = @Html.Raw(processesJson);
+
+        processGroups.forEach(pg => {
+            const option = document.createElement('option');
+            option.value = pg.Id;
+            option.textContent = `${pg.Code} - ${isRtl ? pg.NameAr : pg.NameEn}`;
+            processGroupSelect.appendChild(option);
+        });
+        processes.forEach(p => {
+            const option = document.createElement('option');
+            option.value = p.Id;
+            option.setAttribute('data-group', p.ProcessGroupId);
+            option.textContent = `${p.Code} - ${isRtl ? p.NameAr : p.NameEn}`;
+            processSelect.appendChild(option);
+        });
+
+        function setLevel(lvl) {
+            currentLevel = lvl;
+            if (lvl === 'L2') {
+                btnLevelL2.classList.add('active');
+                btnLevelL3.classList.remove('active');
+                processGroupContainer.style.display = '';
+                processContainer.style.display = 'none';
+                analyzeButtonText.textContent = '@Shared["Button_AnalyzeDepartment"]';
+                updatePreviewFromSelection();
+            } else {
+                btnLevelL3.classList.add('active');
+                btnLevelL2.classList.remove('active');
+                processContainer.style.display = '';
+                processGroupContainer.style.display = 'none';
+                analyzeButtonText.textContent = '@Shared["Button_AnalyzeProcess"]';
+                updatePreviewFromSelection();
+            }
+            hideResults();
+        }
+        btnLevelL2.addEventListener('click', () => setLevel('L2'));
+        btnLevelL3.addEventListener('click', () => setLevel('L3'));
+
+        document.querySelectorAll('.pa-focus-chip').forEach(chip => {
+            chip.addEventListener('click', function() {
+                document.querySelectorAll('.pa-focus-chip').forEach(c => c.classList.remove('active'));
+                this.classList.add('active');
+                currentFocus = this.dataset.focus || '';
+            });
+        });
+
+        function updatePreviewFromSelection() {
+            if (currentLevel === 'L2') {
+                const id = processGroupSelect.value;
+                if (!id) { processInfo.style.display = 'none'; btnAnalyze.disabled = true; btnAnalyze.title = isRtl ? 'اختر إدارة' : 'Select a department'; bpmnPanel.style.display='none'; return; }
+                const pg = processGroups.find(g => g.Id === id);
+                if (!pg) return;
+                document.getElementById('processName').textContent = `${pg.Code} - ${isRtl ? pg.NameAr : pg.NameEn}`;
+                document.getElementById('activityCount').textContent = pg.ActivityCount ?? 0;
+                document.getElementById('riskCount').textContent = pg.RiskCount ?? 0;
+                document.getElementById('incidentCount').textContent = pg.IncidentCount ?? 0;
+                document.getElementById('problemCount').textContent = pg.ProblemCount ?? 0;
+                document.getElementById('bpmnBadge').style.display = 'none';
+                bpmnPanel.style.display = 'none';
+                processInfo.style.display = '';
+                btnAnalyze.disabled = false;
+                btnAnalyze.title = '';
+            } else {
+                const id = processSelect.value;
+                if (!id) { processInfo.style.display = 'none'; btnAnalyze.disabled = true; btnAnalyze.title = isRtl ? 'اختر عملية' : 'Select a process'; bpmnPanel.style.display='none'; return; }
+                const p = processes.find(x => x.Id === id);
+                if (!p) return;
+                document.getElementById('processName').textContent = `${p.Code} - ${isRtl ? p.NameAr : p.NameEn}`;
+                document.getElementById('activityCount').textContent = p.ActivityCount ?? 0;
+                document.getElementById('riskCount').textContent = p.RiskCount ?? 0;
+                document.getElementById('incidentCount').textContent = p.IncidentCount ?? 0;
+                document.getElementById('problemCount').textContent = p.ProblemCount ?? 0;
+                document.getElementById('bpmnBadge').style.display = p.HasBpmn ? '' : 'none';
+                processInfo.style.display = '';
+                btnAnalyze.disabled = false;
+                btnAnalyze.title = '';
+                if (p.HasBpmn) loadBpmnDiagram(p.Id);
+                else bpmnPanel.style.display = 'none';
+            }
+            if (window.lucide) lucide.createIcons();
+        }
+        processGroupSelect.addEventListener('change', updatePreviewFromSelection);
+        processSelect.addEventListener('change', updatePreviewFromSelection);
+
+        async function loadBpmnDiagram(processId) {
+            try {
+                const res = await fetch(`/AI/GetProcessBpmn?id=${encodeURIComponent(processId)}`);
+                const data = await res.json();
+                if (!data.success || !data.xml) { bpmnPanel.style.display = 'none'; return; }
+                bpmnPanel.style.display = '';
+                btnOpenBpmn.href = `${window.SP_PATHBASE || ''}/AI/Diagrams?processId=${encodeURIComponent(processId)}`;
+                if (!bpmnViewer) {
+                    bpmnViewer = new BpmnJS({ container: '#bpmnViewer' });
+                }
+                await bpmnViewer.importXML(data.xml);
+                bpmnViewer.get('canvas').zoom('fit-viewport');
+            } catch (e) {
+                console.warn('BPMN load failed', e);
+                bpmnPanel.style.display = 'none';
+            }
+        }
+
+        function hideResults() { analysisResults.style.display = 'none'; errorState.style.display = 'none'; loadingState.style.display = 'none'; emptyState.style.display = ''; }
+
+        async function cycleStages() {
+            const stages = isRtl
+                ? ['جمع البيانات…', 'تحليل العملية…', 'إعداد التقرير…']
+                : ['Gathering context…', 'Analyzing process…', 'Writing report…'];
+            let i = 0;
+            stageText.textContent = stages[0];
+            return setInterval(() => {
+                i = (i + 1) % stages.length;
+                stageText.textContent = stages[i];
+            }, 4000);
+        }
+
+        async function runAnalysis() {
+            emptyState.style.display = 'none';
+            analysisResults.style.display = 'none';
+            errorState.style.display = 'none';
+            loadingState.style.display = 'flex';
+            btnAnalyze.disabled = true;
+            const stageTimer = await cycleStages();
+
+            const url = currentLevel === 'L2' ? '/AI/AnalyzeProcessGroup' : '/AI/AnalyzeProcess';
+            const body = currentLevel === 'L2'
+                ? { processGroupId: processGroupSelect.value, focus: currentFocus }
+                : { processId: processSelect.value, focus: currentFocus };
+
+            try {
+                const token = document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]')?.value || '';
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                    body: JSON.stringify(body)
+                });
+                const data = await response.json();
+                clearInterval(stageTimer);
+                loadingState.style.display = 'none';
+                btnAnalyze.disabled = false;
+
+                if (data.success) {
+                    if (currentLevel === 'L2') {
+                        document.getElementById('processName').textContent = data.processGroupCode + ' - ' + data.processGroupName;
+                    } else {
+                        document.getElementById('processName').textContent = data.processCode + ' - ' + data.processName;
+                    }
+                    document.getElementById('activityCount').textContent = data.activityCount;
+                    document.getElementById('riskCount').textContent = data.riskCount;
+                    document.getElementById('incidentCount').textContent = data.incidentCount;
+                    document.getElementById('problemCount').textContent = data.problemCount;
+                    if (typeof data.hasBpmn !== 'undefined') {
+                        document.getElementById('bpmnBadge').style.display = data.hasBpmn ? '' : 'none';
+                    }
+                    processInfo.style.display = '';
+
+                    currentAnalysis = data.analysis;
+                    currentProcessCode = data.processGroupCode || data.processCode || 'analysis';
+                    analysisContent.innerHTML = marked.parse(data.analysis);
+                    analysisResults.style.display = 'flex';
+                    if (window.lucide) lucide.createIcons();
+                } else {
+                    showError(data.error || (isRtl ? 'حدث خطأ غير معروف' : 'An unknown error occurred'));
+                }
+            } catch (error) {
+                clearInterval(stageTimer);
+                loadingState.style.display = 'none';
+                btnAnalyze.disabled = false;
+                showError(error.message);
+            }
+        }
+
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorState.style.display = '';
+            if (window.lucide) lucide.createIcons();
+        }
+
+        btnAnalyze.addEventListener('click', runAnalysis);
+        document.getElementById('btnRetry').addEventListener('click', runAnalysis);
+
+        document.getElementById('btnCopy').addEventListener('click', function() {
+            navigator.clipboard.writeText(currentAnalysis).then(() => {
+                Swal.fire({ icon: 'success', title: '@Shared["Message_Copied"]', timer: 1500, showConfirmButton: false });
+            });
+        });
+
+        document.getElementById('btnDownload').addEventListener('click', function() {
+            const blob = new Blob([currentAnalysis], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const date = new Date().toISOString().slice(0, 10);
+            a.download = `${currentProcessCode}_${date}_analysis.md`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        document.getElementById('btnNewAnalysis').addEventListener('click', function() {
+            analysisResults.style.display = 'none';
+            errorState.style.display = 'none';
+            emptyState.style.display = '';
+            currentAnalysis = '';
+            if (currentLevel === 'L3') { processSelect.value = ''; } else { processGroupSelect.value = ''; }
+            updatePreviewFromSelection();
+            if (window.lucide) lucide.createIcons();
+        });
+
+        if (window.lucide) lucide.createIcons();
+    });
+</script>
+}

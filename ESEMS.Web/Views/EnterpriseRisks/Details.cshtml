@@ -1,0 +1,621 @@
+@model EnterpriseRisk
+@inject ESEMS.Web.Services.Integrations.Contracts.IRiskProvider RiskProvider
+@{
+    ViewData["Title"] = Model.RiskNumber;
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+    var levelClass = Model.RiskLevel switch { RiskLevel.Critical => "bg-red-100 text-red-800", RiskLevel.High => "bg-orange-100 text-orange-800", RiskLevel.Medium => "bg-yellow-100 text-yellow-800", _ => "bg-green-100 text-green-800" };
+}
+
+@if (RiskProvider.IsEnabled)
+{
+    @* Legacy banner — when external mode is on, this local record is read-only and the
+       new source of truth is the external system. The Index page already redirects
+       Edit, so we just need the visual cue here. *@
+    <div class="mb-4 p-3 rounded-lg" style="background:#eff6ff;border:1px solid #bfdbfe;display:flex;align-items:center;gap:.55rem;">
+        <i data-lucide="info" style="width:18px;height:18px;color:#1d4ed8;flex-shrink:0;"></i>
+        <span style="font-size: var(--fs-sm);color:#1e3a8a;line-height:1.4;flex:1;">
+            @(isRtl ? "هذا سجل محلي قديم. المخاطر الجديدة تُدار في " : "Legacy local record. New risks are managed in ")<strong>@RiskProvider.ProviderName</strong>@(isRtl ? "." : ".")
+        </span>
+        @{ var indexUrl = RiskProvider.GetIndexUrl(); }
+        @if (!string.IsNullOrEmpty(indexUrl))
+        {
+            <a href="@indexUrl" target="_blank" rel="noopener" style="font-size: var(--fs-xs);color:#005B99;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:.25rem;white-space:nowrap;">
+                @(isRtl ? "افتح" : "Open") @RiskProvider.ProviderName
+                <i data-lucide="external-link" style="width:13px;height:13px;"></i>
+            </a>
+        }
+    </div>
+}
+
+<!-- Modern Banner Header -->
+<div class="mb-8 rounded-2xl shadow-xl overflow-hidden" style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+    <div class="px-8 py-10">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-6">
+                <div class="w-20 h-20 bg-white/10 backdrop-blur-sm rounded-2xl flex items-center justify-center">
+                    <i data-lucide="shield-alert" class="w-10 h-10 text-white"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-3 mb-2">
+                        <h1 class="text-4xl font-bold text-white">@Model.RiskNumber</h1>
+                        <span class="px-3 py-1 text-sm font-medium rounded-full @levelClass">@Shared[$"RiskLevel_{Model.RiskLevel}"].Value</span>
+                        @if (Model.IsOutsideTolerance()) { <span class="px-3 py-1 text-sm font-medium rounded-full bg-amber-100 text-amber-800">@Shared["Label_OutsideTolerance"]</span> }
+                        @if (Model.IsReviewDue()) { <span class="px-3 py-1 text-sm font-medium rounded-full bg-purple-100 text-purple-800">@Shared["Label_ReviewDue"]</span> }
+                    </div>
+                    <p class="text-blue-100 text-lg">@(isRtl ? Model.NameAr : Model.NameEn)</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <a asp-action="Index" class="inline-flex items-center gap-2 px-6 py-3 bg-white text-blue-600 font-semibold rounded-lg hover:bg-blue-50 transition-all shadow-md">
+                    <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" class="w-5 h-5" style="stroke: #005B99;"></i>
+                    <span style="color: #005B99;">@Shared["Button_BackToList"]</span>
+                </a>
+                <button type="button" onclick="executeAiAnalysis('/AI/AnalyzeEnterpriseRisk?riskId=@Model.Id', null, '@(isRtl ? "تحليل الذكاء الاصطناعي للمخاطر" : "AI Risk Analysis")')" class="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-semibold rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all shadow-md border-0">
+                    <i data-lucide="sparkles" class="w-5 h-5"></i>
+                    @(isRtl ? "تحليل الذكاء الاصطناعي" : "AI Analysis")
+                </button>
+                <a asp-action="Edit" asp-route-id="@Model.Id" class="inline-flex items-center gap-2 px-6 py-3 bg-white/10 backdrop-blur-sm text-white font-semibold rounded-lg hover:bg-white/20 transition-all border border-white/20">
+                    <i data-lucide="edit" class="w-5 h-5"></i>
+                    @Shared["Button_Edit"]
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Left Column -->
+    <div class="lg:col-span-2 space-y-6">
+        <!-- Description -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">@Shared["Label_Description"]</h3>
+            <p class="text-gray-700 whitespace-pre-wrap">@(isRtl ? Model.DescriptionAr : Model.DescriptionEn)</p>
+        </div>
+
+        @* AI Analysis — inline + persistent. Header button at the top still
+           opens the same flow in a SweetAlert modal for quick-glance use.
+           F-CC-LO-7: do not render the panel (or its scripts) when AI is
+           unconfigured — was shipping inert DOM on every Details load. *@
+        @if ((bool?)ViewData["AiEnabled"] == true)
+        {
+            @await Html.PartialAsync("_AiAnalysisPanel", new ESEMS.Web.Models.ViewModels.AiAnalysisPanelVM
+            {
+                Endpoint = $"/AI/AnalyzeEnterpriseRisk?riskId={Model.Id}",
+                Title = isRtl ? "تحليل الذكاء الاصطناعي للمخاطر" : "AI Risk Analysis",
+                Subtitle = isRtl ? "تقييم الاحتمال والأثر مع توصيات للتخفيف" : "Likelihood × impact assessment with mitigation recommendations",
+                PanelId = $"risk_{Model.Id}"
+            })
+        }
+
+        <!-- Risk Assessment -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">@Shared["Label_RiskAssessment"]</h3>
+            <div class="grid grid-cols-2 gap-6">
+                <!-- Inherent Risk -->
+                <div class="p-4 bg-gray-50 rounded-lg">
+                    <h4 class="text-sm font-medium text-gray-700 mb-3">@Shared["Label_InherentRisk"]</h4>
+                    <div class="flex items-center gap-4">
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-gray-900">@Model.Likelihood</div>
+                            <div class="text-xs text-gray-500">@Shared["Label_Likelihood"]</div>
+                        </div>
+                        <span class="text-gray-400">×</span>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-gray-900">@Model.Impact</div>
+                            <div class="text-xs text-gray-500">@Shared["Label_Impact"]</div>
+                        </div>
+                        <span class="text-gray-400">=</span>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold @(Model.InherentRiskScore >= 15 ? "text-red-600" : Model.InherentRiskScore >= 10 ? "text-orange-600" : Model.InherentRiskScore >= 5 ? "text-yellow-600" : "text-green-600")">@Model.InherentRiskScore</div>
+                            <div class="text-xs text-gray-500">@Shared["Label_Score"]</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Residual Risk -->
+                <div class="p-4 bg-gray-50 rounded-lg">
+                    <h4 class="text-sm font-medium text-gray-700 mb-3">@Shared["Label_ResidualRisk"]</h4>
+                    @if (Model.ResidualRiskScore.HasValue)
+                    {
+                        <div class="flex items-center gap-4">
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-gray-900">@Model.ResidualLikelihood</div>
+                                <div class="text-xs text-gray-500">@Shared["Label_Likelihood"]</div>
+                            </div>
+                            <span class="text-gray-400">×</span>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-gray-900">@Model.ResidualImpact</div>
+                                <div class="text-xs text-gray-500">@Shared["Label_Impact"]</div>
+                            </div>
+                            <span class="text-gray-400">=</span>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold @(Model.ResidualRiskScore >= 15 ? "text-red-600" : Model.ResidualRiskScore >= 10 ? "text-orange-600" : Model.ResidualRiskScore >= 5 ? "text-yellow-600" : "text-green-600")">@Model.ResidualRiskScore</div>
+                                <div class="text-xs text-gray-500">@Shared["Label_Score"]</div>
+                            </div>
+                        </div>
+                    }
+                    else { <p class="text-gray-500 text-sm">@Shared["Text_NotAssessed"]</p> }
+                </div>
+            </div>
+        </div>
+
+        <!-- Current Controls -->
+        @if (!string.IsNullOrEmpty(Model.CurrentControls))
+        {
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 border-s-4 border-s-blue-500">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900">@Shared["Label_CurrentControls"]</h3>
+                    @if (Model.ControlEffectiveness.HasValue)
+                    {
+                        <span class="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">@Shared["Label_Effectiveness"]: @Model.ControlEffectiveness/5</span>
+                    }
+                </div>
+                <p class="text-gray-700 whitespace-pre-wrap">@Model.CurrentControls</p>
+            </div>
+        }
+
+        <!-- Action Plans -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">@Shared["Label_ActionPlans"] (@Model.ActionPlans.Count)</h3>
+            @if (Model.ActionPlans.Any())
+            {
+                <div class="space-y-3">
+                    @foreach (var plan in Model.ActionPlans.OrderBy(p => p.TargetDate))
+                    {
+                        var planStatusClass = plan.Status switch {
+                            ESEMS.Web.Models.Enums.RiskActionPlanStatus.Completed => "bg-green-100 text-green-800",
+                            ESEMS.Web.Models.Enums.RiskActionPlanStatus.InProgress => "bg-blue-100 text-blue-800",
+                            ESEMS.Web.Models.Enums.RiskActionPlanStatus.OnTrack => "bg-blue-100 text-blue-800",
+                            ESEMS.Web.Models.Enums.RiskActionPlanStatus.AtRisk => "bg-red-100 text-red-800",
+                            ESEMS.Web.Models.Enums.RiskActionPlanStatus.Cancelled => "bg-gray-100 text-gray-800",
+                            _ => "bg-gray-100 text-gray-800"
+                        };
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div>
+                                <span class="text-sm font-medium text-gray-900">@(isRtl ? plan.NameAr : plan.NameEn)</span>
+                                <p class="text-xs text-gray-500">@Shared["Label_TargetDate"]: @plan.TargetDate?.ToDubaiString("MMM dd, yyyy")</p>
+                            </div>
+                            <span class="px-2 py-1 text-xs font-medium rounded-full @planStatusClass">@Shared[$"ActionPlanStatus_{plan.Status}"].Value</span>
+                        </div>
+                    }
+                </div>
+            }
+            else { <p class="text-gray-500 text-sm">@Shared["Text_NoActionPlans"]</p> }
+        </div>
+    </div>
+
+    <!-- Right Column -->
+    <div class="space-y-6">
+        <!-- Details Card -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">@Shared["Label_Details"]</h3>
+            <div class="space-y-3">
+                <div class="flex justify-between"><span class="text-sm text-gray-500">@Shared["Label_Category"]</span><span class="text-sm font-medium">@(Model.Category != null ? (isRtl ? Model.Category.NameAr : Model.Category.NameEn) : "-")</span></div>
+                @if (Model.Owner != null) { <div class="flex justify-between"><span class="text-sm text-gray-500">@Shared["Label_Owner"]</span><span class="text-sm font-medium">@Model.Owner.GetLocalizedFullName()</span></div> }
+                @if (Model.Process != null) { <div class="flex justify-between"><span class="text-sm text-gray-500">@Shared["Label_Process"]</span><span class="text-sm font-medium">@(isRtl ? Model.Process.NameAr : Model.Process.NameEn)</span></div> }
+                @if (Model.ToleranceLevel.HasValue) { <div class="flex justify-between"><span class="text-sm text-gray-500">@Shared["Label_Tolerance"]</span><span class="text-sm font-medium">@Model.ToleranceLevel</span></div> }
+            </div>
+        </div>
+
+        <!-- Review Schedule -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 @(Model.IsReviewDue() ? "border-s-4 border-s-purple-500" : "")">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">@Shared["Label_ReviewSchedule"]</h3>
+            <div class="space-y-3">
+                @if (Model.LastReviewDate.HasValue) { <div class="flex justify-between"><span class="text-sm text-gray-500">@Shared["Label_LastReview"]</span><span class="text-sm font-medium">@Model.LastReviewDate.Value.ToDubaiString("MMM dd, yyyy")</span></div> }
+                @if (Model.NextReviewDate.HasValue) { <div class="flex justify-between"><span class="text-sm text-gray-500">@Shared["Label_NextReview"]</span><span class="text-sm font-medium @(Model.IsReviewDue() ? "text-purple-600" : "")">@Model.NextReviewDate.Value.ToDubaiString("MMM dd, yyyy")</span></div> }
+            </div>
+        </div>
+
+        <!-- Response Strategy -->
+        @if (!string.IsNullOrEmpty(Model.ResponseStrategy))
+        {
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">@Shared["Label_ResponseStrategy"]</h3>
+                <p class="text-gray-700 text-sm">@Model.ResponseStrategy</p>
+            </div>
+        }
+
+        <!-- Affected Assets -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <i data-lucide="package" class="w-5 h-5 text-blue-600"></i>
+                    @Shared["Label_AffectedAssets"]
+                </h3>
+                <div class="flex items-center gap-2">
+                    <span class="px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">@Model.AssetRisks.Count(ar => ar.IsActive)</span>
+                    @if (User.HasClaim("Permission", "CanEdit"))
+                    {
+                        <button onclick="openLinkAssetModal()" class="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors" title="Link Asset">
+                            <i data-lucide="plus" class="w-3 h-3"></i>
+                            @Shared["Button_LinkAsset"]
+                        </button>
+                    }
+                </div>
+            </div>
+            @if (Model.AssetRisks.Any(ar => ar.IsActive))
+            {
+                <div class="space-y-2">
+                    @foreach (var assetRisk in Model.AssetRisks.Where(ar => ar.IsActive).OrderByDescending(ar => ar.ImpactLevel))
+                    {
+                        var asset = assetRisk.Asset;
+                        var criticalityClass = asset.Criticality switch { 1 => "bg-red-100 text-red-800", 2 => "bg-orange-100 text-orange-800", 3 => "bg-yellow-100 text-yellow-800", _ => "bg-gray-100 text-gray-800" };
+                        var criticalityLabel = asset.Criticality switch { 1 => Shared["Criticality_Critical"].Value, 2 => Shared["Criticality_High"].Value, 3 => Shared["Criticality_Medium"].Value, _ => Shared["Criticality_Low"].Value };
+                        var impactClass = assetRisk.ImpactLevel switch { 5 => "bg-red-100 text-red-800", 4 => "bg-orange-100 text-orange-800", 3 => "bg-yellow-100 text-yellow-800", _ => "bg-green-100 text-green-800" };
+                        <div class="p-3 bg-gray-50 rounded-lg">
+                            <div class="flex items-center justify-between gap-2">
+                                <a asp-controller="Assets" asp-action="Details" asp-route-id="@asset.Id" class="flex-1 hover:opacity-80 transition-opacity">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="text-sm font-medium text-gray-900">@asset.AssetTag</span>
+                                        <span class="px-2 py-0.5 text-xs font-medium rounded-full @criticalityClass">@criticalityLabel</span>
+                                        <span class="px-2 py-0.5 text-xs font-medium rounded-full @impactClass" title="Risk impact on this asset">Impact: @assetRisk.ImpactLevel</span>
+                                    </div>
+                                    <p class="text-xs text-gray-600">@(isRtl ? asset.NameAr : asset.NameEn)</p>
+                                    @if (!string.IsNullOrEmpty(assetRisk.SpecificControls))
+                                    {
+                                        <p class="text-xs text-gray-500 mt-1"><i data-lucide="shield-check" class="w-3 h-3 inline"></i> @assetRisk.SpecificControls</p>
+                                    }
+                                    @if (!string.IsNullOrEmpty(assetRisk.Notes))
+                                    {
+                                        <p class="text-xs text-gray-500 mt-1"><i data-lucide="file-text" class="w-3 h-3 inline"></i> @assetRisk.Notes</p>
+                                    }
+                                </a>
+                                @if (User.HasClaim("Permission", "CanEdit"))
+                                {
+                                    <div class="flex items-center gap-1">
+                                        <button onclick="editAssetRisk('@asset.Id', '@Model.Id', @assetRisk.ImpactLevel, '@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(assetRisk.SpecificControls ?? ""))', '@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(assetRisk.Notes ?? ""))')" class="p-1 text-blue-600 hover:text-blue-800 transition-colors" title="Edit">
+                                            <i data-lucide="edit-2" class="w-4 h-4"></i>
+                                        </button>
+                                        <button onclick="unlinkAsset('@asset.Id', '@Model.Id')" class="p-1 text-red-600 hover:text-red-800 transition-colors" title="Unlink">
+                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="text-center py-6">
+                    <i data-lucide="package" class="w-12 h-12 text-gray-300 mx-auto mb-2"></i>
+                    <p class="text-sm text-gray-500">@Shared["Text_NoAffectedAssets"]</p>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     Linked Improvements — reverse view of the ImprovementRisk
+     junction. Shows every initiative that references this risk,
+     split visually by relationship type (mitigates vs creates).
+     ════════════════════════════════════════════════════════ -->
+@{
+    var improvementLinks = (Model.ImprovementRisks ?? new List<ESEMS.Web.Models.Improvement.ImprovementRisk>())
+        .Where(ir => ir.Improvement != null && !ir.Improvement.IsDeleted)
+        .ToList();
+}
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <i data-lucide="trending-up" class="w-5 h-5" style="color:#005B99"></i>
+            @(isRtl ? "المبادرات المرتبطة" : "Linked Improvements")
+        </h3>
+        <span class="px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">@improvementLinks.Count</span>
+    </div>
+
+    @if (improvementLinks.Any())
+    {
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
+                    <tr>
+                        <th class="px-3 py-2 text-start">@(isRtl ? "الرمز" : "Code")</th>
+                        <th class="px-3 py-2 text-start">@(isRtl ? "العنوان" : "Title")</th>
+                        <th class="px-3 py-2 text-start">@(isRtl ? "الحالة" : "Status")</th>
+                        <th class="px-3 py-2 text-start">@(isRtl ? "نوع العلاقة" : "Relationship")</th>
+                        <th class="px-3 py-2 text-center">@(isRtl ? "الخفض المتوقع" : "Expected Reduction")</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    @foreach (var link in improvementLinks.OrderBy(l => l.Improvement!.Code))
+                    {
+                        var imp = link.Improvement!;
+                        var mitigates = link.RelationshipType == "Mitigates" || link.RelationshipType == "Decreases";
+                        var relClass = mitigates ? "bg-green-50 text-green-700" : (link.RelationshipType == "Creates" || link.RelationshipType == "Increases" ? "bg-red-50 text-red-700" : "bg-gray-100 text-gray-700");
+                        var relIcon = link.RelationshipType switch
+                        {
+                            "Mitigates"  => "shield-check",
+                            "Decreases"  => "trending-down",
+                            "Creates"    => "alert-triangle",
+                            "Increases"  => "trending-up",
+                            _            => "link"
+                        };
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-3 py-2 font-mono text-xs text-gray-600">@imp.Code</td>
+                            <td class="px-3 py-2">
+                                <a asp-controller="Improvements" asp-action="Details" asp-route-id="@imp.Id" class="font-semibold hover:underline" style="color:#003d6b;">
+                                    @(isRtl ? imp.TitleAr : imp.TitleEn)
+                                </a>
+                            </td>
+                            <td class="px-3 py-2">
+                                <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-blue-50 text-blue-700">@imp.Status</span>
+                            </td>
+                            <td class="px-3 py-2">
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full @relClass">
+                                    <i data-lucide="@relIcon" class="w-3 h-3"></i>
+                                    @link.RelationshipType
+                                </span>
+                            </td>
+                            <td class="px-3 py-2 text-center text-gray-700">
+                                @if (link.ExpectedRiskReduction.HasValue)
+                                {
+                                    @link.ExpectedRiskReduction.Value<text>%</text>
+                                }
+                                else
+                                {
+                                    <span class="text-gray-400">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="text-center py-8">
+            <i data-lucide="trending-up" class="w-12 h-12 text-gray-300 mx-auto mb-2"></i>
+            <p class="text-sm text-gray-500">
+                @(isRtl
+                    ? "لا توجد مبادرات تحسين مرتبطة بهذه المخاطرة."
+                    : "No improvement initiatives are linked to this risk yet.")
+            </p>
+            <p class="text-xs text-gray-400 mt-1">
+                @(isRtl
+                    ? "افتح تفاصيل المبادرة وانتقل إلى تبويب «المخاطر المرتبطة»."
+                    : "Open an improvement and use the \"Linked Risks\" tab to link it.")
+            </p>
+        </div>
+    }
+</div>
+
+<!-- Link Asset Modal -->
+<div id="linkAssetModal" class="modal fade" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Link Asset to Risk</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="availableAssetsContainer">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="text-muted mt-2">Loading available assets...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Asset-Risk Modal -->
+<div id="editAssetRiskModal" class="modal fade" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Edit Asset-Risk Relationship</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editAssetRiskForm">
+                <div class="modal-body">
+                    <input type="hidden" id="editAssetId" />
+                    <input type="hidden" id="editRiskId" />
+
+                    <div class="mb-3">
+                        <label class="form-label">Impact Level (1-5)</label>
+                        <select id="editImpactLevel" class="form-select">
+                            <option value="1">1 - Very Low</option>
+                            <option value="2">2 - Low</option>
+                            <option value="3">3 - Medium</option>
+                            <option value="4">4 - High</option>
+                            <option value="5">5 - Critical</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Specific Controls</label>
+                        <textarea id="editSpecificControls" rows="3" class="form-control" placeholder="@(isRtl ? "الضوابط المعمول بها لهذا الأصل..." : "Controls in place for this asset...")"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Notes</label>
+                        <textarea id="editNotes" rows="2" class="form-control" placeholder="@(isRtl ? "ملاحظات إضافية..." : "Additional notes...")"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">@Shared["Button_Cancel"]</button>
+                    <button type="submit" class="btn btn-primary">@Shared["Button_SaveChanges"]</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        lucide.createIcons();
+        const riskId = '@Model.Id';
+
+        // UX helpers
+        function showErr(msg) { Swal.fire({ icon:'error', title:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_Error"].Value)), text:msg, confirmButtonColor:'#005B99' }); }
+        async function confirmDestructive(text) {
+            const r = await Swal.fire({ icon:'warning', title:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_AreYouSure"].Value)), text,
+                showCancelButton:true, confirmButtonText:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Label_Yes"].Value)), cancelButtonText:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Button_Cancel"].Value)),
+                confirmButtonColor:'#dc2626', cancelButtonColor:'#64748b' });
+            return r.isConfirmed;
+        }
+        let linkAssetModalInstance, editAssetRiskModalInstance;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            linkAssetModalInstance = new bootstrap.Modal(document.getElementById('linkAssetModal'));
+            editAssetRiskModalInstance = new bootstrap.Modal(document.getElementById('editAssetRiskModal'));
+        });
+
+        function openLinkAssetModal() {
+            linkAssetModalInstance.show();
+            loadAvailableAssets();
+        }
+
+        async function loadAvailableAssets() {
+            try {
+                const response = await fetch(`/Assets/GetAvailableAssets?riskId=${riskId}`);
+                const assets = await response.json();
+
+                const container = document.getElementById('availableAssetsContainer');
+
+                if (assets.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-4">
+                            <i data-lucide="package-check" style="width: 48px; height: 48px;" class="text-muted"></i>
+                            <p class="text-muted mt-2">@Shared["Text_AllAssetsLinkedToRisk"]</p>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                    return;
+                }
+
+                container.innerHTML = '<div class="list-group">' + assets.map(asset => {
+                    const statusClass = {
+                        'Operational': 'success',
+                        'UnderMaintenance': 'warning',
+                        'Retired': 'secondary'
+                    }[asset.status] || 'info';
+
+                    const criticalityClass = {
+                        1: 'danger',
+                        2: 'warning',
+                        3: 'info',
+                        4: 'secondary'
+                    }[asset.criticality] || 'secondary';
+
+                    return `
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <div class="d-flex align-items-center gap-2 mb-1">
+                                        <span class="fw-medium">${asset.assetTag}</span>
+                                        <span class="badge badge-${statusClass}">${asset.status}</span>
+                                        <span class="badge badge-${criticalityClass}">Criticality: ${asset.criticality}</span>
+                                    </div>
+                                    <p class="mb-1">${asset.nameEn}</p>
+                                    ${asset.categoryName ? `<small class="text-muted">${asset.categoryName}</small>` : ''}
+                                </div>
+                                <button onclick="linkAsset('${asset.id}')" class="btn btn-sm btn-primary">Link</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('') + '</div>';
+
+                lucide.createIcons();
+            } catch (error) {
+                console.error('Error loading assets:', error);
+                document.getElementById('availableAssetsContainer').innerHTML = `
+                    <div class="alert alert-danger">Error loading assets. Please try again.</div>
+                `;
+            }
+        }
+
+        async function linkAsset(assetId) {
+            try {
+                const response = await fetch('/Assets/LinkRisk', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ assetId, riskId, impactLevel: 3 })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    linkAssetModalInstance.hide();
+                    location.reload();
+                } else {
+                    showErr(result.message || 'Error linking asset');
+                }
+            } catch (error) {
+                console.error('Error linking asset:', error);
+                showErr('Error linking asset. Please try again.');
+            }
+        }
+
+        async function unlinkAsset(assetId, riskId) {
+            if (!(await confirmDestructive('Are you sure you want to unlink this asset from the risk?'))) return;
+
+            try {
+                const response = await fetch('/Assets/UnlinkRisk', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ assetId, riskId })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    location.reload();
+                } else {
+                    showErr(result.message || 'Error unlinking asset');
+                }
+            } catch (error) {
+                console.error('Error unlinking asset:', error);
+                showErr('Error unlinking asset. Please try again.');
+            }
+        }
+
+        function editAssetRisk(assetId, riskId, impactLevel, specificControls, notes) {
+            document.getElementById('editAssetId').value = assetId;
+            document.getElementById('editRiskId').value = riskId;
+            document.getElementById('editImpactLevel').value = impactLevel;
+            document.getElementById('editSpecificControls').value = specificControls || '';
+            document.getElementById('editNotes').value = notes || '';
+            editAssetRiskModalInstance.show();
+        }
+
+        document.getElementById('editAssetRiskForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const assetId = document.getElementById('editAssetId').value;
+            const riskId = document.getElementById('editRiskId').value;
+            const impactLevel = document.getElementById('editImpactLevel').value;
+            const specificControls = document.getElementById('editSpecificControls').value;
+            const notes = document.getElementById('editNotes').value;
+
+            try {
+                const response = await fetch('/Assets/UpdateAssetRisk', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ assetId, riskId, impactLevel, specificControls, notes })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    editAssetRiskModalInstance.hide();
+                    location.reload();
+                } else {
+                    showErr(result.message || 'Error updating relationship');
+                }
+            } catch (error) {
+                console.error('Error updating relationship:', error);
+                showErr('Error updating relationship. Please try again.');
+            }
+        });
+    </script>
+}
+

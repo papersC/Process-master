@@ -1,0 +1,154 @@
+@model IEnumerable<SLADefinition>
+@{
+    ViewData["Title"] = Shared["Title_SLADashboard"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentCulture.Name.StartsWith("ar");
+    var recentBreaches = ViewBag.RecentBreaches as List<SLABreach> ?? new List<SLABreach>();
+    var totalBreaches = (int)(ViewBag.TotalBreaches ?? 0);
+    var activeBreaches = (int)(ViewBag.ActiveBreaches ?? 0);
+    var resolvedBreaches = (int)(ViewBag.ResolvedBreaches ?? 0);
+    var allBreaches = Model.SelectMany(s => s.Breaches ?? new List<SLABreach>()).ToList();
+    var criticalCount = allBreaches.Count(b => b.Severity == 1);
+    var majorCount = allBreaches.Count(b => b.Severity == 2);
+    var mediumCount = allBreaches.Count(b => b.Severity == 3);
+    var lowCount = allBreaches.Count(b => b.Severity > 3);
+    var compliantCount = Model.Count(s => s.Breaches == null || !s.Breaches.Any());
+    var complianceRate = Model.Any() ? (compliantCount * 100 / Model.Count()) : 100;
+}
+
+<style>
+    .sd-shell { display: flex; flex-direction: column; gap: .6rem; height: calc(100vh - 140px); min-height: 600px; }
+    .sd-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; flex: 0 0 auto; }
+    .sd-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .sd-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .sd-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; }
+    .sd-btn-primary { background: #005B99; color: #fff; border: none; } .sd-btn-primary:hover { background: #003d6b; color: #fff; }
+    .sd-btn-outline { background: #fff; color: #005B99; border: 1px solid #cbd5e1; } .sd-btn-outline:hover { background: #f1f5f9; }
+    .sd-kpi-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .5rem; flex: 0 0 auto; }
+    @@media (max-width: 1200px) { .sd-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    .sd-kpi { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; padding: .65rem .85rem; display: flex; align-items: center; gap: .65rem; }
+    .sd-kpi-bar { width: 4px; align-self: stretch; border-radius: 2px; flex-shrink: 0; }
+    .sd-kpi-meta { flex: 1; min-width: 0; }
+    .sd-kpi-label { font-size: var(--fs-xs); color: #6b7280; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sd-kpi-value { font-size: var(--fs-lg); font-weight: 700; color: #111827; line-height: 1.2; margin: 0; }
+    .sd-kpi-suffix { font-size: var(--fs-xs); font-weight: 600; color: #6b7280; }
+    .sd-main { display: grid; grid-template-columns: 1.1fr 1.4fr; gap: .6rem; flex: 1 1 0; min-height: 0; }
+    @@media (max-width: 1024px) { .sd-main { grid-template-columns: 1fr; } }
+    .sd-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .sd-card-head { display: flex; align-items: center; justify-content: space-between; padding: .5rem .85rem; border-bottom: 1px solid #f1f5f9; flex: 0 0 auto; }
+    .sd-card-head h6 { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .4rem; }
+    .sd-card-body { flex: 1 1 0; min-height: 0; padding: .65rem .85rem; position: relative; }
+    .sd-chart-wrap { position: relative; height: 100%; max-width: 460px; max-height: 420px; margin: 0 auto; padding: 1rem .5rem .25rem; box-sizing: border-box; }
+    .sd-chart-center { position: absolute; inset: 1rem .5rem .25rem; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; padding-bottom: 2.5rem; }
+    .sd-chart-total { font-size: var(--fs-2xl); font-weight: 700; color: #111827; line-height: 1; }
+    .sd-chart-label { font-size: var(--fs-xs); color: #6b7280; margin-top: .2rem; text-transform: uppercase; letter-spacing: .04em; }
+    .sd-table-wrap { flex: 1 1 0; min-height: 0; overflow: auto; }
+    .sd-table-wrap table { width: 100%; font-size: var(--fs-xs); border-collapse: collapse; }
+    .sd-table-wrap thead { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
+    .sd-table-wrap th { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; padding: .55rem .8rem; text-align: start; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+    .sd-table-wrap td { padding: .5rem .8rem; border-bottom: 1px solid #f3f4f6; color: #374151; }
+    .sd-table-wrap tbody tr:hover td { background: #f9fafb; }
+    .sd-sev { display: inline-block; padding: .15rem .5rem; font-size: var(--fs-xs); font-weight: 600; border-radius: .25rem; }
+    .sd-sev-1 { background: #fee2e2; color: #b91c1c; }
+    .sd-sev-2 { background: #ffedd5; color: #c2410c; }
+    .sd-sev-3 { background: #fef3c7; color: #92400e; }
+    .sd-sev-4 { background: #f1f5f9; color: #475569; }
+</style>
+
+<div class="sd-shell">
+    <div class="sd-header">
+        <div>
+            <h1><i data-lucide="shield-check" class="w-5 h-5" style="color:#34C38F;" aria-hidden="true"></i>@Shared["Title_SLADashboard"]</h1>
+            <p>@Shared["Text_SLAComplianceMonitoring"]</p>
+        </div>
+        <div style="display:flex;gap:.4rem;">
+            <a asp-action="Breaches" class="sd-btn sd-btn-outline"><i data-lucide="alert-triangle" class="w-4 h-4" aria-hidden="true"></i>@Shared["Button_ViewBreaches"]</a>
+            <a asp-action="Index" class="sd-btn sd-btn-outline"><i data-lucide="list" class="w-4 h-4" aria-hidden="true"></i>@Shared["Button_ViewAllSLAs"]</a>
+            <a asp-action="Create" class="sd-btn sd-btn-primary"><i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "إضافة SLA" : "New SLA")</a>
+        </div>
+    </div>
+
+    <div class="sd-kpi-grid">
+        <div class="sd-kpi"><span class="sd-kpi-bar" style="background:#34C38F;"></span><div class="sd-kpi-meta"><p class="sd-kpi-label">@Shared["Label_ComplianceRate"]</p><p class="sd-kpi-value">@complianceRate <span class="sd-kpi-suffix">%</span></p></div></div>
+        <div class="sd-kpi"><span class="sd-kpi-bar" style="background:#005B99;"></span><div class="sd-kpi-meta"><p class="sd-kpi-label">@Shared["Label_ActiveSLAs"]</p><p class="sd-kpi-value">@Model.Count()</p></div></div>
+        <div class="sd-kpi"><span class="sd-kpi-bar" style="background:#dc2626;"></span><div class="sd-kpi-meta"><p class="sd-kpi-label">@Shared["Label_ActiveBreaches"]</p><p class="sd-kpi-value">@activeBreaches</p></div></div>
+        <div class="sd-kpi"><span class="sd-kpi-bar" style="background:#8b5cf6;"></span><div class="sd-kpi-meta"><p class="sd-kpi-label">@Shared["Label_ResolvedBreaches"]</p><p class="sd-kpi-value">@resolvedBreaches</p></div></div>
+        <div class="sd-kpi"><span class="sd-kpi-bar" style="background:#F1B44C;"></span><div class="sd-kpi-meta"><p class="sd-kpi-label">@(isRtl ? "إجمالي الانتهاكات" : "Total Breaches")</p><p class="sd-kpi-value">@totalBreaches</p></div></div>
+    </div>
+
+    <div class="sd-main">
+        <div class="sd-card">
+            <div class="sd-card-head"><h6><i data-lucide="pie-chart" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@Shared["Label_BreachSeverity"]</h6></div>
+            <div class="sd-card-body">
+                <div class="sd-chart-wrap">
+                    <canvas id="sdSeverityChart"></canvas>
+                    <div class="sd-chart-center"><span class="sd-chart-total">@allBreaches.Count</span><span class="sd-chart-label">@(isRtl ? "انتهاكات" : "Breaches")</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="sd-card">
+            <div class="sd-card-head">
+                <h6><i data-lucide="alert-triangle" class="w-4 h-4" style="color:#dc2626;" aria-hidden="true"></i>@Shared["Label_RecentBreaches"]</h6>
+                <a asp-action="Breaches" style="font-size: var(--fs-xs);color:#005B99;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:.25rem;">@Shared["Button_ViewAll"] <i data-lucide="@(isRtl ? "arrow-left" : "arrow-right")" class="w-3 h-3" aria-hidden="true"></i></a>
+            </div>
+            <div class="sd-card-body" style="padding:0;">
+                <div class="sd-table-wrap">
+                    @if (recentBreaches.Any())
+                    {
+                        <table>
+                            <thead><tr><th>@Shared["Column_SLA"]</th><th>@Shared["Column_BreachDate"]</th><th>@Shared["Column_Severity"]</th><th>@Shared["Column_Status"]</th><th style="width:60px;text-align:end;"></th></tr></thead>
+                            <tbody>
+                                @foreach (var b in recentBreaches)
+                                {
+                                    var sevLabel = b.Severity switch { 1 => Shared["Label_Critical"].Value, 2 => Shared["Label_Major"].Value, 3 => Shared["Label_Medium"].Value, _ => Shared["Label_Low"].Value };
+                                    <tr>
+                                        <td><span style="font-weight:500;color:#111827;">@(b.SLADefinition != null ? (isRtl ? b.SLADefinition.NameAr : b.SLADefinition.NameEn) : "—")</span></td>
+                                        <td><span style="color:#6b7280;">@b.BreachDate.ToDubaiString("MMM dd, HH:mm")</span></td>
+                                        <td><span class="sd-sev sd-sev-@b.Severity">@sevLabel</span></td>
+                                        <td>@(b.IsResolved ? Shared["Label_ResolvedBreaches"].Value : Shared["Label_ActiveBreaches"].Value)</td>
+                                        <td style="text-align:end;">
+                                            @if (b.SLADefinition != null) {
+                                                <a asp-action="Details" asp-route-id="@b.SLADefinition.Id" aria-label="@Shared["Title_ViewDetails"]" style="color:#005B99;text-decoration:none;display:inline-flex;align-items:center;font-weight:600;">
+                                                    <i data-lucide="eye" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                                </a>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else
+                    {
+                        <div style="padding:2rem;text-align:center;color:#94a3b8;font-size: var(--fs-sm);">
+                            <i data-lucide="check-circle" class="w-8 h-8" aria-hidden="true" style="margin:0 auto .5rem;display:block;color:#10b981;"></i>
+                            @(isRtl ? "لا توجد انتهاكات حديثة" : "No recent breaches — all SLAs compliant")
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+        const isRtl = @(isRtl ? "true" : "false");
+        if (isRtl) { Chart.defaults.plugins.legend.rtl = true; Chart.defaults.plugins.legend.textDirection = 'rtl'; Chart.defaults.plugins.tooltip.rtl = true; Chart.defaults.plugins.tooltip.textDirection = 'rtl'; }
+        new Chart(document.getElementById('sdSeverityChart'), {
+            type: 'doughnut',
+            data: {
+                labels: [@Html.Raw("'" + Shared["Label_Critical"].Value + "'"), @Html.Raw("'" + Shared["Label_Major"].Value + "'"), @Html.Raw("'" + Shared["Label_Medium"].Value + "'"), @Html.Raw("'" + Shared["Label_Low"].Value + "'")],
+                datasets: [{
+                    data: [@criticalCount, @majorCount, @mediumCount, @lowCount],
+                    backgroundColor: ['#dc2626', '#ea580c', '#F1B44C', '#94a3b8'],
+                    borderWidth: 3, borderColor: '#fff'
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, cutout: '68%',
+                plugins: { legend: { position: 'bottom', labels: { padding: 14, usePointStyle: true, font: { size: 12, weight: '500' } } },
+                    tooltip: { backgroundColor: 'rgba(0,0,0,.85)', padding: 10,
+                        callbacks: { label: function(c){ var t=c.dataset.data.reduce((a,b)=>a+b,0); var p=t>0?((c.parsed/t)*100).toFixed(1):'0'; return c.label+': '+c.parsed+' ('+p+'%)'; } } } } }
+        });
+    </script>
+}

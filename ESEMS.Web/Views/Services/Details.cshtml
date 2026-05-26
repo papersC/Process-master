@@ -1,0 +1,1675 @@
+@model Service
+@inject ESEMS.Web.Services.Integrations.Contracts.IProcessPerformanceProvider PerfProvider
+@{
+    ViewData["Title"] = Shared["Title_ServiceDetails"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+
+    // Pre-compute counts so the KPI strip and tab badges stay in sync.
+    var totalProcesses = Model.ProcessServices?.Count(ps => ps.IsActive) ?? 0;
+    var totalAssets = Model.ServiceAssets?.Count(sa => sa.IsActive) ?? 0;
+    var totalRisks = Model.ServiceRisks?.Count(sr => sr.IsActive) ?? 0;
+
+    // Top-3 critical for the at-a-glance digest in the Overview tab.
+    var topProcesses = (Model.ProcessServices ?? new List<ESEMS.Web.Models.ServiceManagement.ProcessService>())
+        .Where(ps => ps.IsActive && ps.Process != null)
+        .OrderBy(ps => ps.Criticality).Take(3).ToList();
+    var topAssets = Model.ServiceAssets
+        .Where(sa => sa.IsActive && sa.Asset != null)
+        .OrderBy(sa => sa.Criticality).Take(3).ToList();
+    var topRisks = Model.ServiceRisks
+        .Where(sr => sr.IsActive && sr.Risk != null)
+        .OrderByDescending(sr => sr.ImpactLevel).Take(3).ToList();
+}
+
+<div class="esems-container">
+
+@* ─────────────────────────────────────────────────────────────────────
+   Tabbed Service Details. Replaces the long single-pane sd2-* layout
+   with horizontal tabs (Overview | Processes | Assets | Risks
+   [+ Performance when integration is on]) so each section is
+   one-click instead of one-scroll. The sticky header (code pill,
+   title, status, KPI chips, action buttons) stays put as the page's
+   identity; KPI chips switch tabs instead of scroll-jumping. Every
+   modal id (#linkProcessModal, #editServiceProcessModal,
+   #linkAssetModal, #editServiceAssetModal, #linkRiskModal,
+   #editServiceRiskModal), every AJAX endpoint, and the LinkedRisks /
+   LinkedKpis integration partials are preserved verbatim — drop-in
+   compatible with the controller and the JS in this file.
+
+   URL-hash deep links continue to work: #processes activates the
+   Processes tab, #risks activates the Risks tab, etc. (legacy anchor
+   IDs from the previous design are kept as the pane IDs so external
+   bookmarks still land in the right place).
+   ─────────────────────────────────────────────────────────────────────  *@
+<style>
+    /* Sticky header — unchanged from the previous design. */
+    .sd2-stickyhead {
+        position: sticky; top: 0; z-index: 30;
+        background: #fff;
+        border-bottom: 1px solid #e5e7eb;
+        margin: 0 -.75rem .25rem;
+        padding: .55rem .75rem .45rem;
+        box-shadow: 0 1px 0 rgba(15,23,42,.04);
+    }
+    .sd2-titlerow { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+    .sd2-titlemain { min-width: 0; flex: 1 1 360px; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .sd2-code-pill { display: inline-block; padding: .14rem .55rem; font-size: var(--fs-xs); font-weight: 700; border-radius: .25rem; background: #eff6ff; color: #1d4ed8; font-family: ui-monospace, monospace; letter-spacing: .04em; }
+    .sd2-title { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; line-height: 1.2; max-width: 480px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sd2-status-pill { display: inline-flex; align-items: center; gap: .25rem; padding: .15rem .55rem; font-size: var(--fs-xs); font-weight: 600; border-radius: .25rem; }
+    .sd2-status-on  { background: #ecfdf5; color: #047857; }
+    .sd2-status-off { background: #f1f5f9; color: #64748b; }
+    .sd2-breadcrumb { font-size: var(--fs-xs); color: #6b7280; }
+    .sd2-actions { display: inline-flex; gap: .35rem; flex-wrap: wrap; }
+    .sd2-btn { border-radius: .375rem; padding: .35rem .7rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; text-decoration: none; border: 1px solid transparent; line-height: 1.1; }
+    .sd2-btn-outline { background: #fff; color: #005B99; border-color: #cbd5e1; }
+    .sd2-btn-outline:hover { background: #f1f5f9; color: #005B99; }
+    .sd2-btn-primary { background: #005B99; color: #fff; }
+    .sd2-btn-primary:hover { background: #003d6b; color: #fff; }
+    .sd2-btn-ai { background: linear-gradient(135deg,#a855f7,#6366f1); color: #fff; box-shadow: 0 2px 8px rgba(99,102,241,.18); border: none; }
+    .sd2-btn-ai:hover { color: #fff; opacity: .92; }
+
+    /* KPI chips — now switch tabs (not scroll-jump). */
+    .sd2-kpis { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .45rem; }
+    .sd2-kpi { display: inline-flex; align-items: center; gap: .35rem; padding: .25rem .55rem; border: 1px solid #e5e7eb; border-radius: .375rem; background: #fafbfc; font-size: var(--fs-xs); color: #475569; cursor: pointer; text-decoration: none; transition: background .15s, border-color .15s; }
+    .sd2-kpi:hover { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }
+    .sd2-kpi i { color: #005B99; }
+    .sd2-kpi b { color: #0f172a; font-weight: 700; font-size: var(--fs-xs); }
+    button.sd2-kpi { font-family: inherit; }
+
+    /* ── TAB NAVIGATION ── */
+    /* overflow-x:auto keeps horizontal scroll on narrow viewports where tabs
+       wouldn't otherwise fit, but the scrollbar itself was showing on desktop
+       (4–5 tabs that already fit). Hide the visual scrollbar across browsers
+       while preserving the scroll capability. */
+    .sd2-tabnav { display: flex; gap: .15rem; border-bottom: 2px solid #e5e7eb; margin: .55rem 0 .85rem; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
+    .sd2-tabnav::-webkit-scrollbar { display: none; }
+    .sd2-tab { background: transparent; border: none; padding: .55rem 1rem; font-size: var(--fs-sm); font-weight: 600; color: #64748b; cursor: pointer; display: inline-flex; align-items: center; gap: .4rem; border-bottom: 2px solid transparent; margin-bottom: -2px; white-space: nowrap; transition: color .12s, border-color .12s; }
+    .sd2-tab i { width: 16px; height: 16px; }
+    .sd2-tab:hover { color: #005B99; }
+    .sd2-tab.active { color: #005B99; border-bottom-color: #005B99; }
+    .sd2-tab-badge { display: inline-block; min-width: 20px; padding: 0 .4rem; font-size: var(--fs-xs); font-weight: 700; line-height: 18px; text-align: center; background: #e2e8f0; color: #334155; border-radius: 9px; }
+    .sd2-tab.active .sd2-tab-badge { background: #dbeafe; color: #1d4ed8; }
+
+    /* Cards — unchanged tokens. */
+    .sd2-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; box-shadow: 0 1px 2px rgba(15,23,42,.03); height: 100%; display: flex; flex-direction: column; }
+    .sd2-card-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .55rem .85rem; border-bottom: 1px solid #f1f5f9; }
+    .sd2-card-head .sd2-card-title { display: inline-flex; align-items: center; gap: .45rem; font-size: var(--fs-sm); font-weight: 600; color: #111827; }
+    .sd2-card-head .sd2-card-title i { width: 16px; height: 16px; color: #005B99; }
+    .sd2-card-head .sd2-card-count { display: inline-block; min-width: 20px; padding: 0 .4rem; font-size: var(--fs-xs); font-weight: 700; line-height: 18px; text-align: center; background: #e2e8f0; color: #334155; border-radius: 9px; }
+    .sd2-card-body { padding: .85rem; flex: 1 1 auto; }
+    .sd2-card-body.sd2-pad-tight { padding: .35rem .85rem .55rem; }
+
+    /* Scrollable list inside a card body (used for long related-record lists). */
+    .sd2-scroll { max-height: calc(100vh - 320px); min-height: 240px; overflow-y: auto; }
+
+    /* Tweaks for the dense list rows used inside related-records cards. */
+    .sd2-card .list-group-item { padding: .55rem 0; }
+    .sd2-card .list-group-item:first-child { padding-top: .25rem; }
+    .sd2-card .esems-label { font-size: var(--fs-xs); color: #6b7280; margin-bottom: .15rem; }
+    .sd2-card .esems-body { font-size: var(--fs-sm); }
+
+    /* Top-Critical compact rows (Overview tab right-rail). */
+    .sd2-tc-group + .sd2-tc-group { border-top: 1px solid #f1f5f9; margin-top: .5rem; padding-top: .5rem; }
+    .sd2-tc-label { font-size: var(--fs-xs); letter-spacing: .05em; text-transform: uppercase; color: #64748b; font-weight: 700; display: inline-flex; align-items: center; gap: .3rem; margin-bottom: .25rem; }
+    .sd2-tc-label i { width: 11px; height: 11px; }
+    .sd2-tc-row { display: flex; justify-content: space-between; align-items: center; padding: .15rem 0; font-size: var(--fs-xs); }
+    .sd2-tc-row a { color: #1d4ed8; text-decoration: none; max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sd2-tc-row a:hover { text-decoration: underline; }
+
+    /* Empty-state pattern (when no related records exist). */
+    .sd2-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.25rem .5rem; }
+    .sd2-empty-icon { width: 40px; height: 40px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-bottom: .5rem; }
+
+    @@media (max-width: 768px) {
+        .sd2-title { white-space: normal; max-width: none; }
+        .sd2-actions { width: 100%; }
+        .sd2-actions .sd2-btn { flex: 1 1 auto; justify-content: center; }
+        .sd2-tab { padding: .55rem .65rem; font-size: var(--fs-xs); }
+    }
+
+    /* ============================ MODAL CHROME ============================
+       Unified professional style for all 6 modals on this page (link Process,
+       edit Service-Process, link Asset, edit Service-Asset, link Risk, edit
+       Service-Risk). Replaces the mix of plain modal-header + bg-primary
+       headers with one consistent treatment: white background, brand-blue
+       accent bar at the top, icon + bold title in dark slate, ghost close
+       button. Tighter vertical spacing matches the page card density. */
+    .sd2-modal .modal-content { border: none; border-radius: .5rem; box-shadow: 0 12px 32px rgba(15, 23, 42, .18); overflow: hidden; }
+    .sd2-modal .modal-header { padding: .75rem 1rem; border-bottom: 1px solid #e5e7eb; background: #fff; align-items: center; gap: .55rem; position: relative; }
+    .sd2-modal .modal-header::before { content: ""; position: absolute; top: 0; inset-inline-start: 0; width: 4px; height: 100%; background: #005B99; }
+    .sd2-modal .modal-header .modal-title { display: inline-flex; align-items: center; gap: .5rem; font-size: var(--fs-sm); font-weight: 600; color: #111827; margin: 0; }
+    .sd2-modal .modal-header .modal-title i { width: 18px; height: 18px; color: #005B99; }
+    .sd2-modal .modal-header .btn-close { padding: .35rem; opacity: .55; transition: opacity .12s; }
+    .sd2-modal .modal-header .btn-close:hover { opacity: 1; }
+    .sd2-modal .modal-body { padding: 1rem 1.1rem; background: #fafbfc; }
+    .sd2-modal .modal-footer { padding: .65rem 1rem; border-top: 1px solid #e5e7eb; background: #fff; gap: .35rem; }
+    .sd2-modal .form-label { font-size: var(--fs-xs); font-weight: 600; color: #374151; margin-bottom: .3rem; }
+    .sd2-modal .form-control, .sd2-modal .form-select { border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-sm); padding: .42rem .65rem; }
+    .sd2-modal .form-control:focus, .sd2-modal .form-select:focus { border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .sd2-modal .form-check-input:checked { background-color: #005B99; border-color: #005B99; }
+    .sd2-modal .form-check-label { font-size: var(--fs-sm); color: #374151; }
+
+    /* Modal action buttons — consistent with sd2-btn family. */
+    .sd2-modal-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; border: 1px solid transparent; line-height: 1.1; }
+    .sd2-modal-btn-primary { background: #005B99; color: #fff; border-color: #005B99; }
+    .sd2-modal-btn-primary:hover { background: #003d6b; border-color: #003d6b; color: #fff; }
+    .sd2-modal-btn-ghost { background: #fff; color: #374151; border-color: #d1d5db; }
+    .sd2-modal-btn-ghost:hover { background: #f9fafb; }
+
+    /* Pickable rows inside the link-X-to-service modals — the JS renders
+       list-group-items into the modal body. Override the default Bootstrap
+       look so the rows match the page card density and brand palette. */
+    .sd2-modal .list-group { border: 1px solid #e5e7eb; border-radius: .375rem; overflow: hidden; }
+    .sd2-modal .list-group-item { padding: .65rem .85rem; border-color: #f1f5f9; background: #fff; transition: background .12s; }
+    .sd2-modal .list-group-item:hover { background: #f8fafc; }
+    .sd2-modal .list-group-item .fw-medium { font-size: var(--fs-sm); color: #111827; }
+    .sd2-modal .list-group-item .badge { font-size: var(--fs-xs); padding: .15rem .45rem; font-weight: 600; }
+    .sd2-modal .list-group-item .btn-primary { background: #005B99; border-color: #005B99; font-size: var(--fs-xs); padding: .3rem .65rem; border-radius: .3rem; }
+    .sd2-modal .list-group-item .btn-primary:hover { background: #003d6b; border-color: #003d6b; }
+
+    /* Loading + empty-state inside modal bodies. */
+    .sd2-modal-loading { display: flex; flex-direction: column; align-items: center; gap: .55rem; padding: 1.5rem 0; color: #6b7280; font-size: var(--fs-sm); }
+    .sd2-modal-loading .spinner-border { width: 2rem; height: 2rem; color: #005B99; }
+</style>
+
+
+<div class="sd2-stickyhead">
+    <div class="sd2-titlerow">
+        <div class="sd2-titlemain">
+            <span class="sd2-code-pill">@Model.Code</span>
+            <h1 class="sd2-title" title="@Model.Name">@Model.Name</h1>
+            @if (Model.IsActive)
+            {
+                <span class="sd2-status-pill sd2-status-on">
+                    <i data-lucide="circle" style="width:8px;height:8px;fill:currentColor;"></i>
+                    @Shared["Value_Active"]
+                </span>
+            }
+            else
+            {
+                <span class="sd2-status-pill sd2-status-off">
+                    <i data-lucide="circle" style="width:8px;height:8px;fill:currentColor;"></i>
+                    @Shared["Value_Inactive"]
+                </span>
+            }
+            <span class="sd2-breadcrumb">
+                @Shared[$"ServiceType_{Model.ServiceType}"] • @Shared[$"ChannelType_{Model.Channel}"]
+            </span>
+        </div>
+        <div class="sd2-actions">
+            <a asp-action="Index" class="sd2-btn sd2-btn-outline">
+                <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" style="width:14px;height:14px;" aria-hidden="true"></i>
+                @Shared["Button_Back"]
+            </a>
+            <a asp-action="Edit" asp-route-id="@Model.Id" class="sd2-btn sd2-btn-outline">
+                <i data-lucide="edit" style="width:14px;height:14px;" aria-hidden="true"></i>
+                @Shared["Action_Edit"]
+            </a>
+            <button type="button" class="sd2-btn sd2-btn-ai"
+                    onclick="executeAiAnalysis('/AI/AnalyzeServicePerformance?serviceId=@Model.Id', null, '@(isRtl ? "تحليل أداء الخدمة" : "Service Performance Analysis")')">
+                <i data-lucide="sparkles" style="width:14px;height:14px;" aria-hidden="true"></i>
+                @(isRtl ? "تحليل الذكاء الاصطناعي" : "AI Analysis")
+            </button>
+        </div>
+    </div>
+
+    @* KPI chips — now switch tabs instead of scroll-jumping. Plain spans (not <a>)
+       avoid the URL-hash side effect, but the click handler still updates the hash
+       so back/forward buttons work the same way. *@
+    <div class="sd2-kpis">
+        <button type="button" class="sd2-kpi" data-sd2tab="processes" onclick="sd2ShowTab('processes')"><i data-lucide="git-branch" style="width:12px;height:12px;"></i> @(isRtl ? "العمليات" : "Processes") <b>@totalProcesses</b></button>
+        <button type="button" class="sd2-kpi" data-sd2tab="assets" onclick="sd2ShowTab('assets')"><i data-lucide="package" style="width:12px;height:12px;"></i> @(isRtl ? "الأصول" : "Assets") <b>@totalAssets</b></button>
+        <button type="button" class="sd2-kpi" data-sd2tab="risks" onclick="sd2ShowTab('risks')"><i data-lucide="shield-alert" style="width:12px;height:12px;"></i> @(isRtl ? "المخاطر" : "Risks") <b>@totalRisks</b></button>
+        @if (Model.SLADays.HasValue)
+        {
+            <span class="sd2-kpi" style="cursor:default;"><i data-lucide="clock" style="width:12px;height:12px;"></i> SLA <b>@Model.SLADays @Shared["Unit_DaysShort"]</b></span>
+        }
+        @if (Model.CustomerSatisfactionScore.HasValue)
+        {
+            <span class="sd2-kpi" style="cursor:default;"><i data-lucide="smile" style="width:12px;height:12px;"></i> CSAT <b>@Model.CustomerSatisfactionScore.Value.ToString("N1")</b></span>
+        }
+        @if (Model.AnnualTransactionCount.HasValue)
+        {
+            <span class="sd2-kpi" style="cursor:default;"><i data-lucide="bar-chart-2" style="width:12px;height:12px;"></i> @(isRtl ? "المعاملات/سنة" : "Tx/yr") <b>@Model.AnnualTransactionCount.Value.ToString("N0")</b></span>
+        }
+    </div>
+</div>
+
+@* JustCreated banner — preserved verbatim from original. *@
+@if (TempData["JustCreated"] != null)
+{
+    <div class="alert alert-success d-flex align-items-start gap-3 mb-3" role="status"
+         style="border-left:4px solid #16a34a;background:#f0fdf4;">
+        <i data-lucide="check-circle-2" style="width:24px;height:24px;color:#16a34a;flex-shrink:0;margin-top:2px;"></i>
+        <div class="flex-grow-1">
+            <div class="fw-semibold mb-1">@(isRtl ? "تم إنشاء الخدمة بنجاح" : "Service created successfully")</div>
+            <div class="small text-muted mb-2">@(isRtl ? "الخطوات التالية الموصى بها:" : "Recommended next steps:")</div>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button" onclick="openLinkProcessModal()" class="btn btn-sm btn-primary">
+                    <i data-lucide="git-branch" style="width:14px;height:14px;"></i>
+                    @(isRtl ? "اربط عمليات" : "Link Processes")
+                </button>
+                <button type="button" onclick="executeAiAnalysis('/AI/AnalyzeServicePerformance?serviceId=@Model.Id', null, '@(isRtl ? "تحليل أداء الخدمة" : "Service Performance Analysis")')" class="btn btn-sm text-white"
+                        style="background:linear-gradient(135deg,#a855f7,#6366f1);border:none;">
+                    <i data-lucide="sparkles" style="width:14px;height:14px;"></i>
+                    @(isRtl ? "تحليل بالذكاء الاصطناعي" : "Run AI Analysis")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ============================ TAB NAVIGATION ============================ *@
+<div class="sd2-tabnav" role="tablist">
+    <button type="button" class="sd2-tab active" data-sd2tab="overview" onclick="sd2ShowTab('overview')" role="tab">
+        <i data-lucide="info"></i> @Shared["Section_Information"]
+    </button>
+    <button type="button" class="sd2-tab" data-sd2tab="processes" onclick="sd2ShowTab('processes')" role="tab">
+        <i data-lucide="git-branch"></i> @Shared["Section_LinkedProcesses"]
+        <span class="sd2-tab-badge">@totalProcesses</span>
+    </button>
+    <button type="button" class="sd2-tab" data-sd2tab="assets" onclick="sd2ShowTab('assets')" role="tab">
+        <i data-lucide="package"></i> @Shared["Label_RequiredAssets"]
+        <span class="sd2-tab-badge">@totalAssets</span>
+    </button>
+    <button type="button" class="sd2-tab" data-sd2tab="risks" onclick="sd2ShowTab('risks')" role="tab">
+        <i data-lucide="shield-alert"></i> @Shared["Label_ServiceRisks"]
+        <span class="sd2-tab-badge">@totalRisks</span>
+    </button>
+    <button type="button" class="sd2-tab" data-sd2tab="catalog" onclick="sd2ShowTab('catalog')" role="tab">
+        <i data-lucide="book-open"></i> @(isRtl ? "محتوى الدليل" : "Catalog")
+        @if (Model.CatalogInfo != null && Model.CatalogInfo.IsPublished)
+        {
+            <span class="sd2-tab-badge" style="background:#dcfce7;color:#166534;">@(isRtl ? "منشور" : "Live")</span>
+        }
+        else if (Model.CatalogInfo != null)
+        {
+            <span class="sd2-tab-badge">@(isRtl ? "مسودة" : "Draft")</span>
+        }
+    </button>
+    @* Performance tab only renders when an external performance system is configured. *@
+    @if (PerfProvider.IsEnabled)
+    {
+        <button type="button" class="sd2-tab" data-sd2tab="performance" onclick="sd2ShowTab('performance')" role="tab">
+            <i data-lucide="gauge"></i> @(isRtl ? "الأداء" : "Performance")
+        </button>
+    }
+</div>
+
+
+<!-- ============================ TAB: OVERVIEW ============================
+     Mirrors the Processes/Details Overview chrome — standard Bootstrap card
+     (not sd2-card) with esems-card-title headers, Summary card on the left
+     (~8/12), Stats list-group + Top Critical card stacked on the right
+     (~4/12). Same model fields as before; only the chrome changed. ============== -->
+<section id="overview" class="sd2-tabpanel" role="tabpanel">
+    <div class="row g-3">
+        <!-- Summary Card (8/12 on xl, 7/12 on lg) -->
+        <div class="col-xl-8 col-lg-7">
+            <div class="card h-100">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i data-lucide="file-text" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                    <span class="esems-card-title">@(isRtl ? "ملخص" : "Summary")</span>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="esems-label">@Shared["Column_OwningUnit"]</label>
+                            <p class="esems-body fw-medium mb-0">@(Model.OwningUnit?.Name ?? "-")</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@Shared["Column_StrategicObjective"]</label>
+                            @{
+                                // Same dual-storage pattern as Processes/Details. Read from the
+                                // many-to-many table (.ServiceStrategicObjectives) first since
+                                // that's what the Edit form actually writes to; fall back to the
+                                // single-FK .StrategicObjective when the M:M is empty (legacy data).
+                                var linkedObjectives = (Model.ServiceStrategicObjectives ?? Enumerable.Empty<ESEMS.Web.Models.ServiceManagement.ServiceStrategicObjective>())
+                                    .Where(sso => sso.IsActive && sso.StrategicObjective != null)
+                                    .Select(sso => sso.StrategicObjective!.Name)
+                                    .ToList();
+                                if (!linkedObjectives.Any() && Model.StrategicObjective != null)
+                                {
+                                    linkedObjectives.Add(Model.StrategicObjective.Name);
+                                }
+                            }
+                            @if (linkedObjectives.Any())
+                            {
+                                <p class="esems-body fw-medium mb-0">@string.Join("، ", linkedObjectives)</p>
+                            }
+                            else
+                            {
+                                <p class="esems-body fw-medium mb-0">-</p>
+                            }
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "النوع" : "Type")</label>
+                            <p class="esems-body fw-medium mb-0">@Shared[$"ServiceType_{Model.ServiceType}"]</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "القناة" : "Channel")</label>
+                            <p class="esems-body fw-medium mb-0">@Shared[$"ChannelType_{Model.Channel}"]</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "فئة الخدمة" : "Service Category")</label>
+                            @{
+                                var svcCat = Model.ServiceCategory == null
+                                    ? null
+                                    : (isRtl ? Model.ServiceCategory.NameAr : Model.ServiceCategory.NameEn);
+                            }
+                            <p class="esems-body fw-medium mb-0">@(string.IsNullOrWhiteSpace(svcCat) ? "-" : svcCat)</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@Shared["Label_SLA"]</label>
+                            <p class="esems-body fw-medium mb-0">@(Model.SLADays.HasValue ? $"{Model.SLADays} {Shared["Unit_DaysShort"]}" : "-")</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@Shared["Label_ServiceFee"]</label>
+                            <p class="esems-body fw-medium mb-0">@(Model.ServiceFee.HasValue ? Model.ServiceFee.Value.ToString("N2") : "-")</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@Shared["Label_Satisfaction"]</label>
+                            <p class="esems-body fw-medium mb-0">@(Model.CustomerSatisfactionScore?.ToString("N1") ?? "-")</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@Shared["Label_AnnualTransactions"]</label>
+                            <p class="esems-body fw-medium mb-0">@(Model.AnnualTransactionCount?.ToString("N0") ?? "-")</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "نشطة" : "Active")</label>
+                            <p class="esems-body fw-medium mb-0">
+                                @if (Model.IsActive)
+                                {
+                                    <span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> @(isRtl ? "نعم" : "Yes")</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-secondary">@(isRtl ? "لا" : "No")</span>
+                                }
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "الوسوم" : "Tags")</label>
+                            <p class="esems-body mb-0">@(string.IsNullOrWhiteSpace(Model.Tags) ? "-" : Model.Tags)</p>
+                        </div>
+                    </div>
+                    <hr class="my-3" />
+                    <div>
+                        <label class="esems-label">@(isRtl ? "الوصف" : "Description")</label>
+                        <p class="esems-body mb-0">@(Model.Description ?? "-")</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right column: Stats + Top Critical -->
+        <div class="col-xl-4 col-lg-5">
+            <!-- Stats list — same dense list-group pattern as Processes/Details Overview -->
+            <div class="card mb-3">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i data-lucide="bar-chart-2" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                    <span class="esems-card-title">@(isRtl ? "إحصائيات" : "Stats")</span>
+                </div>
+                <div class="card-body py-2">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                            <span class="esems-body-secondary">@Shared["Section_LinkedProcesses"]</span>
+                            <span class="esems-body fw-semibold">@totalProcesses</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                            <span class="esems-body-secondary">@Shared["Label_RequiredAssets"]</span>
+                            <span class="esems-body fw-semibold">@totalAssets</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2 border-bottom-0">
+                            <span class="esems-body-secondary">@Shared["Label_ServiceRisks"]</span>
+                            <span class="esems-body fw-semibold">@totalRisks</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Top Critical — keeps the existing top-3 critical digest, restyled into card chrome -->
+            <div class="card">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i data-lucide="alert-triangle" style="width: 18px; height: 18px; color: #f59e0b;"></i>
+                    <span class="esems-card-title">@(isRtl ? "الأكثر أهمية" : "Top Critical")</span>
+                </div>
+                <div class="card-body py-2">
+                    @if (!topProcesses.Any() && !topAssets.Any() && !topRisks.Any())
+                    {
+                        <p class="esems-body-secondary text-center py-3 mb-0">@(isRtl ? "لا توجد ارتباطات بعد" : "No linked items yet")</p>
+                    }
+                    else
+                    {
+                        @if (topProcesses.Any())
+                        {
+                            <div class="sd2-tc-group">
+                                <div class="sd2-tc-label"><i data-lucide="git-branch"></i> @Shared["Section_LinkedProcesses"]</div>
+                                @foreach (var ps in topProcesses)
+                                {
+                                    var critClass = ps.Criticality switch { 1 => "danger", 2 => "warning", 3 => "info", _ => "secondary" };
+                                    var critLabel = ps.Criticality switch { 1 => Shared["Criticality_Critical"].Value, 2 => Shared["Criticality_High"].Value, 3 => Shared["Criticality_Medium"].Value, _ => Shared["Criticality_Low"].Value };
+                                    <div class="sd2-tc-row">
+                                        @* F-SV-002: show code beside name so process is recognisable
+                                           without round-trip to Details. *@
+                                        <a asp-controller="Processes" asp-action="Details" asp-route-id="@ps.Process!.Id" class="d-flex align-items-center gap-2 text-decoration-none">
+                                            <span class="badge badge-light text-secondary border" style="font-family:var(--bs-font-monospace);">@ps.Process.Code</span>
+                                            <span class="text-truncate">@ps.Process.Name</span>
+                                        </a>
+                                        <span class="badge badge-@critClass">@critLabel</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        @if (topAssets.Any())
+                        {
+                            <div class="sd2-tc-group">
+                                <div class="sd2-tc-label"><i data-lucide="package"></i> @Shared["Label_RequiredAssets"]</div>
+                                @foreach (var sa in topAssets)
+                                {
+                                    var critClass = sa.Criticality switch { 1 => "danger", 2 => "warning", 3 => "info", _ => "secondary" };
+                                    var critLabel = sa.Criticality switch { 1 => Shared["Criticality_Critical"].Value, 2 => Shared["Criticality_High"].Value, 3 => Shared["Criticality_Medium"].Value, _ => Shared["Criticality_Low"].Value };
+                                    <div class="sd2-tc-row">
+                                        <a asp-controller="Assets" asp-action="Details" asp-route-id="@sa.Asset!.Id">@sa.Asset.AssetTag — @sa.Asset.Name</a>
+                                        <span class="badge badge-@critClass">@critLabel</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        @if (topRisks.Any())
+                        {
+                            <div class="sd2-tc-group">
+                                <div class="sd2-tc-label"><i data-lucide="shield-alert"></i> @Shared["Label_ServiceRisks"]</div>
+                                @foreach (var sr in topRisks)
+                                {
+                                    var impactClass = sr.ImpactLevel switch { 5 => "danger", 4 => "warning", 3 => "info", _ => "secondary" };
+                                    <div class="sd2-tc-row">
+                                        <a asp-controller="EnterpriseRisks" asp-action="Details" asp-route-id="@sr.Risk!.Id">@sr.Risk.RiskNumber — @sr.Risk.Name</a>
+                                        <span class="badge badge-@impactClass">@sr.ImpactLevel</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+
+<!-- ============================ TAB: PROCESSES ============================ -->
+<section id="processes" class="sd2-tabpanel d-none" role="tabpanel">
+    <div class="sd2-card">
+        <div class="sd2-card-head">
+            <span class="sd2-card-title">
+                <i data-lucide="git-branch"></i>
+                @Shared["Section_LinkedProcesses"]
+                <span class="sd2-card-count">@totalProcesses</span>
+            </span>
+            @if (User.HasClaim("Permission", "CanEdit"))
+            {
+                <button onclick="openLinkProcessModal()" class="btn btn-sm btn-primary" title="Link Process">
+                    <i data-lucide="plus" style="width:14px;height:14px;"></i>
+                    @(isRtl ? "اربط عملية" : "Link Process")
+                </button>
+            }
+        </div>
+        <div class="sd2-card-body">
+            @if (Model.ProcessServices != null && Model.ProcessServices.Any(ps => ps.IsActive))
+            {
+                <div class="list-group list-group-flush sd2-scroll">
+                    @foreach (var ps in Model.ProcessServices.Where(ps => ps.IsActive).OrderBy(ps => ps.Criticality))
+                    {
+                        var proc = ps.Process;
+                        if (proc != null)
+                        {
+                            var critClass = ps.Criticality switch { 1 => "danger", 2 => "warning", 3 => "info", _ => "secondary" };
+                            var critLabel = ps.Criticality switch { 1 => Shared["Criticality_Critical"].Value, 2 => Shared["Criticality_High"].Value, 3 => Shared["Criticality_Medium"].Value, _ => Shared["Criticality_Low"].Value };
+                            <div class="list-group-item px-0">
+                                <div class="d-flex justify-content-between align-items-start gap-2">
+                                    <a asp-controller="Processes" asp-action="Details" asp-route-id="@proc.Id" class="flex-grow-1 text-decoration-none">
+                                        <div class="d-flex justify-content-between align-items-start mb-1">
+                                            <span class="esems-body fw-medium text-truncate">@proc.Name</span>
+                                            <div class="d-flex gap-1">
+                                                <span class="badge badge-secondary">@proc.Code</span>
+                                                <span class="badge badge-@critClass">@critLabel</span>
+                                                @if (ps.IsMandatory)
+                                                {
+                                                    <span class="badge badge-danger">@(isRtl ? "إلزامي" : "Mandatory")</span>
+                                                }
+                                            </div>
+                                        </div>
+                                        <small class="esems-caption text-muted">@(proc.ProcessGroup?.Name ?? "-")</small>
+                                        @if (!string.IsNullOrEmpty(ps.Notes))
+                                        {
+                                            <small class="esems-caption text-muted d-block mt-1">
+                                                <i data-lucide="file-text" style="width:12px;height:12px;"></i> @ps.Notes
+                                            </small>
+                                        }
+                                    </a>
+                                    @if (User.HasClaim("Permission", "CanEdit"))
+                                    {
+                                        <div class="d-flex gap-1">
+                                            <button onclick="editServiceProcess('@Model.Id', '@proc.Id', @ps.Criticality, @ps.IsMandatory.ToString().ToLower(), '@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(ps.Notes ?? ""))')" class="btn btn-sm btn-link text-primary p-0" title="Edit">
+                                                <i data-lucide="edit-2" style="width:14px;height:14px;"></i>
+                                            </button>
+                                            <button onclick="unlinkProcess('@Model.Id', '@proc.Id')" class="btn btn-sm btn-link text-danger p-0" title="Unlink">
+                                                <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="sd2-empty">
+                    <div class="sd2-empty-icon" style="background:#eef2ff;">
+                        <i data-lucide="git-branch" style="width:20px;height:20px;color:#6366f1;"></i>
+                    </div>
+                    <p class="esems-body-secondary mb-3">@Shared["Text_NoProcesses"]</p>
+                    @if (User?.Identity?.IsAuthenticated == true)
+                    {
+                        <button type="button" onclick="openLinkProcessModal()" class="btn btn-sm btn-primary">
+                            <i data-lucide="plus" style="width:14px;height:14px;"></i>
+                            @(isRtl ? "اربط عملية" : "Link Process")
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</section>
+
+
+<!-- ============================ TAB: ASSETS ============================ -->
+<section id="assets" class="sd2-tabpanel d-none" role="tabpanel">
+    <div class="sd2-card">
+        <div class="sd2-card-head">
+            <span class="sd2-card-title">
+                <i data-lucide="package"></i>
+                @Shared["Label_RequiredAssets"]
+                <span class="sd2-card-count">@totalAssets</span>
+            </span>
+        </div>
+        <div class="sd2-card-body">
+            @if (Model.ServiceAssets.Any(sa => sa.IsActive))
+            {
+                <div class="list-group list-group-flush sd2-scroll">
+                    @foreach (var serviceAsset in Model.ServiceAssets.Where(sa => sa.IsActive).OrderBy(sa => sa.Criticality))
+                    {
+                        var asset = serviceAsset.Asset;
+                        if (asset != null)
+                        {
+                            var criticalityClass = serviceAsset.Criticality switch { 1 => "danger", 2 => "warning", 3 => "info", _ => "secondary" };
+                            var criticalityLabel = serviceAsset.Criticality switch { 1 => Shared["Criticality_Critical"].Value, 2 => Shared["Criticality_High"].Value, 3 => Shared["Criticality_Medium"].Value, _ => Shared["Criticality_Low"].Value };
+                            <div class="list-group-item px-0">
+                                <div class="d-flex justify-content-between align-items-start gap-2">
+                                    <a asp-controller="Assets" asp-action="Details" asp-route-id="@asset.Id" class="flex-grow-1 text-decoration-none">
+                                        <div class="d-flex justify-content-between align-items-start mb-1">
+                                            <span class="esems-body fw-medium">@asset.AssetTag</span>
+                                            <div class="d-flex gap-1">
+                                                <span class="badge badge-@criticalityClass">@criticalityLabel</span>
+                                                @if (serviceAsset.IsRequired)
+                                                {
+                                                    <span class="badge badge-danger">Required</span>
+                                                }
+                                            </div>
+                                        </div>
+                                        <small class="esems-caption text-muted d-block">@asset.Name</small>
+                                        @if (!string.IsNullOrEmpty(serviceAsset.UsageDescription))
+                                        {
+                                            <small class="esems-caption text-muted d-block mt-1">
+                                                <i data-lucide="info" style="width:12px;height:12px;"></i> @serviceAsset.UsageDescription
+                                            </small>
+                                        }
+                                    </a>
+                                    @if (User.HasClaim("Permission", "CanEdit"))
+                                    {
+                                        <div class="d-flex gap-1">
+                                            <button onclick="editServiceAsset('@Model.Id', '@asset.Id', @serviceAsset.Criticality, @serviceAsset.IsRequired.ToString().ToLower(), '@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(serviceAsset.UsageDescription ?? ""))')" class="btn btn-sm btn-link text-primary p-0" title="Edit">
+                                                <i data-lucide="edit-2" style="width:14px;height:14px;"></i>
+                                            </button>
+                                            <button onclick="unlinkAsset('@Model.Id', '@asset.Id')" class="btn btn-sm btn-link text-danger p-0" title="Unlink">
+                                                <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="sd2-empty">
+                    <div class="sd2-empty-icon" style="background:#fff7ed;">
+                        <i data-lucide="package" style="width:20px;height:20px;color:#f97316;"></i>
+                    </div>
+                    <p class="esems-body-secondary mb-0">@Shared["Text_NoRequiredAssets"]</p>
+                </div>
+            }
+        </div>
+    </div>
+</section>
+
+
+<!-- ============================ TAB: RISKS (local + external) ============================ -->
+<section id="risks" class="sd2-tabpanel d-none" role="tabpanel">
+    <div class="sd2-card mb-3">
+        <div class="sd2-card-head">
+            <span class="sd2-card-title">
+                <i data-lucide="shield-alert" style="color:var(--esems-color-danger,#dc2626);"></i>
+                @Shared["Label_ServiceRisks"]
+                <span class="sd2-card-count">@totalRisks</span>
+            </span>
+        </div>
+        <div class="sd2-card-body">
+            @if (Model.ServiceRisks.Any(sr => sr.IsActive))
+            {
+                <div class="list-group list-group-flush sd2-scroll">
+                    @foreach (var serviceRisk in Model.ServiceRisks.Where(sr => sr.IsActive).OrderByDescending(sr => sr.ImpactLevel))
+                    {
+                        var risk = serviceRisk.Risk;
+                        if (risk != null)
+                        {
+                            var levelClass = risk.RiskLevel switch { RiskLevel.Critical => "danger", RiskLevel.High => "warning", RiskLevel.Medium => "info", _ => "success" };
+                            var impactClass = serviceRisk.ImpactLevel switch { 5 => "danger", 4 => "warning", 3 => "info", _ => "success" };
+                            <div class="list-group-item px-0">
+                                <div class="d-flex justify-content-between align-items-start gap-2">
+                                    <a asp-controller="EnterpriseRisks" asp-action="Details" asp-route-id="@risk.Id" class="flex-grow-1 text-decoration-none">
+                                        <div class="d-flex justify-content-between align-items-start mb-1">
+                                            <span class="esems-body fw-medium">@risk.RiskNumber</span>
+                                            <div class="d-flex gap-1">
+                                                <span class="badge badge-@levelClass">@risk.RiskLevel</span>
+                                                <span class="badge badge-@impactClass" title="@Shared["Label_ImpactLevel"]">@Shared["Label_ImpactLevel"]: @serviceRisk.ImpactLevel</span>
+                                            </div>
+                                        </div>
+                                        <small class="esems-caption text-muted d-block">@risk.Name</small>
+                                        @if (!string.IsNullOrEmpty(serviceRisk.SpecificControls))
+                                        {
+                                            <small class="esems-caption text-muted d-block mt-1">
+                                                <i data-lucide="shield-check" style="width:12px;height:12px;"></i> @serviceRisk.SpecificControls
+                                            </small>
+                                        }
+                                        @if (!string.IsNullOrEmpty(serviceRisk.Notes))
+                                        {
+                                            <small class="esems-caption text-muted d-block mt-1">
+                                                <i data-lucide="file-text" style="width:12px;height:12px;"></i> @serviceRisk.Notes
+                                            </small>
+                                        }
+                                    </a>
+                                    @if (User.HasClaim("Permission", "CanEdit"))
+                                    {
+                                        <div class="d-flex gap-1">
+                                            <button onclick="editServiceRisk('@Model.Id', '@risk.Id', @serviceRisk.ImpactLevel, '@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(serviceRisk.SpecificControls ?? ""))', '@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(serviceRisk.Notes ?? ""))')" class="btn btn-sm btn-link text-primary p-0" title="Edit">
+                                                <i data-lucide="edit-2" style="width:14px;height:14px;"></i>
+                                            </button>
+                                            <button onclick="unlinkRisk('@Model.Id', '@risk.Id')" class="btn btn-sm btn-link text-danger p-0" title="Unlink">
+                                                <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="sd2-empty">
+                    <div class="sd2-empty-icon" style="background:#fef2f2;">
+                        <i data-lucide="shield-alert" style="width:20px;height:20px;color:#ef4444;"></i>
+                    </div>
+                    <p class="esems-body-secondary mb-0">@Shared["Text_NoServiceRisks"]</p>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* External-system risks. Renders nothing when no risk system is configured. *@
+    @await Html.PartialAsync("Integrations/_LinkedRisks", new LinkedPanelArgs {
+        EntityType = LinkedEntityType.Service,
+        EntityId   = Model.Id,
+        AnchorId   = "linked-risks-service"
+    })
+</section>
+
+
+<!-- ============================ TAB: CATALOG ============================
+     Long-form bilingual content published to citizens. Stored on the 1:1
+     ServiceCatalogInfo sidecar so it can be drafted/published on its own
+     timeline. Read-only here; edit lives on /Services/EditCatalog/{id}. -->
+<section id="catalog" class="sd2-tabpanel d-none" role="tabpanel">
+    @{
+        var ci = Model.CatalogInfo;
+
+        // Local helpers for the read-only display:
+        //   txt — picks the En/Ar variant for the current culture, falls back
+        //         to the other side if one is empty, returns "—" if both blank.
+        //   block — renders a label + multi-line body in a single row.
+        Func<string?, string?, string> txt = (en, ar) =>
+        {
+            var preferred = isRtl ? ar : en;
+            var fallback  = isRtl ? en : ar;
+            var v = !string.IsNullOrWhiteSpace(preferred) ? preferred : fallback;
+            return string.IsNullOrWhiteSpace(v) ? "—" : v!;
+        };
+    }
+
+    <div class="card">
+        <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+            <i data-lucide="book-open" style="width:18px;height:18px;color:var(--esems-color-primary);"></i>
+            <span class="esems-card-title">@(isRtl ? "ميزات متقدمة" : "Advanced features")</span>
+            @if (ci != null)
+            {
+                if (ci.IsPublished)
+                {
+                    <span class="badge badge-success">@(isRtl ? "منشور" : "Published")</span>
+                    if (ci.PublishedAt.HasValue)
+                    {
+                        <span class="esems-body-secondary small ms-1" style="color:#94a3b8;">
+                            @(isRtl ? "منذ " : "since ")@ci.PublishedAt.Value.ToString("yyyy-MM-dd")
+                        </span>
+                    }
+                }
+                else
+                {
+                    <span class="badge badge-secondary">@(isRtl ? "مسودة" : "Draft")</span>
+                }
+            }
+            @* Catalog editing lives inside Service Edit's Step 3 "Advanced"
+               collapsible — anchor jumps + auto-opens the section. *@
+            <a href="@Url.Action("Edit", new { id = Model.Id })#catalog-advanced" class="btn btn-sm btn-primary ms-auto">
+                <i data-lucide="edit" style="width:14px;height:14px;"></i>
+                @(ci == null ? (isRtl ? "إنشاء" : "Draft Now") : (isRtl ? "تعديل" : "Edit"))
+            </a>
+        </div>
+        <div class="card-body">
+            @if (ci == null)
+            {
+                <div class="alert alert-light border d-flex align-items-start gap-3 small mb-0" role="status" style="background:#f8fafc;">
+                    <i data-lucide="info" style="width:18px;height:18px;color:#94a3b8;flex-shrink:0;margin-top:2px;"></i>
+                    <div>
+                        <div class="fw-medium mb-1">
+                            @(isRtl
+                                ? "لم يتم إعداد الميزات المتقدمة بعد لهذه الخدمة."
+                                : "Advanced features haven't been drafted yet for this service.")
+                        </div>
+                        <div class="text-muted">
+                            @(isRtl
+                                ? "أضف الوصف الطويل المتوقع نشره للمتعاملين (المدة، الرسوم، الأهلية، الإجراء، إلخ)."
+                                : "Add the long-form content that will be published to citizens (duration, fees, eligibility, procedure, etc.).")
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="esems-label">@(isRtl ? "فئة الخدمة" : "Service Category")</label>
+                        @* Category lives on the ServiceCategory lookup now (FK on Service). *@
+                        <p class="esems-body fw-medium mb-0">@txt(Model.ServiceCategory?.NameEn, Model.ServiceCategory?.NameAr)</p>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="esems-label">@(isRtl ? "المدة" : "Duration")</label>
+                        <p class="esems-body mb-0">
+                            @if (ci.DurationValue.HasValue && ci.DurationUnit.HasValue)
+                            {
+                                var unitAr = ci.DurationUnit switch {
+                                    ESEMS.Web.Models.Enums.TimeUnit.Minutes => "دقائق",
+                                    ESEMS.Web.Models.Enums.TimeUnit.Hours => "ساعات",
+                                    ESEMS.Web.Models.Enums.TimeUnit.Days => "أيام",
+                                    ESEMS.Web.Models.Enums.TimeUnit.BusinessDays => "أيام عمل",
+                                    ESEMS.Web.Models.Enums.TimeUnit.Weeks => "أسابيع",
+                                    ESEMS.Web.Models.Enums.TimeUnit.Months => "أشهر",
+                                    ESEMS.Web.Models.Enums.TimeUnit.Years => "سنوات",
+                                    _ => ci.DurationUnit.ToString()
+                                };
+                                var unitEn = ci.DurationUnit switch {
+                                    ESEMS.Web.Models.Enums.TimeUnit.BusinessDays => "Business Days",
+                                    _ => ci.DurationUnit.ToString()
+                                };
+                                @($"{ci.DurationValue} {(isRtl ? unitAr : unitEn)}")
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </p>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="esems-label">@(isRtl ? "القنوات" : "Channels")</label>
+                        <p class="esems-body mb-0">
+                            @{ var chs = ci.GetDeliveryChannelList(); }
+                            @if (chs.Any())
+                            {
+                                foreach (var ch in chs)
+                                {
+                                    var lAr = ch switch {
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.MobileApp => "تطبيق جوّال",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.DubaiNowApp => "تطبيق دبي الآن",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.SmartGovPortal => "بوابة الحكومة الذكية",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.WebPortal => "الموقع الإلكتروني",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.ServiceCenter => "مركز خدمة",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.PhoneCall => "اتصال هاتفي",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.WhatsApp => "واتساب",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.Email => "بريد إلكتروني",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.Mail => "بريد",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.Kiosk => "كشك خدمة ذاتية",
+                                        _ => ch.ToString()
+                                    };
+                                    var lEn = ch switch {
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.MobileApp => "Mobile App",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.DubaiNowApp => "Dubai Now App",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.SmartGovPortal => "Smart Gov Portal",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.WebPortal => "Web Portal",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.ServiceCenter => "Service Center",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.PhoneCall => "Phone Call",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.WhatsApp => "WhatsApp",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.Email => "Email",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.Mail => "Mail",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.Kiosk => "Kiosk",
+                                        _ => ch.ToString()
+                                    };
+                                    <span class="badge bg-light text-dark border me-1 mb-1" style="font-weight:500;">@(isRtl ? lAr : lEn)</span>
+                                }
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </p>
+                    </div>
+                    <div class="col-12">
+                        <label class="esems-label">@(isRtl ? "الرسوم" : "Fees")</label>
+                        <p class="esems-body mb-0">
+                            @if (ci.IsFree)
+                            {
+                                <span class="badge bg-success">@(isRtl ? "مجاناً" : "Free")</span>
+                            }
+                            else if (ci.FeeAmount.HasValue)
+                            {
+                                @($"{ci.FeeAmount:N2} {(isRtl ? "درهم" : "AED")}")
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(ci.FeeNote))
+                            {
+                                <span class="text-muted ms-2">· @ci.FeeNote</span>
+                            }
+                        </p>
+                    </div>
+                    <div class="col-12">
+                        <label class="esems-label">@(isRtl ? "الجمهور المستهدف / الأهلية" : "Target Audience / Eligibility")</label>
+                        <p class="esems-body mb-0" style="white-space:pre-wrap;">@txt(ci.TargetAudienceEn, ci.TargetAudienceAr)</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="esems-label">@(isRtl ? "شروط التقديم" : "Pre-Conditions")</label>
+                        <p class="esems-body mb-0" style="white-space:pre-wrap;">@txt(ci.PreConditionsEn, ci.PreConditionsAr)</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="esems-label">@(isRtl ? "ضوابط الانتفاع" : "Policies")</label>
+                        <p class="esems-body mb-0" style="white-space:pre-wrap;">@txt(ci.PoliciesEn, ci.PoliciesAr)</p>
+                    </div>
+                    <div class="col-12">
+                        <label class="esems-label">@(isRtl ? "إجراء الخدمة" : "Procedure")</label>
+                        <p class="esems-body mb-0" style="white-space:pre-wrap;">@txt(ci.ProcedureEn, ci.ProcedureAr)</p>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(ci.SourceReference))
+                    {
+                        <div class="col-12">
+                            <label class="esems-label">@(isRtl ? "مرجع المصدر" : "Source Reference")</label>
+                            <p class="esems-body-secondary small mb-0">@ci.SourceReference</p>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</section>
+
+
+@if (PerfProvider.IsEnabled)
+{
+    <!-- ============================ TAB: PERFORMANCE (only when enabled) ============================ -->
+    <section id="performance" class="sd2-tabpanel d-none" role="tabpanel">
+        @await Html.PartialAsync("Integrations/_LinkedKpis", new LinkedPanelArgs {
+            EntityType = LinkedEntityType.Service,
+            EntityId   = Model.Id,
+            AnchorId   = "linked-kpis-service"
+        })
+    </section>
+}
+
+</div>
+
+<!-- ============================ MODALS (preserved verbatim) ============================ -->
+
+@*  All six modals adopt the Tailwind floater pattern from
+    Views/Improvements/Details.cshtml (Add Measurement modal): a black/40
+    backdrop + a fixed top-aligned scrollable container holding a
+    rounded-xl white box. No Bootstrap modal infrastructure — opens by
+    removing `hidden` from the backdrop + setting display:flex on the
+    container. Uniform header (icon + title + ghost X close), brand-blue
+    gradient Save button in a tinted footer, ghost Cancel.   *@
+
+<!-- ─── Link Process Modal ─── -->
+<div id="linkProcessBackdrop" class="fixed inset-0 bg-black bg-opacity-50 hidden" style="z-index:1060;" onclick="sd2CloseModal('linkProcess')"></div>
+<div id="linkProcessModal" class="fixed inset-0 hidden items-start justify-center p-4 overflow-y-auto" style="z-index:1061;">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl my-10">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h3 class="text-base font-semibold text-gray-900 flex items-center gap-2">
+                <i data-lucide="git-branch" class="w-5 h-5" style="color:#005B99;"></i>
+                @(isRtl ? "اربط عملية بالخدمة" : "Link a Process to this Service")
+            </h3>
+            <button type="button" onclick="sd2CloseModal('linkProcess')" class="text-gray-400 hover:text-gray-600" aria-label="@(isRtl ? "إغلاق" : "Close")">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <div class="p-6">
+            <div id="availableProcessesContainer">
+                <div class="flex flex-col items-center gap-2 py-10 text-sm text-gray-500">
+                    <div class="inline-block w-8 h-8 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin" role="status" aria-hidden="true"></div>
+                    <span>@(isRtl ? "جاري تحميل العمليات المتاحة…" : "Loading available processes…")</span>
+                </div>
+            </div>
+        </div>
+        <div class="px-6 py-3 border-t border-gray-200 flex items-center justify-end gap-2 bg-gray-50 rounded-b-xl">
+            <button type="button" onclick="sd2CloseModal('linkProcess')" class="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100">@(isRtl ? "إغلاق" : "Close")</button>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Edit Service-Process Relationship Modal ─── -->
+<div id="editServiceProcessBackdrop" class="fixed inset-0 bg-black bg-opacity-50 hidden" style="z-index:1060;" onclick="sd2CloseModal('editServiceProcess')"></div>
+<div id="editServiceProcessModal" class="fixed inset-0 hidden items-start justify-center p-4 overflow-y-auto" style="z-index:1061;">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl my-10">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h3 class="text-base font-semibold text-gray-900 flex items-center gap-2">
+                <i data-lucide="edit-2" class="w-5 h-5" style="color:#005B99;"></i>
+                @Shared["Title_EditProcessRelationship"]
+            </h3>
+            <button type="button" onclick="sd2CloseModal('editServiceProcess')" class="text-gray-400 hover:text-gray-600" aria-label="@(isRtl ? "إغلاق" : "Close")">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <form id="editServiceProcessForm">
+            <div class="p-6 space-y-4">
+                <input type="hidden" id="editSPServiceId" />
+                <input type="hidden" id="editSPProcessId" />
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1" for="editSPCriticality">@(isRtl ? "الأهمية" : "Criticality")</label>
+                    <select id="editSPCriticality" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                        <option value="1">@(isRtl ? "1 — حرج" : "1 — Critical")</option>
+                        <option value="2">@(isRtl ? "2 — مرتفع" : "2 — High")</option>
+                        <option value="3">@(isRtl ? "3 — متوسط" : "3 — Medium")</option>
+                        <option value="4">@(isRtl ? "4 — منخفض" : "4 — Low")</option>
+                    </select>
+                </div>
+                <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" id="editSPIsMandatory" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                    <span>@(isRtl ? "إلزامي لهذه الخدمة" : "Mandatory for this service")</span>
+                </label>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1" for="editSPNotes">@(isRtl ? "ملاحظات" : "Notes")</label>
+                    <textarea id="editSPNotes" rows="3" dir="@(isRtl ? "rtl" : "ltr")" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" placeholder="@(isRtl ? "ملاحظات إضافية…" : "Additional notes…")"></textarea>
+                </div>
+            </div>
+            <div class="px-6 py-3 border-t border-gray-200 flex items-center justify-end gap-2 bg-gray-50 rounded-b-xl">
+                <button type="button" onclick="sd2CloseModal('editServiceProcess')" class="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100">@(isRtl ? "إلغاء" : "Cancel")</button>
+                <button type="submit" class="px-5 py-2 text-sm text-white rounded-lg inline-flex items-center gap-2" style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+                    <i data-lucide="save" class="w-4 h-4"></i>
+                    @(isRtl ? "حفظ التغييرات" : "Save Changes")
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ─── Link Asset Modal ─── -->
+<div id="linkAssetBackdrop" class="fixed inset-0 bg-black bg-opacity-50 hidden" style="z-index:1060;" onclick="sd2CloseModal('linkAsset')"></div>
+<div id="linkAssetModal" class="fixed inset-0 hidden items-start justify-center p-4 overflow-y-auto" style="z-index:1061;">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl my-10">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h3 class="text-base font-semibold text-gray-900 flex items-center gap-2">
+                <i data-lucide="package" class="w-5 h-5" style="color:#005B99;"></i>
+                @(isRtl ? "اربط أصلاً بالخدمة" : "Link an Asset to this Service")
+            </h3>
+            <button type="button" onclick="sd2CloseModal('linkAsset')" class="text-gray-400 hover:text-gray-600" aria-label="@(isRtl ? "إغلاق" : "Close")">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <div class="p-6">
+            <div id="availableAssetsContainer">
+                <div class="flex flex-col items-center gap-2 py-10 text-sm text-gray-500">
+                    <div class="inline-block w-8 h-8 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin" role="status" aria-hidden="true"></div>
+                    <span>@(isRtl ? "جاري تحميل الأصول المتاحة…" : "Loading available assets…")</span>
+                </div>
+            </div>
+        </div>
+        <div class="px-6 py-3 border-t border-gray-200 flex items-center justify-end gap-2 bg-gray-50 rounded-b-xl">
+            <button type="button" onclick="sd2CloseModal('linkAsset')" class="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100">@(isRtl ? "إغلاق" : "Close")</button>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Edit Service-Asset Relationship Modal ─── -->
+<div id="editServiceAssetBackdrop" class="fixed inset-0 bg-black bg-opacity-50 hidden" style="z-index:1060;" onclick="sd2CloseModal('editServiceAsset')"></div>
+<div id="editServiceAssetModal" class="fixed inset-0 hidden items-start justify-center p-4 overflow-y-auto" style="z-index:1061;">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl my-10">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h3 class="text-base font-semibold text-gray-900 flex items-center gap-2">
+                <i data-lucide="edit-2" class="w-5 h-5" style="color:#005B99;"></i>
+                @Shared["Title_EditAssetRelationship"]
+            </h3>
+            <button type="button" onclick="sd2CloseModal('editServiceAsset')" class="text-gray-400 hover:text-gray-600" aria-label="@(isRtl ? "إغلاق" : "Close")">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <form id="editServiceAssetForm">
+            <div class="p-6 space-y-4">
+                <input type="hidden" id="editServiceIdAsset" />
+                <input type="hidden" id="editAssetId" />
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1" for="editCriticality">@(isRtl ? "الأهمية" : "Criticality")</label>
+                    <select id="editCriticality" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                        <option value="1">@(isRtl ? "1 — حرج" : "1 — Critical")</option>
+                        <option value="2">@(isRtl ? "2 — مرتفع" : "2 — High")</option>
+                        <option value="3">@(isRtl ? "3 — متوسط" : "3 — Medium")</option>
+                        <option value="4">@(isRtl ? "4 — منخفض" : "4 — Low")</option>
+                    </select>
+                </div>
+                <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" id="editIsRequired" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                    <span>@(isRtl ? "مطلوب لهذه الخدمة" : "Required for this service")</span>
+                </label>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1" for="editUsageDescription">@(isRtl ? "وصف الاستخدام" : "Usage Description")</label>
+                    <textarea id="editUsageDescription" rows="3" dir="@(isRtl ? "rtl" : "ltr")" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" placeholder="@(isRtl ? "كيف تستخدم الخدمة هذا الأصل…" : "How this asset is used by the service…")"></textarea>
+                </div>
+            </div>
+            <div class="px-6 py-3 border-t border-gray-200 flex items-center justify-end gap-2 bg-gray-50 rounded-b-xl">
+                <button type="button" onclick="sd2CloseModal('editServiceAsset')" class="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100">@(isRtl ? "إلغاء" : "Cancel")</button>
+                <button type="submit" class="px-5 py-2 text-sm text-white rounded-lg inline-flex items-center gap-2" style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+                    <i data-lucide="save" class="w-4 h-4"></i>
+                    @(isRtl ? "حفظ التغييرات" : "Save Changes")
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ─── Link Risk Modal ─── -->
+<div id="linkRiskBackdrop" class="fixed inset-0 bg-black bg-opacity-50 hidden" style="z-index:1060;" onclick="sd2CloseModal('linkRisk')"></div>
+<div id="linkRiskModal" class="fixed inset-0 hidden items-start justify-center p-4 overflow-y-auto" style="z-index:1061;">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl my-10">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h3 class="text-base font-semibold text-gray-900 flex items-center gap-2">
+                <i data-lucide="shield-alert" class="w-5 h-5" style="color:#005B99;"></i>
+                @(isRtl ? "اربط مخاطرة بالخدمة" : "Link a Risk to this Service")
+            </h3>
+            <button type="button" onclick="sd2CloseModal('linkRisk')" class="text-gray-400 hover:text-gray-600" aria-label="@(isRtl ? "إغلاق" : "Close")">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <div class="p-6">
+            <div id="availableRisksContainer">
+                <div class="flex flex-col items-center gap-2 py-10 text-sm text-gray-500">
+                    <div class="inline-block w-8 h-8 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin" role="status" aria-hidden="true"></div>
+                    <span>@(isRtl ? "جاري تحميل المخاطر المتاحة…" : "Loading available risks…")</span>
+                </div>
+            </div>
+        </div>
+        <div class="px-6 py-3 border-t border-gray-200 flex items-center justify-end gap-2 bg-gray-50 rounded-b-xl">
+            <button type="button" onclick="sd2CloseModal('linkRisk')" class="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100">@(isRtl ? "إغلاق" : "Close")</button>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Edit Service-Risk Relationship Modal ─── -->
+<div id="editServiceRiskBackdrop" class="fixed inset-0 bg-black bg-opacity-50 hidden" style="z-index:1060;" onclick="sd2CloseModal('editServiceRisk')"></div>
+<div id="editServiceRiskModal" class="fixed inset-0 hidden items-start justify-center p-4 overflow-y-auto" style="z-index:1061;">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl my-10">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h3 class="text-base font-semibold text-gray-900 flex items-center gap-2">
+                <i data-lucide="edit-2" class="w-5 h-5" style="color:#005B99;"></i>
+                @Shared["Title_EditRiskRelationship"]
+            </h3>
+            <button type="button" onclick="sd2CloseModal('editServiceRisk')" class="text-gray-400 hover:text-gray-600" aria-label="@(isRtl ? "إغلاق" : "Close")">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <form id="editServiceRiskForm">
+            <div class="p-6 space-y-4">
+                <input type="hidden" id="editServiceIdRisk" />
+                <input type="hidden" id="editRiskId" />
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1" for="editImpactLevel">@(isRtl ? "مستوى التأثير (1-5)" : "Impact Level (1-5)")</label>
+                    <select id="editImpactLevel" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                        <option value="1">@(isRtl ? "1 — منخفض جداً" : "1 — Very Low")</option>
+                        <option value="2">@(isRtl ? "2 — منخفض" : "2 — Low")</option>
+                        <option value="3">@(isRtl ? "3 — متوسط" : "3 — Medium")</option>
+                        <option value="4">@(isRtl ? "4 — مرتفع" : "4 — High")</option>
+                        <option value="5">@(isRtl ? "5 — حرج" : "5 — Critical")</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1" for="editSpecificControls">@(isRtl ? "ضوابط خاصة" : "Specific Controls")</label>
+                    <textarea id="editSpecificControls" rows="3" dir="@(isRtl ? "rtl" : "ltr")" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" placeholder="@(isRtl ? "الضوابط المعمول بها لهذه الخدمة…" : "Controls in place for this service…")"></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1" for="editNotes">@(isRtl ? "ملاحظات" : "Notes")</label>
+                    <textarea id="editNotes" rows="2" dir="@(isRtl ? "rtl" : "ltr")" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" placeholder="@(isRtl ? "ملاحظات إضافية…" : "Additional notes…")"></textarea>
+                </div>
+            </div>
+            <div class="px-6 py-3 border-t border-gray-200 flex items-center justify-end gap-2 bg-gray-50 rounded-b-xl">
+                <button type="button" onclick="sd2CloseModal('editServiceRisk')" class="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100">@(isRtl ? "إلغاء" : "Cancel")</button>
+                <button type="submit" class="px-5 py-2 text-sm text-white rounded-lg inline-flex items-center gap-2" style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+                    <i data-lucide="save" class="w-4 h-4"></i>
+                    @(isRtl ? "حفظ التغييرات" : "Save Changes")
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@* F-CC-002: surface change requests linked to this service. *@
+@{
+    ViewData["CR_TargetKind"] = "service";
+    ViewData["CR_TargetId"] = Model.Id;
+}
+<partial name="_RelatedChangeRequests" />
+
+@section Scripts {
+    @* Antiforgery token hidden input — the controller's 12 AJAX POSTs
+       require [ValidateAntiForgeryToken] and read the
+       RequestVerificationToken header on every fetch below. *@
+    @Html.AntiForgeryToken()
+    <script nonce="@Context.CspNonce()">
+        // ===== Tab switching =====
+        // Replaces the previous anchor-scroll/pulse behaviour. Activates one
+        // tab pane (#overview / #processes / #assets / #risks / #performance),
+        // updates the active tab button and KPI chip styling, and writes the
+        // hash so back/forward buttons + deep links continue to work — the
+        // pane IDs match the legacy anchor IDs so external bookmarks still
+        // land on the right section.
+        function sd2ShowTab(name) {
+            document.querySelectorAll('.sd2-tabpanel').forEach(p => p.classList.add('d-none'));
+            document.querySelectorAll('.sd2-tab').forEach(t => t.classList.remove('active'));
+            const pane = document.getElementById(name);
+            const tab  = document.querySelector('.sd2-tab[data-sd2tab="' + name + '"]');
+            if (pane) pane.classList.remove('d-none');
+            if (tab)  tab.classList.add('active');
+            try { history.replaceState(null, '', '#' + name); } catch (e) {}
+            if (window.lucide) lucide.createIcons();
+        }
+        document.addEventListener('DOMContentLoaded', function () {
+            const h = (location.hash || '').replace('#','');
+            // Backwards-compat: legacy anchors #overview, #processes, #assets, #risks
+            // map directly to tabs. Unknown hashes default to overview.
+            const validTabs = ['overview', 'processes', 'assets', 'risks', 'performance'];
+            sd2ShowTab(validTabs.includes(h) ? h : 'overview');
+        });
+        window.addEventListener('hashchange', function () {
+            const h = (location.hash || '').replace('#','');
+            const validTabs = ['overview', 'processes', 'assets', 'risks', 'performance'];
+            if (validTabs.includes(h)) sd2ShowTab(h);
+        });
+    </script>
+    <script nonce="@Context.CspNonce()">
+        lucide.createIcons();
+        const csrfToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+        const serviceId = '@Model.Id';
+
+        // UX helpers — SweetAlert replaces raw browser alert/confirm so the
+        // link/unlink flows match the rest of the app's modal style.
+        function showErr(msg) {
+            Swal.fire({ icon: 'error', title: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_Error"].Value)), text: msg, confirmButtonColor: '#005B99' });
+        }
+        async function confirmDestructive(text) {
+            const r = await Swal.fire({
+                icon: 'warning', title: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_AreYouSure"].Value)), text,
+                showCancelButton: true,
+                confirmButtonText: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Label_Yes"].Value)), cancelButtonText: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Button_Cancel"].Value)),
+                confirmButtonColor: '#dc2626', cancelButtonColor: '#64748b'
+            });
+            return r.isConfirmed;
+        }
+        // ===== Custom modal show/hide (Tailwind floater pattern) =====
+        // Replaces bootstrap.Modal — each modal has a backdrop (id+'Backdrop')
+        // and a container (id+'Modal'). Show: remove `hidden` from both, set
+        // display:flex on container (overrides the items-start utility's
+        // inline-flex semantics when toggled this way). Hide: re-add `hidden`,
+        // clear inline display. Lucide re-runs after show so the X icon
+        // renders on first open. Same pattern as
+        // Views/Improvements/Details.cshtml openAddMeasurementModal().
+        function sd2OpenModal(name) {
+            const backdrop = document.getElementById(name + 'Backdrop');
+            const modal = document.getElementById(name + 'Modal');
+            if (backdrop) backdrop.classList.remove('hidden');
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.style.display = 'flex';
+            }
+            if (window.lucide) lucide.createIcons();
+        }
+        function sd2CloseModal(name) {
+            const backdrop = document.getElementById(name + 'Backdrop');
+            const modal = document.getElementById(name + 'Modal');
+            if (backdrop) backdrop.classList.add('hidden');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.style.display = 'none';
+            }
+        }
+        // Esc closes whichever modal is open. One global listener so we don't
+        // have to wire it per-modal.
+        document.addEventListener('keydown', function (e) {
+            if (e.key !== 'Escape') return;
+            ['linkProcess','editServiceProcess','linkAsset','editServiceAsset','linkRisk','editServiceRisk'].forEach(function (name) {
+                const modal = document.getElementById(name + 'Modal');
+                if (modal && !modal.classList.contains('hidden')) sd2CloseModal(name);
+            });
+        });
+
+        // ===== ASSET FUNCTIONS =====
+
+        function openLinkAssetModal() {
+            sd2OpenModal('linkAsset');
+            loadAvailableAssets();
+        }
+
+        async function loadAvailableAssets() {
+            try {
+                const response = await fetch(`/Services/GetAvailableAssets?serviceId=${serviceId}`);
+                const assets = await response.json();
+
+                const container = document.getElementById('availableAssetsContainer');
+
+                if (assets.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-4">
+                            <i data-lucide="package-check" style="width: 48px; height: 48px;" class="text-muted"></i>
+                            <p class="text-muted mt-2">@Shared["Text_AllAssetsLinkedToService"]</p>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                    return;
+                }
+
+                container.innerHTML = '<div class="list-group">' + assets.map(asset => {
+                    const statusClass = {
+                        'Operational': 'success',
+                        'UnderMaintenance': 'warning',
+                        'Retired': 'secondary'
+                    }[asset.status] || 'info';
+
+                    const criticalityClass = {
+                        1: 'danger',
+                        2: 'warning',
+                        3: 'info',
+                        4: 'secondary'
+                    }[asset.criticality] || 'secondary';
+
+                    return `
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <div class="d-flex align-items-center gap-2 mb-1">
+                                        <span class="fw-medium">${asset.assetTag}</span>
+                                        <span class="badge badge-${statusClass}">${asset.status}</span>
+                                        <span class="badge badge-${criticalityClass}">Criticality: ${asset.criticality}</span>
+                                    </div>
+                                    <p class="mb-1">${asset.nameEn}</p>
+                                    ${asset.categoryName ? `<small class="text-muted">${asset.categoryName}</small>` : ''}
+                                </div>
+                                <button onclick="linkAsset('${asset.id}')" class="btn btn-sm btn-primary">Link</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('') + '</div>';
+
+                lucide.createIcons();
+            } catch (error) {
+                console.error('Error loading assets:', error);
+                document.getElementById('availableAssetsContainer').innerHTML = `
+                    <div class="alert alert-danger">Error loading assets. Please try again.</div>
+                `;
+            }
+        }
+
+        async function linkAsset(assetId) {
+            try {
+                const response = await fetch('/Services/LinkAsset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': csrfToken },
+                    body: new URLSearchParams({ serviceId, assetId, criticality: 3, isRequired: true })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    sd2CloseModal('linkAsset');
+                    location.reload();
+                } else {
+                    showErr(result.message || 'Error linking asset');
+                }
+            } catch (error) {
+                console.error('Error linking asset:', error);
+                showErr('Error linking asset. Please try again.');
+            }
+        }
+
+        async function unlinkAsset(serviceId, assetId) {
+            if (!(await confirmDestructive('Are you sure you want to unlink this asset from the service?'))) return;
+
+            try {
+                const response = await fetch('/Services/UnlinkAsset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': csrfToken },
+                    body: new URLSearchParams({ serviceId, assetId })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    location.reload();
+                } else {
+                    showErr(result.message || 'Error unlinking asset');
+                }
+            } catch (error) {
+                console.error('Error unlinking asset:', error);
+                showErr('Error unlinking asset. Please try again.');
+            }
+        }
+
+        function editServiceAsset(serviceId, assetId, criticality, isRequired, usageDescription) {
+            document.getElementById('editServiceIdAsset').value = serviceId;
+            document.getElementById('editAssetId').value = assetId;
+            document.getElementById('editCriticality').value = criticality;
+            document.getElementById('editIsRequired').checked = isRequired;
+            document.getElementById('editUsageDescription').value = usageDescription || '';
+            sd2OpenModal('editServiceAsset');
+        }
+
+        document.getElementById('editServiceAssetForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const serviceId = document.getElementById('editServiceIdAsset').value;
+            const assetId = document.getElementById('editAssetId').value;
+            const criticality = document.getElementById('editCriticality').value;
+            const isRequired = document.getElementById('editIsRequired').checked;
+            const usageDescription = document.getElementById('editUsageDescription').value;
+
+            try {
+                const response = await fetch('/Services/UpdateServiceAsset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': csrfToken },
+                    body: new URLSearchParams({ serviceId, assetId, criticality, isRequired, usageDescription })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    sd2CloseModal('editServiceAsset');
+                    location.reload();
+                } else {
+                    showErr(result.message || 'Error updating relationship');
+                }
+            } catch (error) {
+                console.error('Error updating relationship:', error);
+                showErr('Error updating relationship. Please try again.');
+            }
+        });
+
+        // ===== RISK FUNCTIONS =====
+
+        function openLinkRiskModal() {
+            sd2OpenModal('linkRisk');
+            loadAvailableRisks();
+        }
+
+        async function loadAvailableRisks() {
+            try {
+                const response = await fetch(`/Services/GetAvailableRisks?serviceId=${serviceId}`);
+                const risks = await response.json();
+
+                const container = document.getElementById('availableRisksContainer');
+
+                if (risks.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-4">
+                            <i data-lucide="shield-check" style="width: 48px; height: 48px;" class="text-muted"></i>
+                            <p class="text-muted mt-2">@Shared["Text_AllRisksLinkedToService"]</p>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                    return;
+                }
+
+                container.innerHTML = '<div class="list-group">' + risks.map(risk => {
+                    const levelClass = {
+                        'Critical': 'danger',
+                        'High': 'warning',
+                        'Medium': 'info',
+                        'Low': 'success'
+                    }[risk.riskLevel] || 'secondary';
+
+                    return `
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <div class="d-flex align-items-center gap-2 mb-1">
+                                        <span class="fw-medium">${risk.riskNumber}</span>
+                                        <span class="badge badge-${levelClass}">${risk.riskLevel}</span>
+                                        <span class="badge badge-secondary">Score: ${risk.inherentRiskScore}</span>
+                                    </div>
+                                    <p class="mb-1">${risk.nameEn}</p>
+                                    ${risk.categoryName ? `<small class="text-muted">${risk.categoryName}</small>` : ''}
+                                </div>
+                                <button onclick="linkRisk('${risk.id}')" class="btn btn-sm btn-primary">Link</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('') + '</div>';
+
+                lucide.createIcons();
+            } catch (error) {
+                console.error('Error loading risks:', error);
+                document.getElementById('availableRisksContainer').innerHTML = `
+                    <div class="alert alert-danger">Error loading risks. Please try again.</div>
+                `;
+            }
+        }
+
+        async function linkRisk(riskId) {
+            try {
+                const response = await fetch('/Services/LinkRisk', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': csrfToken },
+                    body: new URLSearchParams({ serviceId, riskId, impactLevel: 3 })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    sd2CloseModal('linkRisk');
+                    location.reload();
+                } else {
+                    showErr(result.message || 'Error linking risk');
+                }
+            } catch (error) {
+                console.error('Error linking risk:', error);
+                showErr('Error linking risk. Please try again.');
+            }
+        }
+
+        async function unlinkRisk(serviceId, riskId) {
+            if (!(await confirmDestructive('Are you sure you want to unlink this risk from the service?'))) return;
+
+            try {
+                const response = await fetch('/Services/UnlinkRisk', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': csrfToken },
+                    body: new URLSearchParams({ serviceId, riskId })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    location.reload();
+                } else {
+                    showErr(result.message || 'Error unlinking risk');
+                }
+            } catch (error) {
+                console.error('Error unlinking risk:', error);
+                showErr('Error unlinking risk. Please try again.');
+            }
+        }
+
+        function editServiceRisk(serviceId, riskId, impactLevel, specificControls, notes) {
+            document.getElementById('editServiceIdRisk').value = serviceId;
+            document.getElementById('editRiskId').value = riskId;
+            document.getElementById('editImpactLevel').value = impactLevel;
+            document.getElementById('editSpecificControls').value = specificControls || '';
+            document.getElementById('editNotes').value = notes || '';
+            sd2OpenModal('editServiceRisk');
+        }
+
+        document.getElementById('editServiceRiskForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const serviceId = document.getElementById('editServiceIdRisk').value;
+            const riskId = document.getElementById('editRiskId').value;
+            const impactLevel = document.getElementById('editImpactLevel').value;
+            const specificControls = document.getElementById('editSpecificControls').value;
+            const notes = document.getElementById('editNotes').value;
+
+            try {
+                const response = await fetch('/Services/UpdateServiceRisk', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': csrfToken },
+                    body: new URLSearchParams({ serviceId, riskId, impactLevel, specificControls, notes })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    sd2CloseModal('editServiceRisk');
+                    location.reload();
+                } else {
+                    showErr(result.message || 'Error updating relationship');
+                }
+            } catch (error) {
+                console.error('Error updating relationship:', error);
+                showErr('Error updating relationship. Please try again.');
+            }
+        });
+
+        // ===== PROCESS FUNCTIONS =====
+
+        function openLinkProcessModal() {
+            sd2OpenModal('linkProcess');
+            loadAvailableProcesses();
+        }
+
+        async function loadAvailableProcesses() {
+            try {
+                const response = await fetch(`/Services/GetAvailableProcesses?serviceId=${serviceId}`);
+                const processes = await response.json();
+                const container = document.getElementById('availableProcessesContainer');
+
+                if (processes.length === 0) {
+                    container.innerHTML = `<div class="text-center py-4"><i data-lucide="git-branch" style="width: 48px; height: 48px;" class="text-muted"></i><p class="text-muted mt-2">All processes are already linked to this service.</p></div>`;
+                    lucide.createIcons();
+                    return;
+                }
+
+                container.innerHTML = '<div class="list-group">' + processes.map(p => `
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <span class="fw-medium">${p.name}</span>
+                                <small class="text-muted d-block">${p.code} ${p.processGroupName ? '• ' + p.processGroupName : ''}</small>
+                            </div>
+                            <button onclick="linkProcess('${p.id}')" class="btn btn-sm btn-primary">Link</button>
+                        </div>
+                    </div>
+                `).join('') + '</div>';
+                lucide.createIcons();
+            } catch (error) {
+                console.error('Error loading processes:', error);
+                document.getElementById('availableProcessesContainer').innerHTML = `<div class="alert alert-danger">Error loading processes. Please try again.</div>`;
+            }
+        }
+
+        async function linkProcess(processId) {
+            try {
+                const response = await fetch('/Services/LinkProcess', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': csrfToken },
+                    body: new URLSearchParams({ serviceId, processId, criticality: 3, isMandatory: true })
+                });
+                const result = await response.json();
+                if (result.success) { sd2CloseModal('linkProcess'); location.reload(); }
+                else { showErr(result.message || 'Error linking process'); }
+            } catch (error) { console.error('Error linking process:', error); showErr('Error linking process.'); }
+        }
+
+        async function unlinkProcess(serviceId, processId) {
+            if (!(await confirmDestructive('Are you sure you want to unlink this process from the service?'))) return;
+            try {
+                const response = await fetch('/Services/UnlinkProcess', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': csrfToken },
+                    body: new URLSearchParams({ serviceId, processId })
+                });
+                const result = await response.json();
+                if (result.success) { location.reload(); }
+                else { showErr(result.message || 'Error unlinking process'); }
+            } catch (error) { console.error('Error unlinking process:', error); showErr('Error unlinking process.'); }
+        }
+
+        function editServiceProcess(serviceId, processId, criticality, isMandatory, notes) {
+            document.getElementById('editSPServiceId').value = serviceId;
+            document.getElementById('editSPProcessId').value = processId;
+            document.getElementById('editSPCriticality').value = criticality;
+            document.getElementById('editSPIsMandatory').checked = isMandatory;
+            document.getElementById('editSPNotes').value = notes || '';
+            sd2OpenModal('editServiceProcess');
+        }
+
+        document.getElementById('editServiceProcessForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const sId = document.getElementById('editSPServiceId').value;
+            const pId = document.getElementById('editSPProcessId').value;
+            const criticality = document.getElementById('editSPCriticality').value;
+            const isMandatory = document.getElementById('editSPIsMandatory').checked;
+            const notes = document.getElementById('editSPNotes').value;
+
+            try {
+                const response = await fetch('/Services/UpdateServiceProcess', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': csrfToken },
+                    body: new URLSearchParams({ serviceId: sId, processId: pId, criticality, isMandatory, notes })
+                });
+                const result = await response.json();
+                if (result.success) { sd2CloseModal('editServiceProcess'); location.reload(); }
+                else { showErr(result.message || 'Error updating relationship'); }
+            } catch (error) {
+                console.error('Error updating relationship:', error);
+                showErr('Error updating relationship. Please try again.');
+            }
+        });
+    </script>
+}

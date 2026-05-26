@@ -1,0 +1,385 @@
+@using ESEMS.Web.Models.Common
+@inject IStringLocalizer<SharedResource> Shared
+@model List<AppSetting>
+@{
+    var visible = Model.Where(s => !s.Hidden).ToList();
+    var categories = visible.Select(s => s.Category ?? "General").Distinct().ToList();
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ar";
+}
+
+<style>
+    /* Make the collapsible category header obviously interactive — clear hover
+       state, focus ring, and chevron rotation that follows aria-expanded. */
+    .sh-accordion-toggle { text-align: start; cursor: pointer; transition: background .15s, box-shadow .15s; }
+    .sh-accordion-toggle:hover { background: #eff6ff !important; box-shadow: inset 4px 0 0 0 var(--esems-primary, #005B99); }
+    [dir="rtl"] .sh-accordion-toggle:hover { box-shadow: inset -4px 0 0 0 var(--esems-primary, #005B99); }
+    .sh-accordion-toggle:focus-visible { outline: 2px solid var(--esems-primary, #005B99); outline-offset: -2px; }
+    .sh-accordion-toggle .sh-accordion-chevron { transition: transform .2s ease; color: #64748b; }
+    .sh-accordion-toggle:hover .sh-accordion-chevron { color: var(--esems-primary, #005B99); }
+    .sh-accordion-toggle[aria-expanded="false"] .sh-accordion-chevron { transform: rotate(-90deg); }
+    [dir="rtl"] .sh-accordion-toggle[aria-expanded="false"] .sh-accordion-chevron { transform: rotate(90deg); }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h5 class="fw-bold mb-0">@Shared["Heading_GeneralSettings"]</h5>
+        <small class="text-muted">@Shared["Help_GeneralSettings"]</small>
+    </div>
+    <button type="button" class="btn btn-sm btn-primary" onclick="SettingsGeneral.openNew()">
+        <i data-lucide="plus" style="width:14px;height:14px;"></i>
+        @Shared["Button_NewSetting"]
+    </button>
+</div>
+
+@if (!visible.Any())
+{
+    <div class="text-center py-5 text-muted">
+        <i data-lucide="settings" style="width:40px;height:40px;opacity:.2;"></i>
+        <p class="mt-2 mb-0">@Shared["Text_NoSettingsYet"]</p>
+    </div>
+}
+else
+{
+    @foreach (var cat in categories)
+    {
+        var items = visible.Where(s => (s.Category ?? "General") == cat).ToList();
+        var catId = "cat-" + cat.Replace(" ", "").Replace("/", "");
+        var tipExpand = isRtl ? "اضغط للطي/التوسيع" : "Click to expand / collapse";
+        <div class="card mb-2 sh-accordion-card">
+            <button type="button"
+                    class="card-header bg-light py-2 d-flex justify-content-between align-items-center w-100 border-0 sh-accordion-toggle"
+                    data-bs-toggle="collapse" data-bs-target="#@catId"
+                    aria-expanded="true" aria-controls="@catId"
+                    title="@tipExpand">
+                <h6 class="mb-0 small fw-semibold d-flex align-items-center">
+                    <i data-lucide="folder" style="width:14px;height:14px;margin-inline-end:6px;"></i>
+                    @cat
+                    <span class="badge bg-secondary ms-1">@items.Count</span>
+                </h6>
+                <i data-lucide="chevron-down" class="sh-accordion-chevron" style="width:14px;height:14px;"></i>
+            </button>
+            <div class="collapse show" id="@catId">
+                <div class="card-body p-0">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="small" style="width:30%;">@Shared["Col_Setting"]</th>
+                                <th class="small" style="width:30%;">@Shared["Col_Value"]</th>
+                                <th class="small" style="width:30%;">@Shared["Col_Description"]</th>
+                                <th class="small text-center" style="width:10%;">@Shared["Col_Actions"]</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var s in items)
+                            {
+                                var humanKey = System.Text.RegularExpressions.Regex.Replace(s.Key, "(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|\\.", " ");
+                                <tr id="setting-@s.Id">
+                                    <td class="small fw-semibold align-middle">@humanKey</td>
+                                    <td>
+                                        @* M-12 (Tier-3 a11y): every settings input gets an accessible name
+                                           sourced from the row's key cell. axe-core's `label` rule otherwise
+                                           flags these as critical violations. *@
+                                        @if (s.DataType == "bool")
+                                        {
+                                            <select class="form-select form-select-sm" style="max-width:120px;" data-setting-value="@s.Id" aria-label="@humanKey">
+                                                <option value="true" selected="@(s.Value == "true")">@Shared["Text_True"]</option>
+                                                <option value="false" selected="@(s.Value != "true")">@Shared["Text_False"]</option>
+                                            </select>
+                                        }
+                                        else if (s.DataType == "int" || s.DataType == "decimal")
+                                        {
+                                            <input type="number" class="form-control form-control-sm" style="max-width:180px;" value="@s.Value" data-setting-value="@s.Id" aria-label="@humanKey" />
+                                        }
+                                        else
+                                        {
+                                            <input type="text" class="form-control form-control-sm" style="max-width:240px;" value="@s.Value" data-setting-value="@s.Id" aria-label="@humanKey" />
+                                        }
+                                    </td>
+                                    <td class="small text-muted align-middle">@(isRtl ? s.DescriptionAr : s.DescriptionEn)</td>
+                                    <td class="text-center align-middle">
+                                        <button type="button" class="btn btn-sm btn-outline-primary px-2" onclick="SettingsGeneral.save('@s.Id')" title="@Shared["Button_Save"]">
+                                            <i data-lucide="save" style="width:12px;height:12px;"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger px-2" onclick="SettingsGeneral.remove('@s.Id')" title="@Shared["Button_Delete"]">
+                                            <i data-lucide="trash-2" style="width:12px;height:12px;"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@*  ── New Setting modal — redesigned ───────────────────────────────
+    Two named groups (Identity + Value & Documentation), type-aware Value
+    widget that swaps based on Data Type, Category as a <datalist> seeded
+    with existing categories, Key with format hint + regex validation,
+    Description fields are textareas. Same backend POST contract — only
+    the form layout + value-widget JS changed.   *@
+<style>
+    .ns-modal .modal-content { border: none; box-shadow: 0 12px 40px rgba(0,0,0,.12); }
+    .ns-modal .modal-header { padding: .75rem 1.1rem; border-bottom: 1px solid #f1f5f9; }
+    .ns-modal .modal-title { font-size: var(--fs-base); font-weight: 700; color: #111827; display: flex; align-items: center; gap: .45rem; }
+    .ns-modal .modal-title i { color: #005B99; }
+    .ns-modal .modal-body { padding: 0 1.1rem; }
+
+    .ns-group { padding: .85rem 0; border-top: 1px dashed #e5e7eb; }
+    .ns-group:first-of-type { border-top: none; }
+    .ns-group-head { display: flex; align-items: center; gap: .4rem; margin-bottom: .55rem; }
+    .ns-group-head i { color: #005B99; width: 14px; height: 14px; }
+    .ns-group-title { font-size: var(--fs-sm); font-weight: 700; color: #111827; }
+    .ns-group-sub { font-size: 11px; color: #94a3b8; margin-inline-start: .35rem; }
+
+    .ns-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .55rem .85rem; }
+    @@media (max-width: 600px) { .ns-grid { grid-template-columns: 1fr; } }
+
+    .ns-field { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+    .ns-field label { font-size: 11px; font-weight: 600; color: #374151; }
+    .ns-req { color: #dc2626; }
+    .ns-field input, .ns-field select, .ns-field textarea { font-size: var(--fs-xs); padding: .4rem .55rem; border: 1px solid #d1d5db; border-radius: 5px; background: #fff; color: #1f2937; font-family: inherit; }
+    .ns-field input:focus, .ns-field select:focus, .ns-field textarea:focus { outline: 2px solid #005B99; outline-offset: -1px; border-color: transparent; }
+    .ns-field input.is-invalid { border-color: #dc2626; }
+    .ns-field textarea { resize: vertical; min-height: 56px; }
+    .ns-hint { font-size: 10px; color: #94a3b8; }
+    .ns-hint.err { color: #b91c1c; }
+    .ns-hint code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-family: 'Cascadia Mono', 'Consolas', monospace; color: #1f2937; font-size: 10px; }
+
+    .ns-modal .modal-footer { padding: .65rem 1.1rem; border-top: 1px solid #f1f5f9; }
+    .ns-btn { font-size: var(--fs-xs); font-weight: 600; padding: .4rem .85rem; border-radius: 6px; border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; gap: .35rem; }
+    .ns-btn-ghost { background: #fff; color: #374151; border-color: #d1d5db; }
+    .ns-btn-ghost:hover { background: #f1f5f9; }
+    .ns-btn-primary { background: #005B99; color: #fff; }
+    .ns-btn-primary:hover { background: #003d6b; }
+</style>
+
+<div id="newSettingModal" class="modal fade ns-modal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i data-lucide="plus-circle" style="width:18px;height:18px;"></i>
+                    @Shared["Heading_NewSetting"]
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="@(isRtl ? "إغلاق" : "Close")"></button>
+            </div>
+            <div class="modal-body">
+
+                @* — Section 1: Identity ───────────────────────────── *@
+                <section class="ns-group">
+                    <div class="ns-group-head">
+                        <i data-lucide="key-square"></i>
+                        <span class="ns-group-title">@(isRtl ? "الهوية" : "Identity")</span>
+                        <span class="ns-group-sub">@(isRtl ? "المفتاح والفئة والنوع" : "Key, category, type")</span>
+                    </div>
+                    <div class="ns-grid">
+                        <div class="ns-field">
+                            <label for="newSettingKey">@Shared["Label_SettingKey"] <span class="ns-req">*</span></label>
+                            <input type="text" id="newSettingKey" placeholder="Organization.Address" autocomplete="off" pattern="[A-Za-z][A-Za-z0-9._-]*" />
+                            <span class="ns-hint" id="newSettingKeyHint">@(isRtl
+                                ? "ابدأ بحرف إنجليزي، استخدم نقاطاً للفصل (مثال:"
+                                : "Start with a letter; dotted namespaces (")<code>Organization.Address</code>@(isRtl ? ")." : ").")</span>
+                        </div>
+                        <div class="ns-field">
+                            <label for="newSettingCategory">@Shared["Label_SettingCategory"]</label>
+                            <input type="text" id="newSettingCategory" list="newSettingCategoryList" autocomplete="off" placeholder="@(isRtl ? "عام" : "General")" />
+                            <datalist id="newSettingCategoryList">
+                                @foreach (var cat in visible.Select(s => s.Category ?? "General").Distinct().OrderBy(c => c))
+                                {
+                                    <option value="@cat"></option>
+                                }
+                            </datalist>
+                            <span class="ns-hint">@(isRtl ? "اختر من القوائم الموجودة أو أنشئ فئة جديدة." : "Pick an existing category or type a new one.")</span>
+                        </div>
+                        <div class="ns-field" style="grid-column: 1 / -1;">
+                            <label for="newSettingDataType">@Shared["Label_SettingDataType"]</label>
+                            <select id="newSettingDataType">
+                                <option value="string">string &nbsp;— @(isRtl ? "نص حر" : "free text")</option>
+                                <option value="int">int &nbsp;— @(isRtl ? "عدد صحيح" : "whole number")</option>
+                                <option value="decimal">decimal &nbsp;— @(isRtl ? "رقم بكسور عشرية" : "number with decimals")</option>
+                                <option value="bool">bool &nbsp;— @(isRtl ? "صح / خطأ" : "true / false")</option>
+                                <option value="json">json &nbsp;— @(isRtl ? "كائن / مصفوفة منظَّمة" : "structured object / array")</option>
+                            </select>
+                        </div>
+                    </div>
+                </section>
+
+                @* — Section 2: Value & Documentation ──────────────── *@
+                <section class="ns-group">
+                    <div class="ns-group-head">
+                        <i data-lucide="file-text"></i>
+                        <span class="ns-group-title">@(isRtl ? "القيمة والشرح" : "Value & Documentation")</span>
+                        <span class="ns-group-sub">@(isRtl ? "ما يُحفظ ولماذا" : "What gets stored and why")</span>
+                    </div>
+
+                    @* Value widget — swapped by JS based on Data Type. All variants
+                       write to the same source-of-truth hidden input (#newSettingValue)
+                       on submit, so the existing saveNew() POST shape is unchanged. *@
+                    <div class="ns-field" style="margin-bottom:.55rem;">
+                        <label for="newSettingValueWrap">@Shared["Label_SettingValue"]</label>
+                        <div id="newSettingValueWrap">
+                            <input type="text" id="newSettingValue" autocomplete="off" />
+                        </div>
+                    </div>
+
+                    <div class="ns-grid">
+                        <div class="ns-field">
+                            <label for="newSettingDescEn">@Shared["Col_Description"] (EN)</label>
+                            <textarea id="newSettingDescEn" rows="2" placeholder="@(isRtl ? "اشرح متى وكيف يُستخدم هذا الإعداد" : "Explain when and how this setting is used")"></textarea>
+                        </div>
+                        <div class="ns-field">
+                            <label for="newSettingDescAr">@Shared["Col_Description"] (AR)</label>
+                            <textarea id="newSettingDescAr" rows="2" dir="rtl" placeholder="@(isRtl ? "اشرح متى وكيف يُستخدم هذا الإعداد" : "Explain when and how this setting is used")"></textarea>
+                        </div>
+                    </div>
+                </section>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="ns-btn ns-btn-ghost" data-bs-dismiss="modal">
+                    <i data-lucide="x" style="width:13px;height:13px;"></i>
+                    @Shared["Button_Cancel"]
+                </button>
+                <button type="button" class="ns-btn ns-btn-primary" onclick="SettingsGeneral.saveNew()">
+                    <i data-lucide="save" style="width:13px;height:13px;"></i>
+                    @Shared["Button_Save"]
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script nonce="@Context.CspNonce()">
+window.SettingsGeneral = (function() {
+    var modal;
+    var KEY_RE = /^[A-Za-z][A-Za-z0-9._-]*$/;
+
+    // Render the Value input depending on the picked Data Type. Always
+    // emits an element with id="newSettingValue" so saveNew()'s lookup
+    // stays unchanged. Called on dataType change + on openNew().
+    function renderValueWidget(type, currentValue) {
+        var wrap = document.getElementById('newSettingValueWrap');
+        if (!wrap) return;
+        var v = currentValue == null ? '' : String(currentValue);
+        var html;
+        switch ((type || 'string').toLowerCase()) {
+            case 'bool':
+                html = '<select id="newSettingValue">'
+                     + '<option value="true"' + (v === 'true' ? ' selected' : '') + '>true</option>'
+                     + '<option value="false"' + (v === 'false' ? ' selected' : '') + '>false</option>'
+                     + '</select>';
+                break;
+            case 'int':
+                html = '<input type="number" step="1" inputmode="numeric" id="newSettingValue" value="' + escAttr(v) + '" />';
+                break;
+            case 'decimal':
+                html = '<input type="number" step="any" inputmode="decimal" id="newSettingValue" value="' + escAttr(v) + '" />';
+                break;
+            case 'json':
+                html = '<textarea id="newSettingValue" rows="4" placeholder=\'{"example": "value"}\' style="font-family: \'Cascadia Mono\', \'Consolas\', monospace; font-size: 11px;">' + escHtml(v) + '</textarea>';
+                break;
+            default:
+                html = '<input type="text" id="newSettingValue" autocomplete="off" value="' + escAttr(v) + '" />';
+        }
+        wrap.innerHTML = html;
+    }
+    function escAttr(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function escHtml(s) { return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+    function validateKey() {
+        var inp = document.getElementById('newSettingKey');
+        var hint = document.getElementById('newSettingKeyHint');
+        var v = (inp.value || '').trim();
+        if (!v) { inp.classList.remove('is-invalid'); hint.classList.remove('err'); return true; }
+        var ok = KEY_RE.test(v);
+        inp.classList.toggle('is-invalid', !ok);
+        hint.classList.toggle('err', !ok);
+        return ok;
+    }
+
+    function openNew() {
+        modal = modal || new bootstrap.Modal(document.getElementById('newSettingModal'));
+        document.getElementById('newSettingKey').value = '';
+        document.getElementById('newSettingCategory').value = 'General';
+        var typeSel = document.getElementById('newSettingDataType');
+        typeSel.value = 'string';
+        renderValueWidget('string', '');
+        document.getElementById('newSettingDescEn').value = '';
+        document.getElementById('newSettingDescAr').value = '';
+
+        // Wire dynamic widgets once per open (cheap; idempotent because we
+        // always rebind to fresh DOM nodes that didn't exist before).
+        typeSel.onchange = function() {
+            // Carry the current value across when feasible (e.g. swap from
+            // string to int and the user already typed "42"). Bool is special
+            // — always reset to "true" so the dropdown has a defined value.
+            var prev = document.getElementById('newSettingValue');
+            var carry = prev ? prev.value : '';
+            renderValueWidget(typeSel.value, typeSel.value === 'bool' ? 'true' : carry);
+        };
+        document.getElementById('newSettingKey').oninput = validateKey;
+
+        modal.show();
+        // Re-render lucide icons inside the modal after Bootstrap shows it.
+        setTimeout(function() { if (window.lucide) lucide.createIcons(); }, 50);
+    }
+    async function saveNew() {
+        if (!validateKey()) {
+            ShubToast('error', '@Html.Raw(Shared["Js_KeyFormatInvalid"].Value)');
+            return;
+        }
+        var keyEl = document.getElementById('newSettingKey');
+        if (!(keyEl.value || '').trim()) { ShubToast('error', '@Html.Raw(Shared["Js_KeyRequired"].Value)'); keyEl.focus(); return; }
+
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', ShubToken());
+        fd.append('Key',           keyEl.value.trim());
+        fd.append('Category',      (document.getElementById('newSettingCategory').value || 'General').trim());
+        fd.append('DataType',      document.getElementById('newSettingDataType').value);
+        fd.append('Value',         document.getElementById('newSettingValue').value);
+        fd.append('DescriptionEn', document.getElementById('newSettingDescEn').value);
+        fd.append('DescriptionAr', document.getElementById('newSettingDescAr').value);
+        try {
+            var r = await fetch('/SettingsHub/UpsertSetting', { method: 'POST', body: fd });
+            var d = await r.json();
+            if (d.success) { ShubToast('success', '@Html.Raw(Shared["Js_Saved"].Value)'); setTimeout(function(){ location.reload(); }, 700); }
+            else ShubToast('error', d.error || '@Html.Raw(Shared["Js_SaveFailed"].Value)');
+        } catch(e) { ShubToast('error', e.message); }
+    }
+    async function save(id) {
+        var v = document.querySelector('[data-setting-value="'+id+'"]').value;
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', ShubToken());
+        fd.append('Id', id);
+        fd.append('Value', v);
+        try {
+            var r = await fetch('/SettingsHub/UpdateSettingValue', { method: 'POST', body: fd });
+            var d = await r.json();
+            if (d.success) ShubToast('success', '@Html.Raw(Shared["Js_Saved"].Value)');
+            else ShubToast('error', d.error || '@Html.Raw(Shared["Js_SaveFailed"].Value)');
+        } catch(e) { ShubToast('error', e.message); }
+    }
+    async function remove(id) {
+        const r0 = await Swal.fire({
+            icon: 'warning',
+            title: '@Html.Raw(Shared["Confirm_DeleteSetting"].Value)',
+            showCancelButton: true,
+            confirmButtonText: '@Html.Raw(Shared["Label_Yes"].Value)', cancelButtonText: '@Html.Raw(Shared["Button_Cancel"].Value)',
+            confirmButtonColor: '#dc2626', cancelButtonColor: '#64748b'
+        });
+        if (!r0.isConfirmed) return;
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', ShubToken());
+        fd.append('id', id);
+        try {
+            var r = await fetch('/SettingsHub/DeleteSetting', { method: 'POST', body: fd });
+            var d = await r.json();
+            if (d.success) { document.getElementById('setting-'+id).remove(); ShubToast('success','@Html.Raw(Shared["Js_Deleted"].Value)'); }
+            else ShubToast('error', d.error);
+        } catch(e) { ShubToast('error', e.message); }
+    }
+    return { openNew: openNew, saveNew: saveNew, save: save, remove: remove };
+})();
+</script>

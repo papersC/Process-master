@@ -1,0 +1,242 @@
+@model ProcessTask
+@inject IStringLocalizer<SharedResource> Shared
+@{
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = isRtl ? "تفاصيل المهمة" : "Task Details";
+    var taskName = isRtl ? (Model.NameAr ?? Model.NameEn) : (Model.NameEn ?? Model.NameAr);
+    var activity = Model.Activity;
+    var process = activity?.Process;
+    var raci = Model.RaciMatrix?.ToList() ?? new List<TaskRaci>();
+}
+
+<div class="esems-container">
+    <!-- Breadcrumb -->
+    @if (process != null)
+    {
+        <nav aria-label="breadcrumb" class="small mb-3">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a asp-controller="Processes" asp-action="Index">@(isRtl ? "العمليات" : "Processes")</a></li>
+                <li class="breadcrumb-item"><a asp-controller="Processes" asp-action="Details" asp-route-id="@process.Id">@(isRtl ? process.NameAr : process.NameEn)</a></li>
+                @if (activity != null)
+                {
+                    <li class="breadcrumb-item"><a asp-controller="Activities" asp-action="Edit" asp-route-id="@activity.Id">@(isRtl ? activity.NameAr : activity.NameEn)</a></li>
+                }
+                <li class="breadcrumb-item active" aria-current="page">@(isRtl ? "المهمة" : "Task")</li>
+            </ol>
+        </nav>
+    }
+
+    <!-- Page Header -->
+    <div class="esems-page-header">
+        <div class="esems-page-header-content">
+            <div class="d-flex align-items-center gap-3 mb-2 flex-wrap">
+                <span class="id-chip">@Model.Code</span>
+                <h1 class="esems-page-title mb-0">@taskName</h1>
+                <span class="badge bg-info text-white">@Model.ChannelType</span>
+                <span class="badge"
+                      style="background:@(Model.ProcedureStatus == ESEMS.Web.Models.Enums.ProcedureStatus.Approved ? "#16a34a" : Model.ProcedureStatus == ESEMS.Web.Models.Enums.ProcedureStatus.Cancelled ? "#dc2626" : Model.ProcedureStatus == ESEMS.Web.Models.Enums.ProcedureStatus.UnderReview ? "#f59e0b" : "#64748b");color:#fff;">
+                    @Model.ProcedureStatus
+                </span>
+                <span class="badge"
+                      style="background:@(Model.AutomationStatus == ESEMS.Web.Models.Enums.AutomationStatus.Automated ? "#005B99" : Model.AutomationStatus == ESEMS.Web.Models.Enums.AutomationStatus.SemiAutomated ? "#0e7490" : "#64748b");color:#fff;">
+                    @Model.AutomationStatus
+                </span>
+            </div>
+        </div>
+        <div class="esems-page-header-actions">
+            <a asp-controller="Processes" asp-action="Details" asp-route-id="@(process?.Id)" class="btn btn-outline-secondary">
+                <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" style="width:16px;height:16px;"></i>
+                @Shared["Button_Back"]
+            </a>
+            <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary">
+                <i data-lucide="edit" style="width:16px;height:16px;"></i>
+                @Shared["Button_Edit"]
+            </a>
+            @if (process != null)
+            {
+                <a asp-controller="Processes" asp-action="Raci" asp-route-id="@process.Id" class="btn btn-outline-secondary">
+                    <i data-lucide="users" style="width:16px;height:16px;"></i>
+                    @(isRtl ? "مصفوفة RACI" : "RACI Matrix")
+                </a>
+            }
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Information -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i data-lucide="info" style="width:18px;height:18px;color:var(--esems-color-primary);"></i>
+                    <span class="esems-card-title">@Shared["Section_Information"]</span>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "النشاط الأم" : "Parent Activity")</label>
+                            <p class="esems-body fw-medium">
+                                @if (activity != null)
+                                {
+                                    <a asp-controller="Activities" asp-action="Edit" asp-route-id="@activity.Id">@(isRtl ? activity.NameAr : activity.NameEn)</a>
+                                    <span class="id-chip ms-1">@activity.Code</span>
+                                }
+                                else { <text>-</text> }
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "العملية" : "Process")</label>
+                            <p class="esems-body fw-medium">
+                                @if (process != null)
+                                {
+                                    <a asp-controller="Processes" asp-action="Details" asp-route-id="@process.Id">@(isRtl ? process.NameAr : process.NameEn)</a>
+                                    <span class="id-chip ms-1">@process.Code</span>
+                                }
+                                else { <text>-</text> }
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "الوحدة المالكة" : "Owning Unit")</label>
+                            <p class="esems-body fw-medium">
+                                @if (Model.OwningUnit != null)
+                                {
+                                    <a asp-controller="OrganizationUnits" asp-action="Details" asp-route-id="@Model.OwningUnit.Id">@(isRtl ? Model.OwningUnit.NameAr : Model.OwningUnit.NameEn)</a>
+                                }
+                                else { <text>-</text> }
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "النظام التقني" : "System")</label>
+                            <p class="esems-body fw-medium">
+                                @if (Model.System != null) { @(isRtl ? Model.System.NameAr : Model.System.NameEn) }
+                                else if (!string.IsNullOrWhiteSpace(Model.DigitalSystemName)) { @Model.DigitalSystemName }
+                                else { <text>-</text> }
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "حالة الإجراء" : "Procedure Status")</label>
+                            <p class="esems-body fw-medium">@Model.ProcedureStatus</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "الأتمتة" : "Automation")</label>
+                            <p class="esems-body fw-medium">@Model.AutomationStatus</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "قابلية الأتمتة" : "Automability")</label>
+                            <p class="esems-body fw-medium">@Model.AutomabilityStatus</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "وضع حالي/مقترح" : "Current / Proposed")</label>
+                            <p class="esems-body fw-medium">@Model.CurrentProposedStatus</p>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(Model.DocumentReference))
+                        {
+                            <div class="col-md-6">
+                                <label class="esems-label">@(isRtl ? "مرجع الوثيقة" : "Document Reference")</label>
+                                <p class="esems-body fw-medium">@Model.DocumentReference</p>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(Model.DocumentLanguage))
+                        {
+                            <div class="col-md-6">
+                                <label class="esems-label">@(isRtl ? "لغة الوثيقة" : "Document Language")</label>
+                                <p class="esems-body fw-medium">@Model.DocumentLanguage</p>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(Model.LinkedServices))
+                        {
+                            <div class="col-12">
+                                <label class="esems-label">@(isRtl ? "الخدمات المرتبطة" : "Linked Services")</label>
+                                <p class="esems-body">@Model.LinkedServices</p>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(Model.Description))
+                        {
+                            <div class="col-12">
+                                <label class="esems-label">@Shared["Label_Description"]</label>
+                                <p class="esems-body">@Model.Description</p>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(Model.Tags))
+                        {
+                            <div class="col-12">
+                                <label class="esems-label">@(isRtl ? "الوسوم" : "Tags")</label>
+                                <p class="esems-body">
+                                    @foreach (var t in Model.GetTagList())
+                                    {
+                                        <span class="badge bg-light text-dark border me-1">@t</span>
+                                    }
+                                </p>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RACI sidecar -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i data-lucide="users" style="width:18px;height:18px;color:var(--esems-color-primary);"></i>
+                    <span class="esems-card-title">@(isRtl ? "تعيينات RACI" : "RACI Assignments")</span>
+                    <span class="badge bg-secondary ms-2">@raci.Count</span>
+                </div>
+                <div class="card-body">
+                    @if (raci.Count > 0)
+                    {
+                        <div class="list-group list-group-flush small">
+                            @foreach (var r in raci.OrderBy(x => x.Role))
+                            {
+                                var letter = r.Role.ToString().Substring(0, 1);
+                                var bg = letter switch { "R" => "#005B99", "A" => "#dc2626", "C" => "#0e7490", "I" => "#64748b", _ => "#94a3b8" };
+                                <div class="list-group-item d-flex align-items-center gap-2 px-0">
+                                    <span class="badge rounded-pill" style="background:@bg;color:#fff;width:28px;font-size:var(--fs-xs);">@letter</span>
+                                    <div class="flex-grow-1">
+                                        <div class="fw-medium">@r.Role</div>
+                                        @if (r.OrganizationUnit != null)
+                                        {
+                                            <a class="small" asp-controller="OrganizationUnits" asp-action="Details" asp-route-id="@r.OrganizationUnit.Id">
+                                                @(isRtl ? r.OrganizationUnit.NameAr : r.OrganizationUnit.NameEn)
+                                            </a>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="esems-body-secondary text-center py-3 mb-2">@(isRtl ? "لم يتم تعيين أدوار RACI لهذه المهمة." : "No RACI roles assigned to this task yet.")</p>
+                    }
+                    @if (process != null)
+                    {
+                        <a asp-controller="Processes" asp-action="Raci" asp-route-id="@process.Id" class="btn btn-sm btn-outline-primary w-100 mt-2">
+                            <i data-lucide="users" style="width:14px;height:14px;"></i>
+                            @(isRtl ? "تحرير مصفوفة RACI" : "Edit RACI Matrix")
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.BpmnDiagram))
+    {
+        <div class="card mt-3">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i data-lucide="git-branch" style="width:18px;height:18px;color:var(--esems-color-primary);"></i>
+                <span class="esems-card-title">@(isRtl ? "مخطط BPMN" : "BPMN Diagram")</span>
+            </div>
+            <div class="card-body">
+                <p class="esems-body-secondary small mb-2">
+                    @(isRtl ? "تحتوي هذه المهمة على مخطط BPMN مخزن." : "This task has a stored BPMN diagram.")
+                    <span class="text-muted">@($"{Model.BpmnDiagram.Length:N0}") chars</span>
+                </p>
+            </div>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">lucide.createIcons();</script>
+}

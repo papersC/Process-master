@@ -1,0 +1,533 @@
+@using ESEMS.Web.Models.Common
+@inject IStringLocalizer<SharedResource> Shared
+@model List<AppSetting>
+@{
+    string Get(string key, string fallback = "") => Model.FirstOrDefault(s => s.Key == key)?.Value ?? fallback;
+    bool GetBool(string key, bool def = false) => Get(key, def ? "true" : "false") == "true";
+    var aiEnabled = GetBool("Ai.Enabled");
+    var relearn = Get("Ai.RelearnFrequencyDays", "7");
+    var vectorEnabled = GetBool("Ai.VectorStoreEnabled", true);
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+
+    // External-system integration settings (Risk + Performance). Stored in AppSettings
+    // alongside the AI keys; read at startup via the IntegrationSettingsBootstrap so
+    // changes apply on next app-pool recycle.
+    var riskProvider     = Get("Integrations.Risk.Provider", "None");
+    var riskBaseUrl      = Get("Integrations.Risk.BaseUrl");
+    var riskDisplayName  = Get("Integrations.Risk.DisplayName");
+    var riskApiKey       = Get("Integrations.Risk.ApiKey");
+    var riskTimeout      = Get("Integrations.Risk.TimeoutSeconds", "8");
+    var riskCache        = Get("Integrations.Risk.CacheSeconds", "60");
+    var riskDeepLink     = Get("Integrations.Risk.DeepLinkBaseUrl");
+
+    var perfProvider     = Get("Integrations.ProcessPerformance.Provider", "None");
+    var perfBaseUrl      = Get("Integrations.ProcessPerformance.BaseUrl");
+    var perfDisplayName  = Get("Integrations.ProcessPerformance.DisplayName");
+    var perfApiKey       = Get("Integrations.ProcessPerformance.ApiKey");
+    var perfTimeout      = Get("Integrations.ProcessPerformance.TimeoutSeconds", "8");
+    var perfCache        = Get("Integrations.ProcessPerformance.CacheSeconds", "60");
+    var perfDeepLink     = Get("Integrations.ProcessPerformance.DeepLinkBaseUrl");
+}
+
+<!-- Nested sub-tabs: AI Assistant | Vector Store | External Risk | External Performance -->
+<ul class="nav nav-pills mb-3">
+    <li class="nav-item">
+        <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#sub-ai" type="button">
+            <i data-lucide="bot" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+            @Shared["SubTab_AiAssistant"]
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="pill" data-bs-target="#sub-vector" type="button">
+            <i data-lucide="database" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+            @Shared["SubTab_VectorStore"]
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="pill" data-bs-target="#sub-risk" type="button">
+            <i data-lucide="shield-alert" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+            @(isRtl ? "نظام المخاطر الخارجي" : "External Risk System")
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="pill" data-bs-target="#sub-perf" type="button">
+            <i data-lucide="gauge" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+            @(isRtl ? "نظام الأداء الخارجي" : "External Performance System")
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <!-- AI ASSISTANT -->
+    <div class="tab-pane fade show active" id="sub-ai" role="tabpanel">
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h6 class="fw-bold mb-0"><i data-lucide="bot" style="width:16px;height:16px;margin-inline-end:6px;"></i>@Shared["Heading_AiAssistant"]</h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">@Shared["Help_AiAssistant"]</p>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="aiEnabled" style="width:3em;height:1.5em;" @(aiEnabled ? "checked" : "") />
+                            <label class="form-check-label fw-semibold ms-2" for="aiEnabled" id="aiEnabledLabel">
+                                @(aiEnabled ? Shared["Text_Enabled"] : Shared["Text_Disabled"])
+                            </label>
+                        </div>
+                        <label class="form-label small fw-semibold">@Shared["Label_AiModel"]</label>
+                        <select class="form-select form-select-sm" id="aiModel">
+                            @{
+                                var model = Get("Ai.Model", "gpt-4o-mini");
+                                var models = new[] { "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "llama-3", "claude-3-haiku" };
+                            }
+                            @foreach (var m in models)
+                            {
+                                if (model == m) { <option value="@m" selected>@m</option> }
+                                else { <option value="@m">@m</option> }
+                            }
+                        </select>
+                        <label class="form-label small fw-semibold mt-3">@Shared["Label_AiApiKey"]</label>
+                        <input type="password" class="form-control form-control-sm" id="aiApiKey" value="@Get("Ai.ApiKey")" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h6 class="fw-bold mb-0"><i data-lucide="refresh-cw" style="width:16px;height:16px;margin-inline-end:6px;"></i>@Shared["Heading_AiRelearn"]</h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">@Shared["Help_AiRelearn"]</p>
+                        <label class="form-label small fw-semibold">@Shared["Label_RelearnFrequency"]</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" class="form-control" id="aiRelearnDays" value="@relearn" min="1" max="90" />
+                            <span class="input-group-text">@Shared["Text_Days"]</span>
+                        </div>
+                        <div class="mt-3 small text-muted">
+                            <strong>@Shared["Label_LastRun"]:</strong>
+                            <span id="aiLastRun">@Get("Ai.LastRun", "—")</span>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary mt-3" onclick="Integrations.triggerRelearn()">
+                            <i data-lucide="play" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                            @Shared["Button_TriggerRelearn"]
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-3">
+            <button type="button" class="btn btn-sm btn-primary" onclick="Integrations.saveAi()">
+                <i data-lucide="save" style="width:14px;height:14px;margin-inline-end:4px;"></i>@Shared["Button_SaveChanges"]
+            </button>
+        </div>
+    </div>
+
+    <!-- VECTOR STORE -->
+    <div class="tab-pane fade" id="sub-vector" role="tabpanel">
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h6 class="fw-bold mb-0"><i data-lucide="database" style="width:16px;height:16px;margin-inline-end:6px;"></i>@Shared["Heading_VectorStore"]</h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">@Shared["Help_VectorStore"]</p>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="vectorEnabled" style="width:3em;height:1.5em;" @(vectorEnabled ? "checked" : "") />
+                            <label class="form-check-label fw-semibold ms-2" for="vectorEnabled">
+                                @(vectorEnabled ? Shared["Text_Enabled"] : Shared["Text_Disabled"])
+                            </label>
+                        </div>
+                        <label class="form-label small fw-semibold">@Shared["Label_VectorProvider"]</label>
+                        <select class="form-select form-select-sm" id="vectorProvider">
+                            @{
+                                var vp = Get("Ai.VectorProvider", "local");
+                                var providers = new[] { ("local", isRtl ? "محلي (في الذاكرة)" : "Local (in-memory)"), ("qdrant", "Qdrant"), ("pinecone", "Pinecone"), ("azure-ai-search", "Azure AI Search") };
+                            }
+                            @foreach (var p in providers)
+                            {
+                                if (vp == p.Item1) { <option value="@p.Item1" selected>@p.Item2</option> }
+                                else { <option value="@p.Item1">@p.Item2</option> }
+                            }
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h6 class="fw-bold mb-0"><i data-lucide="activity" style="width:16px;height:16px;margin-inline-end:6px;"></i>@Shared["Heading_VectorStoreHealth"]</h6>
+                    </div>
+                    <div class="card-body small text-muted">
+                        <div class="d-flex justify-content-between py-1 border-bottom"><span>@Shared["Label_TotalDocuments"]</span><strong>@(ViewBag.VectorDocCount ?? 0)</strong></div>
+                        <div class="d-flex justify-content-between py-1 border-bottom"><span>@Shared["Label_LastSync"]</span><strong>@Get("Ai.LastRun", "—")</strong></div>
+                        <div class="d-flex justify-content-between py-1"><span>@Shared["Label_SyncBackgroundService"]</span><span class="badge bg-success">@(isRtl ? "قيد التشغيل" : "Running")</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="mt-3">
+            <button type="button" class="btn btn-sm btn-primary" onclick="Integrations.saveVector()">
+                <i data-lucide="save" style="width:14px;height:14px;margin-inline-end:4px;"></i>@Shared["Button_SaveChanges"]
+            </button>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════
+         EXTERNAL RISK SYSTEM
+         Persists to AppSettings under keys "Integrations.Risk.*". Picked up
+         by IntegrationSettingsBootstrap on next app-pool recycle.
+         ════════════════════════════════════════════════════════════════ -->
+    <div class="tab-pane fade" id="sub-risk" role="tabpanel">
+        <div class="alert alert-info py-2 mb-3 d-flex align-items-center gap-2" role="alert" style="font-size: var(--fs-sm);">
+            <i data-lucide="info" style="width:16px;height:16px;flex-shrink:0;"></i>
+            <span>@(isRtl ? Html.Raw("يُطبَّق الحفظ عند <strong>إعادة تدوير مجمع التطبيقات التالية</strong>. يعمل التكامل كخدمة فردية؛ لا تسري التغييرات أثناء التشغيل.") : Html.Raw("Saving applies on the <strong>next app-pool recycle</strong>. The integration runs as a singleton; changes don't take effect mid-flight."))</span>
+        </div>
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h6 class="fw-bold mb-0"><i data-lucide="plug" style="width:16px;height:16px;margin-inline-end:6px;"></i>@(isRtl ? "الاتصال" : "Connection")</h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">@(isRtl ? "نقطة نهاية REST لنظام المخاطر الخارجي. اترك المزوّد على \"None\" للتعطيل؛ أو اضبطه على \"Http\" مع عنوان URL الأساسي لتفعيل لوحات المخاطر المرتبطة في العمليات والخدمات والتحسينات والأصول." : "REST endpoint of the external risk system. Leave Provider as \"None\" to disable; set to \"Http\" + Base URL to activate the linked-risks panels across Processes, Services, Improvements, Assets.")</p>
+                        <label class="form-label small fw-semibold d-flex align-items-center gap-1">
+                            @(isRtl ? "المزوّد" : "Provider")
+                            <i class="ig-help" data-lucide="help-circle" data-bs-toggle="tooltip" data-bs-html="true" data-bs-title="@(isRtl ? "كيفية اتصال ESEMS بنظام المخاطر الخارجي.<br><b>None</b> يُخفي لوحات المخاطر المرتبطة.<br><b>Http</b> يُفعّل عميل REST العام ويستخدم عنوان URL الأساسي أدناه." : "How ESEMS talks to the external risk system.<br><b>None</b> hides the linked-risks panels.<br><b>Http</b> activates the generic REST client and uses the Base URL below.")"></i>
+                        </label>
+                        <select class="form-select form-select-sm mb-3" id="riskProvider" data-bs-toggle="tooltip" data-bs-title="@(isRtl ? "None يُعطّل اللوحات؛ Http يُفعّل التكامل." : "None disables the panels; Http activates the integration.")">
+                            <option value="None"  selected="@(riskProvider == "None")">@(isRtl ? "None (معطّل)" : "None (disabled)")</option>
+                            <option value="Http"  selected="@(riskProvider == "Http")">@(isRtl ? "Http (REST عام)" : "Http (generic REST)")</option>
+                        </select>
+                        <label class="form-label small fw-semibold d-flex align-items-center gap-1">
+                            @(isRtl ? "عنوان URL الأساسي" : "Base URL") <span class="text-muted fw-normal">@(isRtl ? "(نقطة نهاية API)" : "(API endpoint)")</span>
+                            <i class="ig-help" data-lucide="help-circle" data-bs-toggle="tooltip" data-bs-html="true" data-bs-title="@(isRtl ? "عنوان URL الجذر لواجهة API المخاطر الخارجية.<br>مثال: <code>https://risk.example.com/api/</code><br>تُضاف الشرطة المائلة الأخيرة إن لم تكن موجودة. سيُرسل ESEMS طلب GET إلى <code>{BaseUrl}/risks/by-entity?type=...&amp;id=...</code>" : "Root URL of the external risk API.<br>Example: <code>https://risk.example.com/api/</code><br>Trailing slash is added if missing. ESEMS will GET <code>{BaseUrl}/risks/by-entity?type=...&amp;id=...</code>")"></i>
+                        </label>
+                        <input type="url" class="form-control form-control-sm mb-3" id="riskBaseUrl" value="@riskBaseUrl" placeholder="https://risk.example.com/api/" data-bs-toggle="tooltip" data-bs-title="@(isRtl ? "عنوان URL الجذر لواجهة API المخاطر الخارجية. تُضاف الشرطة المائلة الأخيرة إن لم تكن موجودة." : "Root URL of the external risk API. Trailing slash is added if missing.")" />
+                        <label class="form-label small fw-semibold d-flex align-items-center gap-1">
+                            @(isRtl ? "الاسم المعروض" : "Display Name") <span class="text-muted fw-normal">@(isRtl ? "(يظهر في لوحات الواجهة)" : "(shown in UI panels)")</span>
+                            <i class="ig-help" data-lucide="help-circle" data-bs-toggle="tooltip" data-bs-html="true" data-bs-title="@(isRtl ? "تسمية وصفية تظهر بجانب رأس لوحة المخاطر المرتبطة في كل صفحة تفاصيل.<br>القيمة الافتراضية 'External Risk System' عند تركه فارغاً." : "Friendly label shown next to the linked-risks panel header on every Detail page.<br>Defaults to 'External Risk System' when blank.")"></i>
+                        </label>
+                        <input type="text" class="form-control form-control-sm mb-3" id="riskDisplayName" value="@riskDisplayName" placeholder="@(isRtl ? "مثال: Acme Risk Manager" : "e.g. Acme Risk Manager")" data-bs-toggle="tooltip" data-bs-title="@(isRtl ? "تظهر بجانب رأس اللوحة في كل صفحة تفاصيل." : "Shown next to the panel header in every Detail page.")" />
+                        <label class="form-label small fw-semibold d-flex align-items-center gap-1">
+                            @(isRtl ? "مفتاح API" : "API Key") <span class="text-muted fw-normal">@(isRtl ? "(يُرسَل في ترويسة X-Api-Key)" : "(sent as X-Api-Key header)")</span>
+                            <i class="ig-help" data-lucide="help-circle" data-bs-toggle="tooltip" data-bs-html="true" data-bs-title="@(isRtl ? "يُرسَل في ترويسة <code>X-Api-Key</code> مع كل طلب.<br>اتركه فارغاً إذا كان النظام الخارجي يستخدم قائمة عناوين IP المسموح بها أو بدون مصادقة.<br>يُخزَّن مشفّراً في جدول AppSettings." : "Sent as the <code>X-Api-Key</code> header on every request.<br>Leave blank if the external system uses IP allow-listing or no auth.<br>Stored encrypted in the AppSettings table.")"></i>
+                        </label>
+                        <input type="password" class="form-control form-control-sm" id="riskApiKey" value="@riskApiKey" autocomplete="off" data-bs-toggle="tooltip" data-bs-title="@(isRtl ? "يُرسَل في ترويسة X-Api-Key. اتركه فارغاً لعدم استخدام مصادقة." : "Sent as X-Api-Key header. Leave blank for no auth.")" />
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h6 class="fw-bold mb-0"><i data-lucide="settings-2" style="width:16px;height:16px;margin-inline-end:6px;"></i>@(isRtl ? "السلوك" : "Behaviour")</h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">@(isRtl ? "إعدادات الضبط الدقيق. القيم الافتراضية مناسبة لمعظم عمليات النشر؛ غيّرها فقط إذا كان النظام الخارجي بطيئاً أو كنت بحاجة إلى بيانات أحدث." : "Tuning knobs. Defaults work for most deployments; only change if the external system is slow or you need fresher data.")</p>
+                        <label class="form-label small fw-semibold d-flex align-items-center gap-1">
+                            @(isRtl ? "المهلة" : "Timeout")
+                            <i class="ig-help" data-lucide="help-circle" data-bs-toggle="tooltip" data-bs-html="true" data-bs-title="@(isRtl ? "مهلة HTTP لكل طلب. يتوقف عرض الصفحة على هذا — اجعلها قصيرة.<br>الافتراضي: <b>8 ثوانٍ</b>. الحد الأقصى: 60 ثانية.<br>إذا كان النظام الخارجي بطيئاً، تُعرَض اللوحة فارغة بدلاً من تعليق الصفحة." : "Per-call HTTP timeout. Page renders block on this — keep it short.<br>Default: <b>8 seconds</b>. Max: 60 seconds.<br>If the external system is slow, the panel renders empty rather than stalling the page.")"></i>
+                        </label>
+                        <div class="input-group input-group-sm mb-3">
+                            <input type="number" class="form-control" id="riskTimeout" value="@riskTimeout" min="1" max="60" data-bs-toggle="tooltip" data-bs-title="@(isRtl ? "مهلة HTTP لكل طلب. الافتراضي 8 ثوانٍ، الحد الأقصى 60 ثانية." : "Per-call HTTP timeout. Default 8s, max 60s.")" />
+                            <span class="input-group-text">@(isRtl ? "ثانية" : "seconds")</span>
+                        </div>
+                        <label class="form-label small fw-semibold d-flex align-items-center gap-1">
+                            @(isRtl ? "مدة بقاء التخزين المؤقت" : "Cache TTL")
+                            <i class="ig-help" data-lucide="help-circle" data-bs-toggle="tooltip" data-bs-html="true" data-bs-title="@(isRtl ? "المدة التي يخزّن فيها ESEMS استجابة ناجحة لكل زوج (نوع الكيان، معرّف الكيان).<br>الافتراضي: <b>60 ثانية</b>.<br>اضبطها على <b>0</b> لتعطيل التخزين المؤقت — كل عرض للصفحة يستدعي واجهة API الخارجية. مفيد فقط لتصحيح الأخطاء." : "How long ESEMS caches a successful response per (entity-type, entity-id) pair.<br>Default: <b>60 seconds</b>.<br>Set to <b>0</b> to disable caching — every page render hits the external API. Useful only for debugging.")"></i>
+                        </label>
+                        <div class="input-group input-group-sm mb-3">
+                            <input type="number" class="form-control" id="riskCache" value="@riskCache" min="0" max="3600" data-bs-toggle="tooltip" data-bs-title="@(isRtl ? "مدة بقاء التخزين المؤقت لكل كيان. القيمة 0 تُعطّل التخزين المؤقت." : "Cache TTL per entity. 0 disables caching.")" />
+                            <span class="input-group-text">@(isRtl ? "ثانية" : "seconds")</span>
+                        </div>
+                        <label class="form-label small fw-semibold d-flex align-items-center gap-1">
+                            @(isRtl ? "عنوان URL الأساسي للرابط المباشر" : "Deep-Link Base URL") <span class="text-muted fw-normal">@(isRtl ? "(عنوان URL للواجهة، اختياري)" : "(UI URL, optional)")</span>
+                            <i class="ig-help" data-lucide="help-circle" data-bs-toggle="tooltip" data-bs-html="true" data-bs-title="@(isRtl ? "عنوان URL الجذر <b>لواجهة</b> نظام المخاطر الخارجي (وليس واجهة API).<br>عند ضبطه، يضيف ESEMS روابط 'فتح في المصدر' بجانب كل خطر مرتبط لينتقل المستخدمون إلى السجل المصدر.<br>اتركه فارغاً لإخفاء الروابط المباشرة.<br>مثال: <code>https://risk.example.com/</code>" : "Root URL of the external risk system's <b>UI</b> (not the API).<br>When set, ESEMS adds 'Open in source' links next to each linked risk so users can jump to the source record.<br>Leave blank to suppress deep links.<br>Example: <code>https://risk.example.com/</code>")"></i>
+                        </label>
+                        <input type="url" class="form-control form-control-sm mb-3" id="riskDeepLink" value="@riskDeepLink" placeholder="https://risk.example.com/" data-bs-toggle="tooltip" data-bs-title="@(isRtl ? "عنوان URL لواجهة نظام المخاطر. يُستخدَم لروابط 'فتح في المصدر'. اتركه فارغاً للإخفاء." : "UI URL of the risk system. Used for 'Open in source' links. Leave blank to suppress.")" />
+                        <div class="d-flex gap-2 mt-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="Integrations.testRisk()" data-bs-toggle="tooltip" data-bs-title="@(isRtl ? "يفحص {Base URL}/health باستخدام ترويسة X-Api-Key دون حفظ. مفيد قبل الحفظ الكامل وإعادة التدوير." : "Probes {Base URL}/health with the X-Api-Key header without saving. Useful before a full save + recycle.")">
+                                <i data-lucide="check-circle-2" style="width:14px;height:14px;margin-inline-end:4px;"></i>@(isRtl ? "اختبار الاتصال" : "Test Connection")
+                            </button>
+                            <span id="riskTestResult" class="small align-self-center"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="mt-3">
+            <button type="button" class="btn btn-sm btn-primary" onclick="Integrations.saveRisk()">
+                <i data-lucide="save" style="width:14px;height:14px;margin-inline-end:4px;"></i>@Shared["Button_SaveChanges"]
+            </button>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════
+         EXTERNAL PERFORMANCE SYSTEM
+         Persists to AppSettings under keys "Integrations.ProcessPerformance.*".
+         ════════════════════════════════════════════════════════════════ -->
+    <div class="tab-pane fade" id="sub-perf" role="tabpanel">
+        <div class="alert alert-info py-2 mb-3 d-flex align-items-center gap-2" role="alert" style="font-size: var(--fs-sm);">
+            <i data-lucide="info" style="width:16px;height:16px;flex-shrink:0;"></i>
+            <span>@(isRtl ? Html.Raw("يُطبَّق الحفظ عند <strong>إعادة تدوير مجمع التطبيقات التالية</strong>.") : Html.Raw("Saving applies on the <strong>next app-pool recycle</strong>."))</span>
+        </div>
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h6 class="fw-bold mb-0"><i data-lucide="plug" style="width:16px;height:16px;margin-inline-end:6px;"></i>@(isRtl ? "الاتصال" : "Connection")</h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">@(isRtl ? "نقطة نهاية REST لنظام أداء العمليات الخارجي. اضبطه على \"Http\" مع عنوان URL الأساسي لتفعيل لوحات مؤشرات الأداء المرتبطة." : "REST endpoint of the external process-performance system. Set to \"Http\" + Base URL to activate the linked-KPIs panels.")</p>
+                        <label class="form-label small fw-semibold d-flex align-items-center gap-1">
+                            @(isRtl ? "المزوّد" : "Provider")
+                            <i class="ig-help" data-lucide="help-circle" data-bs-toggle="tooltip" data-bs-html="true" data-bs-title="@(isRtl ? "كيفية اتصال ESEMS بنظام الأداء الخارجي.<br><b>None</b> يُخفي لوحات مؤشرات الأداء المرتبطة.<br><b>Http</b> يُفعّل عميل REST العام ويستخدم عنوان URL الأساسي أدناه." : "How ESEMS talks to the external performance system.<br><b>None</b> hides the linked-KPIs panels.<br><b>Http</b> activates the generic REST client and uses the Base URL below.")"></i>
+                        </label>
+                        <select class="form-select form-select-sm mb-3" id="perfProvider" data-bs-toggle="tooltip" data-bs-title="@(isRtl ? "None يُعطّل اللوحات؛ Http يُفعّل التكامل." : "None disables the panels; Http activates the integration.")">
+                            <option value="None"  selected="@(perfProvider == "None")">@(isRtl ? "None (معطّل)" : "None (disabled)")</option>
+                            <option value="Http"  selected="@(perfProvider == "Http")">@(isRtl ? "Http (REST عام)" : "Http (generic REST)")</option>
+                        </select>
+                        <label class="form-label small fw-semibold d-flex align-items-center gap-1">
+                            @(isRtl ? "عنوان URL الأساسي" : "Base URL")
+                            <i class="ig-help" data-lucide="help-circle" data-bs-toggle="tooltip" data-bs-html="true" data-bs-title="@(isRtl ? "عنوان URL الجذر لواجهة API الأداء الخارجية.<br>مثال: <code>https://performance.example.com/api/</code><br>سيُرسل ESEMS طلب GET إلى <code>{BaseUrl}/kpis/by-entity?type=...&amp;id=...</code>" : "Root URL of the external performance API.<br>Example: <code>https://performance.example.com/api/</code><br>ESEMS will GET <code>{BaseUrl}/kpis/by-entity?type=...&amp;id=...</code>")"></i>
+                        </label>
+                        <input type="url" class="form-control form-control-sm mb-3" id="perfBaseUrl" value="@perfBaseUrl" placeholder="https://performance.example.com/api/" data-bs-toggle="tooltip" data-bs-title="@(isRtl ? "عنوان URL الجذر لواجهة API الأداء الخارجية. تُضاف الشرطة المائلة الأخيرة إن لم تكن موجودة." : "Root URL of the external performance API. Trailing slash is added if missing.")" />
+                        <label class="form-label small fw-semibold d-flex align-items-center gap-1">
+                            @(isRtl ? "الاسم المعروض" : "Display Name")
+                            <i class="ig-help" data-lucide="help-circle" data-bs-toggle="tooltip" data-bs-html="true" data-bs-title="@(isRtl ? "تسمية وصفية تظهر بجانب رأس لوحة مؤشرات الأداء المرتبطة.<br>القيمة الافتراضية 'External Performance System' عند تركه فارغاً." : "Friendly label shown next to the linked-KPIs panel header.<br>Defaults to 'External Performance System' when blank.")"></i>
+                        </label>
+                        <input type="text" class="form-control form-control-sm mb-3" id="perfDisplayName" value="@perfDisplayName" placeholder="@(isRtl ? "مثال: Acme Performance Manager" : "e.g. Acme Performance Manager")" data-bs-toggle="tooltip" data-bs-title="@(isRtl ? "تظهر بجانب رأس اللوحة في كل صفحة تفاصيل." : "Shown next to the panel header in every Detail page.")" />
+                        <label class="form-label small fw-semibold d-flex align-items-center gap-1">
+                            @(isRtl ? "مفتاح API" : "API Key")
+                            <i class="ig-help" data-lucide="help-circle" data-bs-toggle="tooltip" data-bs-html="true" data-bs-title="@(isRtl ? "يُرسَل في ترويسة <code>X-Api-Key</code> مع كل طلب.<br>اتركه فارغاً إذا كان النظام الخارجي يستخدم قائمة عناوين IP المسموح بها أو بدون مصادقة." : "Sent as the <code>X-Api-Key</code> header on every request.<br>Leave blank if the external system uses IP allow-listing or no auth.")"></i>
+                        </label>
+                        <input type="password" class="form-control form-control-sm" id="perfApiKey" value="@perfApiKey" autocomplete="off" data-bs-toggle="tooltip" data-bs-title="@(isRtl ? "يُرسَل في ترويسة X-Api-Key. اتركه فارغاً لعدم استخدام مصادقة." : "Sent as X-Api-Key header. Leave blank for no auth.")" />
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h6 class="fw-bold mb-0"><i data-lucide="settings-2" style="width:16px;height:16px;margin-inline-end:6px;"></i>@(isRtl ? "السلوك" : "Behaviour")</h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">@(isRtl ? "نفس إعدادات الضبط الدقيق الخاصة بتكامل المخاطر." : "Same tuning knobs as the risk integration.")</p>
+                        <label class="form-label small fw-semibold d-flex align-items-center gap-1">
+                            @(isRtl ? "المهلة" : "Timeout")
+                            <i class="ig-help" data-lucide="help-circle" data-bs-toggle="tooltip" data-bs-html="true" data-bs-title="@(isRtl ? "مهلة HTTP لكل طلب. يتوقف عرض الصفحة على هذا — اجعلها قصيرة.<br>الافتراضي: <b>8 ثوانٍ</b>. الحد الأقصى: 60 ثانية." : "Per-call HTTP timeout. Page renders block on this — keep it short.<br>Default: <b>8 seconds</b>. Max: 60 seconds.")"></i>
+                        </label>
+                        <div class="input-group input-group-sm mb-3">
+                            <input type="number" class="form-control" id="perfTimeout" value="@perfTimeout" min="1" max="60" data-bs-toggle="tooltip" data-bs-title="@(isRtl ? "مهلة HTTP لكل طلب. الافتراضي 8 ثوانٍ، الحد الأقصى 60 ثانية." : "Per-call HTTP timeout. Default 8s, max 60s.")" />
+                            <span class="input-group-text">@(isRtl ? "ثانية" : "seconds")</span>
+                        </div>
+                        <label class="form-label small fw-semibold d-flex align-items-center gap-1">
+                            @(isRtl ? "مدة بقاء التخزين المؤقت" : "Cache TTL")
+                            <i class="ig-help" data-lucide="help-circle" data-bs-toggle="tooltip" data-bs-html="true" data-bs-title="@(isRtl ? "المدة التي يخزّن فيها ESEMS استجابة ناجحة لكل زوج (نوع الكيان، معرّف الكيان).<br>الافتراضي: <b>60 ثانية</b>.<br>اضبطها على <b>0</b> لتعطيل التخزين المؤقت — مفيد فقط لتصحيح الأخطاء." : "How long ESEMS caches a successful response per (entity-type, entity-id) pair.<br>Default: <b>60 seconds</b>.<br>Set to <b>0</b> to disable caching — useful only for debugging.")"></i>
+                        </label>
+                        <div class="input-group input-group-sm mb-3">
+                            <input type="number" class="form-control" id="perfCache" value="@perfCache" min="0" max="3600" data-bs-toggle="tooltip" data-bs-title="@(isRtl ? "مدة بقاء التخزين المؤقت لكل كيان. القيمة 0 تُعطّل التخزين المؤقت." : "Cache TTL per entity. 0 disables caching.")" />
+                            <span class="input-group-text">@(isRtl ? "ثانية" : "seconds")</span>
+                        </div>
+                        <label class="form-label small fw-semibold d-flex align-items-center gap-1">
+                            @(isRtl ? "عنوان URL الأساسي للرابط المباشر" : "Deep-Link Base URL")
+                            <i class="ig-help" data-lucide="help-circle" data-bs-toggle="tooltip" data-bs-html="true" data-bs-title="@(isRtl ? "عنوان URL الجذر <b>لواجهة</b> نظام الأداء الخارجي (وليس واجهة API).<br>عند ضبطه، يضيف ESEMS روابط 'فتح في المصدر' بجانب كل مؤشر أداء مرتبط.<br>اتركه فارغاً لإخفاء الروابط المباشرة." : "Root URL of the external performance system's <b>UI</b> (not the API).<br>When set, ESEMS adds 'Open in source' links next to each linked KPI.<br>Leave blank to suppress deep links.")"></i>
+                        </label>
+                        <input type="url" class="form-control form-control-sm mb-3" id="perfDeepLink" value="@perfDeepLink" placeholder="https://performance.example.com/" data-bs-toggle="tooltip" data-bs-title="@(isRtl ? "عنوان URL لواجهة نظام الأداء. يُستخدَم لروابط 'فتح في المصدر'. اتركه فارغاً للإخفاء." : "UI URL of the performance system. Used for 'Open in source' links. Leave blank to suppress.")" />
+                        <div class="d-flex gap-2 mt-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="Integrations.testPerf()" data-bs-toggle="tooltip" data-bs-title="@(isRtl ? "يفحص {Base URL}/health باستخدام ترويسة X-Api-Key دون حفظ." : "Probes {Base URL}/health with the X-Api-Key header without saving.")">
+                                <i data-lucide="check-circle-2" style="width:14px;height:14px;margin-inline-end:4px;"></i>@(isRtl ? "اختبار الاتصال" : "Test Connection")
+                            </button>
+                            <span id="perfTestResult" class="small align-self-center"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="mt-3">
+            <button type="button" class="btn btn-sm btn-primary" onclick="Integrations.savePerf()">
+                <i data-lucide="save" style="width:14px;height:14px;margin-inline-end:4px;"></i>@Shared["Button_SaveChanges"]
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Help-circle icon next to each Integrations field label.
+       Sized large enough to be a comfortable click target on touch devices. */
+    .ig-help { width: 14px; height: 14px; color: #94a3b8; cursor: help; flex-shrink: 0; }
+    .ig-help:hover { color: #005B99; }
+    /* Override Bootstrap's default tiny tooltip — make the body readable
+       (larger font, more line-height, generous max-width). */
+    .tooltip { --bs-tooltip-max-width: 340px; --bs-tooltip-font-size: var(--fs-sm); }
+    .tooltip .tooltip-inner {
+        text-align: start;
+        line-height: 1.5;
+        padding: .55rem .8rem;
+        background: #0f172a;
+        color: #f8fafc;
+        border-radius: .375rem;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, .25);
+    }
+    .tooltip .tooltip-inner code {
+        background: rgba(255, 255, 255, .12);
+        padding: .05rem .35rem;
+        border-radius: .2rem;
+        color: #e2e8f0;
+        font-size: .9em;
+    }
+    .tooltip .tooltip-inner b { color: #fde68a; }
+</style>
+
+<script nonce="@Context.CspNonce()">
+window.Integrations = (function() {
+    async function postKV(entries) {
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', ShubToken());
+        entries.forEach(function(e) { fd.append('Keys', e.k); fd.append('Values', e.v); });
+        var r = await fetch('/SettingsHub/SaveBulkSettings', { method: 'POST', body: fd });
+        return await r.json();
+    }
+    async function saveAi() {
+        var entries = [
+            { k: 'Ai.Enabled', v: document.getElementById('aiEnabled').checked },
+            { k: 'Ai.Model', v: document.getElementById('aiModel').value },
+            { k: 'Ai.ApiKey', v: document.getElementById('aiApiKey').value },
+            { k: 'Ai.RelearnFrequencyDays', v: document.getElementById('aiRelearnDays').value }
+        ];
+        var d = await postKV(entries);
+        if (d.success) ShubToast('success', '@Html.Raw(Shared["Toast_SavedSuccess"].Value)');
+        else ShubToast('error', d.error);
+    }
+    async function saveVector() {
+        var entries = [
+            { k: 'Ai.VectorStoreEnabled', v: document.getElementById('vectorEnabled').checked },
+            { k: 'Ai.VectorProvider', v: document.getElementById('vectorProvider').value }
+        ];
+        var d = await postKV(entries);
+        if (d.success) ShubToast('success', '@Html.Raw(Shared["Toast_SavedSuccess"].Value)');
+        else ShubToast('error', d.error);
+    }
+    async function triggerRelearn() {
+        ShubToast('info', '@Html.Raw(Shared["Toast_RelearnQueued"].Value)');
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', ShubToken());
+        try { await fetch('/SettingsHub/TriggerRelearn', { method: 'POST', body: fd }); } catch(e) {}
+    }
+
+    // ── External Risk System ──────────────────────────────────────────────
+    async function saveRisk() {
+        var entries = [
+            { k: 'Integrations.Risk.Provider',         v: document.getElementById('riskProvider').value },
+            { k: 'Integrations.Risk.BaseUrl',          v: document.getElementById('riskBaseUrl').value.trim() },
+            { k: 'Integrations.Risk.DisplayName',      v: document.getElementById('riskDisplayName').value.trim() },
+            { k: 'Integrations.Risk.ApiKey',           v: document.getElementById('riskApiKey').value },
+            { k: 'Integrations.Risk.TimeoutSeconds',   v: document.getElementById('riskTimeout').value },
+            { k: 'Integrations.Risk.CacheSeconds',     v: document.getElementById('riskCache').value },
+            { k: 'Integrations.Risk.DeepLinkBaseUrl',  v: document.getElementById('riskDeepLink').value.trim() }
+        ];
+        var d = await postKV(entries);
+        if (d.success) ShubToast('success', '@Html.Raw(Shared["Toast_SavedSuccess"].Value)' + '@(isRtl ? " — أعد تدوير مجمع التطبيقات للتطبيق." : " — recycle the app pool to apply.")');
+        else ShubToast('error', d.error);
+    }
+    async function testRisk() {
+        var out = document.getElementById('riskTestResult');
+        out.textContent = '@(isRtl ? "جارٍ الفحص…" : "Probing…")'; out.style.color = '#6b7280';
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', ShubToken());
+        fd.append('Kind', 'Risk');
+        fd.append('BaseUrl', document.getElementById('riskBaseUrl').value.trim());
+        fd.append('ApiKey',  document.getElementById('riskApiKey').value);
+        fd.append('TimeoutSeconds', document.getElementById('riskTimeout').value);
+        try {
+            var r = await fetch('/SettingsHub/TestIntegrationConnection', { method: 'POST', body: fd });
+            var d = await r.json();
+            if (d.success) { out.textContent = '@(isRtl ? "✓ يمكن الوصول (" : "✓ Reachable (")' + d.statusCode + ')'; out.style.color = '#15803d'; }
+            else           { out.textContent = '✗ ' + (d.error || '@(isRtl ? "تعذّر الوصول" : "unreachable")'); out.style.color = '#b91c1c'; }
+        } catch (e) {
+            out.textContent = '✗ ' + e.message; out.style.color = '#b91c1c';
+        }
+    }
+
+    // ── External Performance System ───────────────────────────────────────
+    async function savePerf() {
+        var entries = [
+            { k: 'Integrations.ProcessPerformance.Provider',         v: document.getElementById('perfProvider').value },
+            { k: 'Integrations.ProcessPerformance.BaseUrl',          v: document.getElementById('perfBaseUrl').value.trim() },
+            { k: 'Integrations.ProcessPerformance.DisplayName',      v: document.getElementById('perfDisplayName').value.trim() },
+            { k: 'Integrations.ProcessPerformance.ApiKey',           v: document.getElementById('perfApiKey').value },
+            { k: 'Integrations.ProcessPerformance.TimeoutSeconds',   v: document.getElementById('perfTimeout').value },
+            { k: 'Integrations.ProcessPerformance.CacheSeconds',     v: document.getElementById('perfCache').value },
+            { k: 'Integrations.ProcessPerformance.DeepLinkBaseUrl',  v: document.getElementById('perfDeepLink').value.trim() }
+        ];
+        var d = await postKV(entries);
+        if (d.success) ShubToast('success', '@Html.Raw(Shared["Toast_SavedSuccess"].Value)' + '@(isRtl ? " — أعد تدوير مجمع التطبيقات للتطبيق." : " — recycle the app pool to apply.")');
+        else ShubToast('error', d.error);
+    }
+    async function testPerf() {
+        var out = document.getElementById('perfTestResult');
+        out.textContent = '@(isRtl ? "جارٍ الفحص…" : "Probing…")'; out.style.color = '#6b7280';
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', ShubToken());
+        fd.append('Kind', 'Performance');
+        fd.append('BaseUrl', document.getElementById('perfBaseUrl').value.trim());
+        fd.append('ApiKey',  document.getElementById('perfApiKey').value);
+        fd.append('TimeoutSeconds', document.getElementById('perfTimeout').value);
+        try {
+            var r = await fetch('/SettingsHub/TestIntegrationConnection', { method: 'POST', body: fd });
+            var d = await r.json();
+            if (d.success) { out.textContent = '@(isRtl ? "✓ يمكن الوصول (" : "✓ Reachable (")' + d.statusCode + ')'; out.style.color = '#15803d'; }
+            else           { out.textContent = '✗ ' + (d.error || '@(isRtl ? "تعذّر الوصول" : "unreachable")'); out.style.color = '#b91c1c'; }
+        } catch (e) {
+            out.textContent = '✗ ' + e.message; out.style.color = '#b91c1c';
+        }
+    }
+
+    // ── Bootstrap tooltip init for the help-circle icons + form fields ────
+    // The Integrations tab is rendered inside a Bootstrap tab-pane, so the
+    // tooltips have to be (re-)initialised both on initial render AND whenever
+    // a sub-tab becomes shown — hover-tooltips on hidden elements need new
+    // bounding rects calculated. lucide.createIcons() runs first so the help
+    // icons exist before we attach.
+    function initTooltips(root) {
+        if (!root || typeof bootstrap === 'undefined') return;
+        root.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {
+            // Avoid double-init — Bootstrap stores its instance on the element.
+            var existing = bootstrap.Tooltip.getInstance(el);
+            if (existing) return;
+            new bootstrap.Tooltip(el, { container: 'body', delay: { show: 250, hide: 100 } });
+        });
+    }
+    function setupIntegrationTooltips() {
+        if (window.lucide) lucide.createIcons();
+        var integrationsRoot = document.getElementById('tab-integrations');
+        initTooltips(integrationsRoot || document.body);
+        // Re-init when the user clicks one of the four sub-tabs — Bootstrap
+        // fires `shown.bs.tab` on the BUTTON (data-bs-toggle="pill"), and the
+        // freshly-shown pane is the one in data-bs-target.
+        if (integrationsRoot) {
+            integrationsRoot.querySelectorAll('[data-bs-toggle="pill"]').forEach(function(b) {
+                b.addEventListener('shown.bs.tab', function(e) {
+                    var paneSel = e.target.getAttribute('data-bs-target');
+                    if (!paneSel) return;
+                    var pane = document.querySelector(paneSel);
+                    if (window.lucide) lucide.createIcons();
+                    initTooltips(pane);
+                });
+            });
+        }
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupIntegrationTooltips);
+    } else {
+        setupIntegrationTooltips();
+    }
+
+    return {
+        saveAi: saveAi, saveVector: saveVector, triggerRelearn: triggerRelearn,
+        saveRisk: saveRisk, testRisk: testRisk,
+        savePerf: savePerf, testPerf: testPerf
+    };
+})();
+</script>

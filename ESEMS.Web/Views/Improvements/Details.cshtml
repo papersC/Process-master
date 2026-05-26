@@ -1,0 +1,2946 @@
+@model ImprovementInitiative
+@inject ESEMS.Web.Services.Integrations.Contracts.IProcessPerformanceProvider PerfProvider
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = Shared["Title_ImprovementDetails"].Value;
+
+    // Display-only Arabic localization for measurement units (free text) and
+    // the measurement-type label. Stored values are untouched — this only
+    // translates the common English values shown in the metrics table and the
+    // record-reading modal so the Arabic UI isn't peppered with English.
+    Func<string, string> localizeUnit = u =>
+    {
+        if (!isRtl || string.IsNullOrWhiteSpace(u)) return u;
+        switch (u.Trim().ToLowerInvariant())
+        {
+            case "minutes": case "minute": case "min": case "mins": return "دقيقة";
+            case "hours": case "hour": case "hrs": case "hr": return "ساعة";
+            case "seconds": case "second": case "sec": case "secs": return "ثانية";
+            case "days": case "day": return "يوم";
+            case "weeks": case "week": return "أسبوع";
+            case "months": case "month": return "شهر";
+            case "years": case "year": return "سنة";
+            case "%": case "percent": case "percentage": case "pct": return "%";
+            case "count": case "number": case "no": case "num": case "qty": return "عدد";
+            case "transactions": case "transaction": case "txn": return "معاملة";
+            case "requests": case "request": return "طلب";
+            case "complaints": case "complaint": return "شكوى";
+            case "visits": case "visit": return "زيارة";
+            case "documents": case "document": case "docs": case "doc": return "مستند";
+            case "aed": return "درهم";
+            case "sar": return "ريال";
+            case "usd": case "$": return "دولار";
+            default: return u;
+        }
+    };
+    Func<string, string> localizeType = t => !isRtl ? t : (t switch
+    {
+        "Satisfaction" => "الرضا",
+        "Cost" => "التكلفة",
+        "Time" => "الوقت",
+        "Productivity" => "الإنتاجية",
+        "Capacity" => "السعة",
+        "Number of Visits" => "عدد الزيارات",
+        "Number of Documents" => "عدد المستندات",
+        "Custom" => "مخصص",
+        _ => t
+    });
+
+    var processNames = (Model.ImprovementProcesses ?? Enumerable.Empty<ImprovementProcess>())
+        .Select(x => x.Process?.Name)
+        .Where(n => !string.IsNullOrWhiteSpace(n))
+        .Distinct()
+        .ToList();
+    var serviceNames = (Model.ImprovementServices ?? Enumerable.Empty<ImprovementService>())
+        .Select(x => x.Service?.Name)
+        .Where(n => !string.IsNullOrWhiteSpace(n))
+        .Distinct()
+        .ToList();
+    if (processNames.Count == 0 && !string.IsNullOrWhiteSpace(Model.Process?.Name)) processNames.Add(Model.Process!.Name);
+    if (serviceNames.Count == 0 && !string.IsNullOrWhiteSpace(Model.Service?.Name)) serviceNames.Add(Model.Service!.Name);
+
+    var workItemParts = new List<string>();
+    if (processNames.Count > 0) workItemParts.Add(string.Join(", ", processNames));
+    if (serviceNames.Count > 0) workItemParts.Add(string.Join(", ", serviceNames));
+    string workItem = workItemParts.Count > 0 ? string.Join(" • ", workItemParts) : "-";
+}
+
+@{
+    // Status pill colour mapping — mirrors ImprovementStatusMachine states.
+    var statusLabel = @Shared[$"ChangeRequestStatus_{Model.Status}"].Value;
+    var statusBg = Model.Status switch {
+        ImprovementStatus.Proposed => "#e0f2fe",
+        ImprovementStatus.UnderReview => "#fef3c7",
+        ImprovementStatus.Approved => "#dcfce7",
+        ImprovementStatus.InProgress => "#dbeafe",
+        ImprovementStatus.OnHold => "#f3f4f6",
+        ImprovementStatus.Completed => "#d1fae5",
+        ImprovementStatus.Closed => "#e5e7eb",
+        ImprovementStatus.Rejected => "#fee2e2",
+        ImprovementStatus.Cancelled => "#fecaca",
+        _             => "#e5e7eb"
+    };
+    var statusFg = Model.Status switch {
+        ImprovementStatus.Proposed => "#075985",
+        ImprovementStatus.UnderReview => "#92400e",
+        ImprovementStatus.Approved => "#166534",
+        ImprovementStatus.InProgress => "#1e40af",
+        ImprovementStatus.OnHold => "#4b5563",
+        ImprovementStatus.Completed => "#047857",
+        ImprovementStatus.Closed => "#374151",
+        ImprovementStatus.Rejected => "#991b1b",
+        ImprovementStatus.Cancelled => "#b91c1c",
+        _             => "#374151"
+    };
+    var allowedActions = ESEMS.Web.Services.Improvements.ImprovementStatusMachine.ActionsFor(Model.Status);
+    // Actions that require a comments modal (approval-related)
+    var commentRequired = new HashSet<string> { "Reject", "Return" };
+
+    // FLOW-005: Approve / Reject / Return are decision actions on the active
+    // approval workflow. They must only appear for the user assigned as that
+    // workflow's approver — not for everyone holding the Approve policy. The
+    // controller resolves the active WorkflowInstance and sets this flag.
+    var isAssignedApprover = ViewBag.IsAssignedApprover is bool b && b;
+    var approvalGatedActions = new HashSet<string> { "Approve", "Reject", "Return" };
+
+    var quadrantColor = Model.Quadrant switch {
+        ImprovementQuadrant.QuickWins => "var(--success-color)",
+        ImprovementQuadrant.MajorProjects => "#005B99",
+        ImprovementQuadrant.FillIns => "var(--warning-color)",
+        ImprovementQuadrant.ThanklessTasks => "var(--danger-color)",
+        _ => "#6b7280"
+    };
+
+    // Recompute scores from raw values so rounding is consistent across
+    // the page (rail + prioritization tab). Lifted up here so the rail
+    // can show the same numbers as the deep-dive tab without duplicating
+    // the formula. Mirrors the calculation that lives inline in the
+    // prioritization tab and the main initiative service.
+    decimal? railRawReadiness = null, railRawValue = null, railRawTotal = null;
+    if (Model.EaseOfImplementation.HasValue && Model.BudgetEstimation.HasValue && Model.ProjectDependency.HasValue)
+    {
+        railRawReadiness = (Model.EaseOfImplementation.Value * 10m + Model.BudgetEstimation.Value * 15m + Model.ProjectDependency.Value * 5m) / 30m;
+    }
+    if (Model.StrategicAlignmentScore.HasValue && Model.LeadershipDirections.HasValue && Model.QualityOfLife.HasValue &&
+        Model.InnovationAndFutureShaping.HasValue && Model.FinancialAndEconomicImpact.HasValue && Model.SustainabilityScore.HasValue)
+    {
+        railRawValue = (Model.StrategicAlignmentScore.Value * 15m + Model.LeadershipDirections.Value * 10m + Model.QualityOfLife.Value * 15m +
+                        Model.InnovationAndFutureShaping.Value * 5m + Model.FinancialAndEconomicImpact.Value * 10m + Model.SustainabilityScore.Value * 15m) / 70m;
+    }
+    if (railRawReadiness.HasValue && railRawValue.HasValue)
+    {
+        railRawTotal = railRawReadiness.Value * 0.30m + railRawValue.Value * 0.70m;
+    }
+}
+
+<div class="imp-shell">
+    <!-- Sticky compact page header — code badge, title, status pill, actions -->
+    <div class="imp-header">
+        <div class="imp-header-row">
+            <div class="imp-header-title">
+                <span class="imp-icon"><i data-lucide="lightbulb" class="w-4 h-4" style="color:#005B99" aria-hidden="true"></i></span>
+                <span class="imp-code">@Model.Code</span>
+                <h1 class="imp-title" title="@(isRtl ? Model.TitleAr : Model.TitleEn)">@(isRtl ? Model.TitleAr : Model.TitleEn)</h1>
+                <span class="imp-status-pill" style="background:@statusBg;color:@statusFg">@statusLabel</span>
+            </div>
+            <div class="imp-header-actions">
+                <button type="button" onclick="executeAiAnalysis('/AI/AnalyzeImprovement?improvementId=@Model.Id', null, '@(isRtl ? "تحليل الذكاء الاصطناعي للتحسين" : "AI Improvement Analysis")')" class="imp-btn imp-btn-ai">
+                    <i data-lucide="sparkles" class="w-4 h-4" aria-hidden="true"></i>
+                    @(isRtl ? "تحليل الذكاء الاصطناعي" : "AI Analysis")
+                </button>
+                <a asp-action="Index" class="imp-btn imp-btn-ghost">
+                    <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" class="w-4 h-4" aria-hidden="true"></i>
+                    @Shared["Button_Back"]
+                </a>
+                <a asp-action="Edit" asp-route-id="@Model.Id" class="imp-btn imp-btn-primary">
+                    <i data-lucide="edit" class="w-4 h-4" aria-hidden="true"></i>
+                    @Shared["Button_Edit"]
+                </a>
+            </div>
+        </div>
+    </div>
+
+    @if (Model.Status == ImprovementStatus.Completed)
+    {
+        @* Sticky 'Ready to close' banner — when work is done but the
+           closure report hasn't been filed, surface the next action
+           where the user's eye lands instead of buried in the right
+           rail. Click → existing closure modal (no duplicate flow). *@
+        <div class="imp-ready-close-banner">
+            <i data-lucide="flag" class="w-5 h-5" aria-hidden="true" style="color:#15803D;"></i>
+            <div class="imp-ready-close-text">
+                <strong>@(isRtl ? "العمل اكتمل" : "Work is complete.")</strong>
+                <span>@(isRtl ? "سجل الوفورات الفعلية والدروس المستفادة لإغلاق المبادرة." : "Record actual savings and lessons learned to close this initiative.")</span>
+            </div>
+            <button type="button" onclick="openClosureModal()" class="imp-btn imp-btn-success">
+                <i data-lucide="check" class="w-4 h-4" aria-hidden="true"></i>
+                @(isRtl ? "إغلاق المبادرة" : "Close Initiative")
+            </button>
+        </div>
+    }
+
+    <!-- Body: tabbed workspace (left) + status/facts rail (right) -->
+    <div class="imp-body">
+        <main class="imp-main">
+
+    <!-- ════════════════════════════════════════════════════════════════
+         Closure modal — Pass C
+         Opens when the user clicks "Close Initiative". Collects actual
+         savings, lessons learned, closing comments, and optional sign-off.
+         POSTs to Improvements/Close, which transitions status → Completed.
+         ════════════════════════════════════════════════════════════════ -->
+    <div id="closureBackdrop" class="fixed inset-0 bg-black bg-opacity-50 hidden" style="z-index:1060;"></div>
+    <div id="closureModal" class="fixed inset-0 hidden items-center justify-center p-4" style="z-index:1061;">
+        <div class="bg-white rounded-lg shadow-xl border border-gray-200 w-full max-w-2xl">
+            <form method="post" action="@Url.Action("Close", "Improvements", new { id = Model.Id })">
+                @Html.AntiForgeryToken()
+                <div class="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+                    <h3 class="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                        <i data-lucide="flag" class="w-4 h-4 text-green-600"></i>
+                        @(isRtl ? "إغلاق المبادرة" : "Close Initiative")
+                    </h3>
+                    <button type="button" onclick="closeClosureModal()" class="text-gray-400 hover:text-gray-600" aria-label="Close"><i data-lucide="x" class="w-5 h-5"></i></button>
+                </div>
+                <div class="px-5 py-4 space-y-4">
+                    <p class="text-xs text-gray-500">@(isRtl ? "سجل الوفورات الفعلية والدروس المستفادة قبل الإغلاق. ستصبح الحالة: مغلق." : "Record the actual savings and lessons learned before closing. Status will move to: Closed.")</p>
+
+                    <!-- Actual savings: Estimated → Actual side-by-side so the closer sees the plan -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">@(isRtl ? "الوفورات الفعلية (درهم)" : "Actual Cost Savings (AED)")</label>
+                            <input type="number" step="0.01" name="actualCostSavings" value="@Model.ActualCostSavings" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" placeholder="0.00" />
+                            <div class="text-[10px] text-gray-400 mt-0.5">
+                                @(isRtl ? "الوفورات المقدرة:" : "Estimated:") @(Model.EstimatedCostSavings?.ToString("N2") ?? "-") @(isRtl ? "درهم" : "AED")
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">@(isRtl ? "الوقت الفعلي الموفر (ساعة)" : "Actual Time Savings (hours)")</label>
+                            <input type="number" step="0.01" name="actualTimeSavings" value="@Model.ActualTimeSavings" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" placeholder="0.00" />
+                            <div class="text-[10px] text-gray-400 mt-0.5">
+                                @(isRtl ? "المقدر:" : "Estimated:") @(Model.EstimatedTimeSavings?.ToString("N2") ?? "-") @(isRtl ? "ساعة" : "hours")
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bilingual lessons learned — at least one language recommended -->
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">@(isRtl ? "الدروس المستفادة (إنجليزي)" : "Lessons Learned (English)")</label>
+                        <textarea name="lessonsLearnedEn" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" placeholder="@(isRtl ? "ما الذي نجح، وما الذي لم ينجح، وما الذي ستفعله بشكل مختلف في المرة القادمة..." : "What worked well, what didn't, what you'd do differently next time...")">@((ViewBag.ClosureReport as ImprovementClosureReport)?.LessonsLearnedEn)</textarea>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">@(isRtl ? "الدروس المستفادة (عربي)" : "Lessons Learned (Arabic)")</label>
+                        <textarea name="lessonsLearnedAr" rows="3" dir="rtl" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" placeholder="@(isRtl ? "ما الذي نجح، ما الذي لم ينجح، ماذا ستفعل بشكل مختلف في المرة القادمة..." : "What worked well, what didn't, what you'd do differently next time...")">@((ViewBag.ClosureReport as ImprovementClosureReport)?.LessonsLearnedAr)</textarea>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">@(isRtl ? "ملاحظات الإغلاق" : "Closing Comments")</label>
+                        <textarea name="closingComments" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" placeholder="@(isRtl ? "سياق إضافي..." : "Additional context...")">@((ViewBag.ClosureReport as ImprovementClosureReport)?.ClosingComments)</textarea>
+                    </div>
+                    <label class="flex items-center gap-2 text-xs text-gray-700">
+                        <input type="checkbox" name="signOffNow" value="true" />
+                        @(isRtl ? "أنا أوقع على هذا الإغلاق (مالك العملية)" : "I am signing off on this closure (Process Owner)")
+                    </label>
+                </div>
+                <div class="px-5 py-3 border-t border-gray-200 flex items-center justify-end gap-2">
+                    <button type="button" onclick="closeClosureModal()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 rounded hover:bg-gray-50">@(isRtl ? "إلغاء" : "Cancel")</button>
+                    <button type="submit" class="px-3 py-1.5 text-xs text-white rounded" style="background:#005B99">@(isRtl ? "إغلاق المبادرة" : "Close Initiative")</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script nonce="@Context.CspNonce()">
+        function openClosureModal() {
+            document.getElementById('closureBackdrop').classList.remove('hidden');
+            const m = document.getElementById('closureModal');
+            m.classList.remove('hidden');
+            m.style.display = 'flex';
+            if (window.lucide) lucide.createIcons();
+        }
+        function closeClosureModal() {
+            document.getElementById('closureBackdrop').classList.add('hidden');
+            const m = document.getElementById('closureModal');
+            m.classList.add('hidden');
+            m.style.display = 'none';
+        }
+        document.getElementById('closureBackdrop')?.addEventListener('click', closeClosureModal);
+    </script>
+
+    <script nonce="@Context.CspNonce()">
+        // Lifecycle transition confirmation via SweetAlert2 — replaces the
+        // raw browser confirm()/prompt() that showed "Claude" in the title bar.
+        // Returns false to block the default form submit; the Swal callback
+        // submits the form programmatically after user confirmation.
+        function confirmLifecycleAction(form, key, needsComment) {
+            const label = form.querySelector('button').textContent.trim();
+            const isRtlPage = @(isRtl ? "true" : "false");
+
+            if (needsComment) {
+                // Reject / Return — needs a reason textarea
+                Swal.fire({
+                    title: label,
+                    input: 'textarea',
+                    inputLabel: isRtlPage ? 'أدخل سبب الرفض / الإرجاع' : 'Enter reason / comments',
+                    inputPlaceholder: isRtlPage ? 'اكتب السبب هنا…' : 'Type your reason here…',
+                    inputAttributes: { 'aria-label': isRtlPage ? 'السبب' : 'Reason' },
+                    icon: key === 'Reject' ? 'warning' : 'info',
+                    iconColor: key === 'Reject' ? '#dc2626' : '#f59e0b',
+                    showCancelButton: true,
+                    confirmButtonText: label,
+                    cancelButtonText: isRtlPage ? 'إلغاء' : 'Cancel',
+                    confirmButtonColor: '#005B99',
+                    inputValidator: (value) => {
+                        if (!value || !value.trim()) {
+                            return isRtlPage ? 'يرجى إدخال السبب' : 'Please enter a reason';
+                        }
+                    }
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        form.querySelector('.lifecycle-comments').value = result.value;
+                        form.removeAttribute('onsubmit');
+                        form.submit();
+                    }
+                });
+                return false; // block default submit — Swal handles it
+            }
+
+            // All other transitions — simple confirmation
+            Swal.fire({
+                title: isRtlPage ? 'تأكيد الإجراء' : 'Confirm action',
+                html: `<p style="font-size: var(--fs-base);color:#374151;">${isRtlPage ? 'هل أنت متأكد من' : 'Are you sure you want to'} <strong>${label}</strong>?</p>`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: label,
+                cancelButtonText: isRtlPage ? 'إلغاء' : 'Cancel',
+                confirmButtonColor: '#005B99',
+                focusCancel: key === 'Cancel'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    form.removeAttribute('onsubmit');
+                    form.submit();
+                }
+            });
+            return false; // block default submit — Swal handles it
+        }
+    </script>
+
+    <!-- Tab Navigation -->
+    @{
+        // For initiatives that are actively executing, default the Details
+        // page to the Measurements tab — that's the operational landing
+        // zone where the owner records the period's reading. For all other
+        // states (Proposed, UnderReview, Closed, etc.) start on Overview
+        // since there's nothing to record.
+        var defaultTab = (Model.Status == ImprovementStatus.InProgress || Model.Status == ImprovementStatus.OnHold)
+            ? "measurements"
+            : "overview";
+    }
+    <div class="imp-tabs bg-white rounded-xl shadow-sm border border-gray-200 mb-6" x-data="{ activeTab: '@defaultTab' }">
+        <div class="imp-tabnav border-b border-gray-200">
+            <nav class="flex gap-1 p-2" role="tablist">
+                <button @@click="activeTab = 'overview'" :class="activeTab === 'overview' ? 'bg-blue-50 font-semibold' : 'text-gray-600 hover:bg-gray-50'" class="px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2" style="color: activeTab === 'overview' ? '#005B99' : ''">
+                    <i data-lucide="clipboard-list" class="w-4 h-4"></i>
+                    @Shared["Section_Summary"]
+                </button>
+                <button @@click="activeTab = 'measurements'" :class="activeTab === 'measurements' ? 'bg-blue-50 font-semibold' : 'text-gray-600 hover:bg-gray-50'" class="px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2" style="color: activeTab === 'measurements' ? '#005B99' : ''">
+                    <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+                    @Shared["Title_MeasurementsComparison"]
+                </button>
+                <button @@click="activeTab = 'actions'" :class="activeTab === 'actions' ? 'bg-blue-50 font-semibold' : 'text-gray-600 hover:bg-gray-50'" class="px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2" style="color: activeTab === 'actions' ? '#005B99' : ''">
+                    <i data-lucide="list-checks" class="w-4 h-4"></i>
+                    @Shared["Section_Actions"]
+                </button>
+                <button @@click="activeTab = 'prioritization'" :class="activeTab === 'prioritization' ? 'bg-blue-50 font-semibold' : 'text-gray-600 hover:bg-gray-50'" class="px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2" style="color: activeTab === 'prioritization' ? '#005B99' : ''">
+                    <i data-lucide="calculator" class="w-4 h-4"></i>
+                    @Shared["Title_PrioritizationFramework"]
+                </button>
+                <button @@click="activeTab = 'team'" :class="activeTab === 'team' ? 'bg-blue-50 font-semibold' : 'text-gray-600 hover:bg-gray-50'" class="px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2" style="color: activeTab === 'team' ? '#005B99' : ''">
+                    <i data-lucide="users" class="w-4 h-4"></i>
+                    @Shared["Label_TeamMembers"]
+                </button>
+                <button @@click="activeTab = 'risks'; if (!$store.improvementRisks.loaded) $store.improvementRisks.load('@Model.Id')" :class="activeTab === 'risks' ? 'bg-blue-50 font-semibold' : 'text-gray-600 hover:bg-gray-50'" class="px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2" style="color: activeTab === 'risks' ? '#005B99' : ''">
+                    <i data-lucide="shield-alert" class="w-4 h-4"></i>
+                    @(isRtl ? "المخاطر المرتبطة" : "Linked Risks")
+                    <span x-show="$store.improvementRisks.linked.length > 0" x-text="$store.improvementRisks.linked.length" class="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs font-bold rounded-full" style="background:rgba(0,91,153,.1);color:#005B99;"></span>
+                </button>
+                <button @@click="activeTab = 'reviews'" :class="activeTab === 'reviews' ? 'bg-blue-50 font-semibold' : 'text-gray-600 hover:bg-gray-50'" class="px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2" style="color: activeTab === 'reviews' ? '#005B99' : ''">
+                    <i data-lucide="shield-check" class="w-4 h-4"></i>
+                    @(isRtl ? "المراجعات" : "Reviews")
+                </button>
+            </nav>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="p-6">
+            <!-- Overview Tab -->
+            <div x-show="activeTab === 'overview'" x-cloak>
+                @{
+                    var closureReport = ViewBag.ClosureReport as ImprovementClosureReport;
+                }
+                @if (closureReport != null)
+                {
+                    <!-- Closure banner — visible once the initiative has a
+                         ClosureReport. Shows estimated-vs-actual savings delta
+                         and the lessons learned textbook. -->
+                    <div class="mb-6 p-4 rounded-lg border-2 border-green-300 bg-gradient-to-r from-green-50 to-blue-50">
+                        <div class="flex items-center justify-between gap-3 mb-3">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="flag" class="w-5 h-5 text-green-600"></i>
+                                <h3 class="text-sm font-bold text-green-800">@(isRtl ? "تم إغلاق المبادرة" : "Initiative Closed")</h3>
+                            </div>
+                            <div class="text-xs text-gray-600">
+                                @(isRtl ? "بواسطة" : "by") <strong>@(closureReport.ClosedByName ?? "-")</strong> ·
+                                @closureReport.ClosedAt.ToDubaiString("yyyy-MM-dd HH:mm")
+                                @if (closureReport.SignedOffById.HasValue)
+                                {
+                                    <span class="ml-2 inline-flex items-center gap-1 text-green-700">
+                                        <i data-lucide="check-circle-2" class="w-3 h-3"></i>
+                                        @(isRtl ? "تم التوقيع" : "Signed off") · @closureReport.SignedOffByName
+                                    </span>
+                                }
+                            </div>
+                        </div>
+
+                        <!-- Estimated vs Actual comparison -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                            @{
+                                var costDelta = (Model.ActualCostSavings ?? 0) - (Model.EstimatedCostSavings ?? 0);
+                                var timeDelta = (Model.ActualTimeSavings ?? 0) - (Model.EstimatedTimeSavings ?? 0);
+                                var costColor = costDelta >= 0 ? "#16a34a" : "#dc2626";
+                                var timeColor = timeDelta >= 0 ? "#16a34a" : "#dc2626";
+                            }
+                            <div class="bg-white rounded-md p-3 border border-gray-200">
+                                <div class="text-[10px] font-semibold text-gray-500 uppercase mb-1">@(isRtl ? "الوفورات المالية" : "Cost Savings")</div>
+                                <div class="flex items-baseline gap-2 text-sm">
+                                    <span class="text-gray-500">@(isRtl ? "المقدر" : "Est")</span>
+                                    <strong>@(Model.EstimatedCostSavings?.ToString("N0") ?? "-")</strong>
+                                    <span class="text-gray-300">→</span>
+                                    <span class="text-gray-500">@(isRtl ? "الفعلي" : "Actual")</span>
+                                    <strong class="text-green-700">@(Model.ActualCostSavings?.ToString("N0") ?? "-")</strong>
+                                    <span class="ml-auto text-xs font-bold" style="color:@costColor">
+                                        @(costDelta >= 0 ? "+" : "")@costDelta.ToString("N0") @(isRtl ? "درهم" : "AED")
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="bg-white rounded-md p-3 border border-gray-200">
+                                <div class="text-[10px] font-semibold text-gray-500 uppercase mb-1">@(isRtl ? "الوقت الموفر" : "Time Savings")</div>
+                                <div class="flex items-baseline gap-2 text-sm">
+                                    <span class="text-gray-500">@(isRtl ? "المقدر" : "Est")</span>
+                                    <strong>@(Model.EstimatedTimeSavings?.ToString("N0") ?? "-")</strong>
+                                    <span class="text-gray-300">→</span>
+                                    <span class="text-gray-500">@(isRtl ? "الفعلي" : "Actual")</span>
+                                    <strong class="text-green-700">@(Model.ActualTimeSavings?.ToString("N0") ?? "-")</strong>
+                                    <span class="ml-auto text-xs font-bold" style="color:@timeColor">
+                                        @(timeDelta >= 0 ? "+" : "")@timeDelta.ToString("N0") @(isRtl ? "ساعة" : "hours")
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(closureReport.LessonsLearnedEn) || !string.IsNullOrWhiteSpace(closureReport.LessonsLearnedAr))
+                        {
+                            <div class="bg-white rounded-md p-3 border border-gray-200">
+                                <div class="text-[10px] font-semibold text-gray-500 uppercase mb-1">@(isRtl ? "الدروس المستفادة" : "Lessons Learned")</div>
+                                <p class="text-xs text-gray-700 whitespace-pre-line">@((isRtl ? closureReport.LessonsLearnedAr : closureReport.LessonsLearnedEn) ?? closureReport.LessonsLearnedEn ?? closureReport.LessonsLearnedAr)</p>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(closureReport.ClosingComments))
+                        {
+                            <div class="mt-2 bg-white rounded-md p-3 border border-gray-200">
+                                <div class="text-[10px] font-semibold text-gray-500 uppercase mb-1">@(isRtl ? "ملاحظات الإغلاق" : "Closing Comments")</div>
+                                <p class="text-xs text-gray-700 whitespace-pre-line">@closureReport.ClosingComments</p>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <!-- Description moved to the top — it's the first thing a user
+                     wants to read after the title. -->
+                <div class="mb-6">
+                    <label class="text-xs font-semibold text-gray-600 mb-2 block">@Shared["Label_Description"]</label>
+                    <p class="text-sm text-gray-700 bg-gray-50 rounded-lg p-4 whitespace-pre-line">@(string.IsNullOrWhiteSpace(Model.Description) ? "-" : Model.Description)</p>
+                </div>
+
+                <!-- Linked Scope — clickable chips for each linked process / service -->
+                @if (processNames.Count > 0 || serviceNames.Count > 0)
+                {
+                    <div class="mb-6">
+                        <label class="text-xs font-semibold text-gray-600 mb-2 block">@Shared["Label_LinkedScope"]</label>
+                        <div class="flex flex-wrap gap-2">
+                            @foreach (var ip in Model.ImprovementProcesses ?? Enumerable.Empty<ImprovementProcess>())
+                            {
+                                if (ip.Process != null)
+                                {
+                                    <a asp-controller="Processes" asp-action="Details" asp-route-id="@ip.ProcessId"
+                                       class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors">
+                                        <i data-lucide="git-branch" class="w-3 h-3"></i>
+                                        @ip.Process.Name
+                                    </a>
+                                }
+                            }
+                            @foreach (var isvc in Model.ImprovementServices ?? Enumerable.Empty<ImprovementService>())
+                            {
+                                if (isvc.Service != null)
+                                {
+                                    <a asp-controller="Services" asp-action="Details" asp-route-id="@isvc.ServiceId"
+                                       class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors">
+                                        <i data-lucide="briefcase" class="w-3 h-3"></i>
+                                        @isvc.Service.Name
+                                    </a>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <label class="text-xs font-semibold text-gray-600">@Shared["Label_Impact"]</label>
+                            <button type="button" class="text-gray-400 hover:text-gray-600 transition-colors" title="@Shared["Help_ImpactScore"]">
+                                <i data-lucide="help-circle" class="w-3 h-3"></i>
+                            </button>
+                        </div>
+                        <p class="text-2xl font-bold" style="color: #005B99;">@Model.ImpactScore / 10</p>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <label class="text-xs font-semibold text-gray-600">@Shared["Label_Effort"]</label>
+                            <button type="button" class="text-gray-400 hover:text-gray-600 transition-colors" title="@Shared["Help_EffortScore"]">
+                                <i data-lucide="help-circle" class="w-3 h-3"></i>
+                            </button>
+                        </div>
+                        <p class="text-2xl font-bold" style="color: #005B99;">@Model.EffortScore / 10</p>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <label class="text-xs font-semibold text-gray-600 mb-2 block">@Shared["Label_Progress"]</label>
+                        <div class="flex items-center gap-2">
+                            <div class="flex-grow bg-gray-200 rounded-full h-2">
+                                <div class="h-2 rounded-full transition-all" style="width: @Model.ProgressPercentage%; background: linear-gradient(90deg, #005B99 0%, #003d6b 100%);"></div>
+                            </div>
+                            <span class="text-sm font-bold" style="color: #005B99;">@Model.ProgressPercentage%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h3 class="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                            <i data-lucide="info" class="w-4 h-4" style="color: #005B99;"></i>
+                            @Shared["Label_BasicInformation"]
+                        </h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="text-xs font-semibold text-gray-600">@Shared["Label_Source"]</label>
+                                <p class="text-sm text-gray-900 mt-1">@Shared[$"ChangeRequestSource_{Model.Source}"].Value</p>
+                            </div>
+                            <div>
+                                <label class="text-xs font-semibold text-gray-600 flex items-center gap-1">
+                                    @Shared["Label_Unit"]
+                                    <button type="button" class="text-gray-400 hover:text-gray-600 transition-colors" title="@Shared["Help_OwningUnit"]">
+                                        <i data-lucide="help-circle" class="w-3 h-3"></i>
+                                    </button>
+                                </label>
+                                <p class="text-sm text-gray-900 mt-1">@(Model.OwningUnit?.Name ?? "-")</p>
+                            </div>
+                            <div>
+                                <label class="text-xs font-semibold text-gray-600 flex items-center gap-1">
+                                    @Shared["Label_Owner"]
+                                    <button type="button" class="text-gray-400 hover:text-gray-600 transition-colors" title="@Shared["Help_Owner"]">
+                                        <i data-lucide="help-circle" class="w-3 h-3"></i>
+                                    </button>
+                                </label>
+                                <p class="text-sm text-gray-900 mt-1">@(Model.Owner != null ? Model.Owner.GetLocalizedFullName() : "-")</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 class="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                            <i data-lucide="calendar-clock" class="w-4 h-4" style="color: #005B99;"></i>
+                            @Shared["Label_Timeline"]
+                        </h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="text-xs font-semibold text-gray-600">@Shared["Label_Target"]</label>
+                                <p class="text-sm text-gray-900 mt-1">@(Model.TargetDate?.ToDubaiString("yyyy-MM-dd") ?? "-")</p>
+                            </div>
+                            <div>
+                                <label class="text-xs font-semibold text-gray-600">@Shared["Label_Completed"]</label>
+                                <p class="text-sm text-gray-900 mt-1">@(Model.CompletedDate?.ToDubaiString("yyyy-MM-dd") ?? "-")</p>
+                            </div>
+                        </div>
+
+                        <h3 class="text-sm font-bold text-gray-900 mb-4 mt-6 flex items-center gap-2">
+                            <i data-lucide="trending-up" class="w-4 h-4" style="color: #005B99;"></i>
+                            @Shared["Label_ExpectedBenefits"]
+                        </h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="text-xs font-semibold text-gray-600 flex items-center gap-1">
+                                    @Shared["Label_EstimatedCost"]
+                                    <button type="button" class="text-gray-400 hover:text-gray-600 transition-colors" title="@Shared["Help_EstimatedCostSavings"]">
+                                        <i data-lucide="help-circle" class="w-3 h-3"></i>
+                                    </button>
+                                </label>
+                                <p class="text-sm font-semibold text-green-600 mt-1">
+                                    @if (Model.EstimatedCostSavings.HasValue)
+                                    {
+                                        @Model.EstimatedCostSavings.Value.ToString("N2")
+                                        <span class="text-xs text-gray-500 ms-1">@Shared["Label_CurrencyAED"]</span>
+                                    }
+                                    else
+                                    {
+                                        <span>-</span>
+                                    }
+                                </p>
+                            </div>
+                            <div>
+                                <label class="text-xs font-semibold text-gray-600 flex items-center gap-1">
+                                    @Shared["Label_EstimatedTime"]
+                                    <button type="button" class="text-gray-400 hover:text-gray-600 transition-colors" title="@Shared["Help_EstimatedTimeSavings"]">
+                                        <i data-lucide="help-circle" class="w-3 h-3"></i>
+                                    </button>
+                                </label>
+                                <p class="text-sm font-semibold text-green-600 mt-1">
+                                    @if (Model.EstimatedTimeSavings.HasValue)
+                                    {
+                                        @Model.EstimatedTimeSavings.Value.ToString("N2")
+                                        <span class="text-xs text-gray-500 ms-1">@Shared["Label_Hours"]</span>
+                                    }
+                                    else
+                                    {
+                                        <span>-</span>
+                                    }
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @if (Model.QualityOfLife.HasValue)
+                {
+                    <!-- Customer Happiness / 5-star card — Dubai government
+                         5-star rating system interpretation of QualityOfLife
+                         score. 1→1 star ... 10→5 stars. Added in Pass E.4. -->
+                    var qolValue = Model.QualityOfLife.Value;
+                    var stars = Math.Min(5, Math.Max(1, (int)Math.Round(qolValue / 2.0)));
+                    var starColor = qolValue >= 8 ? "#f59e0b" : qolValue >= 5 ? "#6b7280" : "#dc2626";
+                    var starLabel = qolValue >= 8
+                        ? (isRtl ? "مرشح 5 نجوم" : "5-star candidate")
+                        : qolValue >= 5
+                            ? (isRtl ? "مؤثر على سعادة المتعاملين" : "Customer happiness impact")
+                            : (isRtl ? "تأثير محدود على السعادة" : "Limited happiness impact");
+                    <div class="mt-6 p-3 rounded-lg border border-amber-200 bg-amber-50 flex items-center gap-3 flex-wrap">
+                        <i data-lucide="heart" class="w-4 h-4 text-amber-600 flex-shrink-0"></i>
+                        <div class="text-xs font-semibold text-amber-900">
+                            @(isRtl ? "تأثير سعادة المتعاملين" : "Customer Happiness Impact")
+                        </div>
+                        <div class="flex items-center gap-0.5">
+                            @for (int s = 1; s <= 5; s++)
+                            {
+                                <i data-lucide="star" class="w-4 h-4" style="color:@(s <= stars ? starColor : "#e5e7eb");fill:@(s <= stars ? starColor : "transparent")"></i>
+                            }
+                        </div>
+                        <span class="text-xs text-gray-700">@starLabel</span>
+                        <span class="text-[10px] text-gray-500 ml-auto italic">
+                            @(isRtl ? "مشتق من درجة جودة الحياة" : "Derived from Quality of Life score") (@qolValue/10)
+                        </span>
+                    </div>
+                }
+
+                <!-- Audit footer — who / when -->
+                <div class="mt-6 pt-4 border-t border-gray-200 flex flex-wrap items-center gap-4 text-xs text-gray-500">
+                    <span class="inline-flex items-center gap-1">
+                        <i data-lucide="user-plus" class="w-3 h-3"></i>
+                        <strong>@Shared["Label_CreatedBy"]:</strong>
+                        @(string.IsNullOrWhiteSpace(Model.CreatedById) ? "-" : Model.CreatedById)
+                        · @Model.CreatedAt.ToDubaiString("yyyy-MM-dd HH:mm")
+                    </span>
+                    <span class="inline-flex items-center gap-1">
+                        <i data-lucide="clock" class="w-3 h-3"></i>
+                        <strong>@Shared["Label_LastModified"]:</strong>
+                        @(string.IsNullOrWhiteSpace(Model.UpdatedById) ? "-" : Model.UpdatedById)
+                        · @Model.UpdatedAt.ToDubaiString("yyyy-MM-dd HH:mm")
+                    </span>
+                </div>
+            </div>
+
+            <!-- Prioritization Tab -->
+            <div x-show="activeTab === 'prioritization'" x-cloak>
+                @{
+                    // Each criterion carries its label, raw score, weight %, and a
+                    // polarity legend so readers see exactly what "good" means at
+                    // each end of the 1-10 scale. The weights sum to 30% for
+                    // Readiness and 70% for Value.
+                    var readinessCriteria = new[] {
+                        (Shared["Label_EaseOfImplementation"].Value, Model.EaseOfImplementation, 10, "#005B99",
+                            isRtl ? "1 = صعب، 10 = سهل" : "1 = hard to implement, 10 = easy"),
+                        (Shared["Label_BudgetEstimation"].Value, Model.BudgetEstimation, 15, "#005B99",
+                            isRtl ? "1 = لا يوجد تمويل، 10 = الميزانية مؤمّنة" : "1 = no funding yet, 10 = budget locked in"),
+                        (Shared["Label_ProjectDependency"].Value, Model.ProjectDependency, 5, "#005B99",
+                            isRtl ? "1 = يعتمد على الكثير، 10 = مستقل تماماً" : "1 = many dependencies, 10 = fully independent"),
+                    };
+                    var valueCriteria = new[] {
+                        (Shared["Label_StrategicAlignment"].Value, Model.StrategicAlignmentScore, 15, "#34C38F",
+                            isRtl ? "10 = توافق كامل مع خطة دبي 2033" : "10 = fully aligned with Dubai Plan 2033 / MBRHE strategy"),
+                        (Shared["Label_LeadershipDirections"].Value, Model.LeadershipDirections, 10, "#34C38F",
+                            isRtl ? "10 = توجيه صريح من القيادة" : "10 = explicit leadership mandate"),
+                        (Shared["Label_QualityOfLife"].Value, Model.QualityOfLife, 15, "#34C38F",
+                            isRtl ? "10 = أثر كبير على جودة حياة المتعاملين" : "10 = major Quality-of-Life impact for beneficiaries"),
+                        (Shared["Label_InnovationFutureShaping"].Value, Model.InnovationAndFutureShaping, 5, "#34C38F",
+                            isRtl ? "10 = ابتكار تحويلي" : "10 = transformational innovation"),
+                        (Shared["Label_FinancialEconomicImpact"].Value, Model.FinancialAndEconomicImpact, 10, "#34C38F",
+                            isRtl ? "10 = عائد اقتصادي كبير" : "10 = high economic return"),
+                        (Shared["Label_Sustainability"].Value, Model.SustainabilityScore, 15, "#34C38F",
+                            isRtl ? "10 = يدعم الحياد المناخي 2050" : "10 = supports UAE Net Zero 2050"),
+                    };
+
+                    // Recompute scores from raw values so rounding is consistent.
+                    // The model's computed properties were getting rounded before
+                    // being re-combined, introducing a 0.01 discrepancy.
+                    decimal? rawReadiness = null, rawValue = null, rawTotal = null;
+                    if (Model.EaseOfImplementation.HasValue && Model.BudgetEstimation.HasValue && Model.ProjectDependency.HasValue)
+                    {
+                        rawReadiness = (Model.EaseOfImplementation.Value * 10m + Model.BudgetEstimation.Value * 15m + Model.ProjectDependency.Value * 5m) / 30m;
+                    }
+                    if (Model.StrategicAlignmentScore.HasValue && Model.LeadershipDirections.HasValue && Model.QualityOfLife.HasValue &&
+                        Model.InnovationAndFutureShaping.HasValue && Model.FinancialAndEconomicImpact.HasValue && Model.SustainabilityScore.HasValue)
+                    {
+                        rawValue = (Model.StrategicAlignmentScore.Value * 15m + Model.LeadershipDirections.Value * 10m + Model.QualityOfLife.Value * 15m +
+                                    Model.InnovationAndFutureShaping.Value * 5m + Model.FinancialAndEconomicImpact.Value * 10m + Model.SustainabilityScore.Value * 15m) / 70m;
+                    }
+                    if (rawReadiness.HasValue && rawValue.HasValue)
+                    {
+                        rawTotal = rawReadiness.Value * 0.30m + rawValue.Value * 0.70m;
+                    }
+                }
+                @if (rawTotal.HasValue)
+                {
+                    <!-- Quadrant badge surfaced at the top of the tab, next to
+                         Impact and Effort, so the scoring context is together. -->
+                    var qLabel = @Shared[$"ImprovementQuadrant_{Model.Quadrant}"].Value;
+                    var qBg = Model.Quadrant switch {
+                        ImprovementQuadrant.QuickWins     => "#dcfce7",
+                        ImprovementQuadrant.MajorProjects => "#dbeafe",
+                        ImprovementQuadrant.FillIns       => "#fef3c7",
+                        ImprovementQuadrant.ThanklessTasks=> "#fee2e2",
+                        _ => "#e5e7eb"
+                    };
+                    var qFg = Model.Quadrant switch {
+                        ImprovementQuadrant.QuickWins     => "#166534",
+                        ImprovementQuadrant.MajorProjects => "#1e40af",
+                        ImprovementQuadrant.FillIns       => "#92400e",
+                        ImprovementQuadrant.ThanklessTasks=> "#991b1b",
+                        _ => "#374151"
+                    };
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+                        <div class="bg-gray-50 rounded-lg p-3 text-center">
+                            <div class="text-xs font-semibold text-gray-600 mb-1">@Shared["Label_Impact"]</div>
+                            <div class="text-2xl font-bold" style="color:#005B99">@Model.ImpactScore / 10</div>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-3 text-center">
+                            <div class="text-xs font-semibold text-gray-600 mb-1">@Shared["Label_Effort"]</div>
+                            <div class="text-2xl font-bold" style="color:#005B99">@Model.EffortScore / 10</div>
+                        </div>
+                        <div class="rounded-lg p-3 text-center md:col-span-2" style="background:@qBg;color:@qFg">
+                            <div class="text-xs font-semibold mb-1" style="color:@qFg;opacity:.8">@(isRtl ? "الربع الاستراتيجي" : "Strategic Quadrant")</div>
+                            <div class="text-lg font-bold">@qLabel</div>
+                        </div>
+                    </div>
+
+                    <!-- Score Summary -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <div class="bg-white rounded-lg border-2 p-6 text-center" style="border-color: #005B99;">
+                            <div class="flex items-center justify-center gap-2 mb-2">
+                                <div class="text-xs font-semibold text-gray-600">@Shared["Title_BusinessReadiness"]</div>
+                                <button type="button" class="text-gray-400 hover:text-gray-600 transition-colors" title="@Shared["Help_BusinessReadiness"]">
+                                    <i data-lucide="help-circle" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                            <div class="text-3xl font-bold" style="color: #005B99;">@rawReadiness?.ToString("N2")</div>
+                            <div class="text-xs text-gray-500 mt-1">@(isRtl ? "الوزن 30٪" : "30% Weight")</div>
+                        </div>
+                        <div class="bg-white rounded-lg border-2 border-green-200 p-6 text-center">
+                            <div class="flex items-center justify-center gap-2 mb-2">
+                                <div class="text-xs font-semibold text-gray-600">@Shared["Title_BusinessValue"]</div>
+                                <button type="button" class="text-gray-400 hover:text-gray-600 transition-colors" title="@Shared["Help_BusinessValue"]">
+                                    <i data-lucide="help-circle" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                            <div class="text-3xl font-bold text-green-600">@rawValue?.ToString("N2")</div>
+                            <div class="text-xs text-gray-500 mt-1">@(isRtl ? "الوزن 70٪" : "70% Weight")</div>
+                        </div>
+                        <div class="bg-gradient-to-br from-green-50 to-blue-50 rounded-lg border-2 border-green-300 p-6 text-center">
+                            <div class="flex items-center justify-center gap-2 mb-2">
+                                <div class="text-xs font-semibold text-gray-600">@Shared["Label_TotalScore"]</div>
+                                <button type="button" class="text-gray-400 hover:text-gray-600 transition-colors" title="@Shared["Help_PrioritizationScore"]">
+                                    <i data-lucide="help-circle" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                            <div class="text-4xl font-bold text-green-700">@rawTotal?.ToString("N2")</div>
+                            <div class="text-xs text-gray-600 mt-1 font-semibold">@(isRtl ? "النتيجة النهائية للأولوية" : "Final Priority Score")</div>
+                        </div>
+                    </div>
+
+                    <!-- Individual Criteria with per-criterion legends -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <h3 class="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                <i data-lucide="shield-check" class="w-4 h-4" style="color: #005B99;"></i>
+                                @Shared["Title_BusinessReadiness"] (30%)
+                            </h3>
+                            <div class="space-y-3">
+                                @foreach (var (label, score, weight, color, legend) in readinessCriteria)
+                                {
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="text-xs font-medium text-gray-700">@label <span class="text-gray-400">(@weight%)</span></span>
+                                            <span class="text-xs font-bold" style="color: @color;">@(score?.ToString() ?? "—")/10</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div class="h-2 rounded-full transition-all" style="width: @((score ?? 0) * 10)%; background-color: @color;"></div>
+                                        </div>
+                                        <div class="text-[10px] text-gray-500 italic mt-0.5">@legend</div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <div>
+                            <h3 class="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                <i data-lucide="trending-up" class="w-4 h-4 text-green-600"></i>
+                                @Shared["Title_BusinessValue"] (70%)
+                            </h3>
+                            <div class="space-y-3">
+                                @foreach (var (label, score, weight, color, legend) in valueCriteria)
+                                {
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="text-xs font-medium text-gray-700">@label <span class="text-gray-400">(@weight%)</span></span>
+                                            <span class="text-xs font-bold" style="color: @color;">@(score?.ToString() ?? "—")/10</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div class="h-2 rounded-full transition-all" style="width: @((score ?? 0) * 10)%; background-color: @color;"></div>
+                                        </div>
+                                        <div class="text-[10px] text-gray-500 italic mt-0.5">@legend</div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Innovation Type & Horizon -->
+                    @if (Model.InnovationType.HasValue || Model.Horizon.HasValue)
+                    {
+                        <div class="mt-6 pt-6 border-t border-gray-200">
+                            <h3 class="text-sm font-bold text-gray-900 mb-4">@Shared["Label_AdditionalAttributes"]</h3>
+                            <div class="flex items-center gap-4 flex-wrap">
+                                @if (Model.InnovationType.HasValue)
+                                {
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-semibold text-gray-600">@Shared["Label_InnovationType"]:</span>
+                                        <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">@Shared[$"InnovationType_{Model.InnovationType}"].Value</span>
+                                        <button type="button" class="text-gray-400 hover:text-gray-600 transition-colors" title="@Shared["Help_InnovationType"]">
+                                            <i data-lucide="help-circle" class="w-3 h-3"></i>
+                                        </button>
+                                    </div>
+                                }
+                                @if (Model.Horizon.HasValue)
+                                {
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-semibold text-gray-600">@Shared["Label_Horizon"]:</span>
+                                        <span class="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-semibold">@Shared[$"Option_{Model.Horizon}"].Value</span>
+                                        <button type="button" class="text-gray-400 hover:text-gray-600 transition-colors" title="@Shared["Help_Horizon"]">
+                                            <i data-lucide="help-circle" class="w-3 h-3"></i>
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="text-center py-12">
+                        <i data-lucide="calculator" class="w-16 h-16 text-gray-300 mx-auto mb-4"></i>
+                        <p class="text-gray-500">@Shared["Text_NoPrioritizationScores"]</p>
+                    </div>
+                }
+            </div>
+
+            <!-- Actions Tab -->
+            <div x-show="activeTab === 'actions'" x-cloak>
+                @{
+                    // Normalize the status string — legacy rows stored "In Progress"
+                    // with a space, but the resource keys use PascalCase ("InProgress").
+                    // Strip whitespace before doing the resource lookup.
+                    string NormalizeStatus(ImprovementActionStatus raw) => raw.ToString();
+                }
+                @if (Model.Actions.Any())
+                {
+                    // Group actions by normalized status for easier scanning.
+                    // Order: In Progress → Pending → Completed → other.
+                    var statusOrder = new Dictionary<string, int> { { "InProgress", 1 }, { "Pending", 2 }, { "Completed", 3 } };
+                    var grouped = Model.Actions
+                        .OrderBy(x => x.DisplayOrder)
+                        .GroupBy(a => NormalizeStatus(a.Status))
+                        .OrderBy(g => statusOrder.GetValueOrDefault(g.Key, 99))
+                        .ToList();
+
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-2 text-xs text-gray-500">
+                            <i data-lucide="filter" class="w-3.5 h-3.5"></i>
+                            <span>@(isRtl ? "تصفية:" : "Filter:")</span>
+                            <button type="button" onclick="filterActions('all')" class="action-filter-btn active px-2 py-0.5 rounded-full text-xs bg-gray-100 hover:bg-gray-200" data-status="all">@(isRtl ? "الكل" : "All") (@Model.Actions.Count)</button>
+                            @foreach (var g in grouped)
+                            {
+                                <button type="button" onclick="filterActions('@g.Key')" class="action-filter-btn px-2 py-0.5 rounded-full text-xs bg-gray-100 hover:bg-gray-200" data-status="@g.Key">@Shared[$"ChangeRequestStatus_{g.Key}"].Value (@g.Count())</button>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        @foreach (var g in grouped)
+                        {
+                            var groupLabel = @Shared[$"ChangeRequestStatus_{g.Key}"].Value;
+                            var groupColor = g.Key switch {
+                                "Completed" => "#16a34a",
+                                "InProgress" => "#005B99",
+                                "Pending" => "#f59e0b",
+                                "Blocked" => "#f97316",
+                                _ => "#6b7280"
+                            };
+                            <div class="action-group" data-status="@g.Key">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <span class="inline-block w-2 h-2 rounded-full" style="background:@groupColor"></span>
+                                    <h4 class="text-xs font-bold uppercase" style="color:@groupColor">@groupLabel</h4>
+                                    <span class="text-xs text-gray-400">· @g.Count()</span>
+                                </div>
+                                <div class="space-y-2">
+                                    @foreach (var a in g)
+                                    {
+                                        var statusKey = NormalizeStatus(a.Status);
+                                        var pillColor = a.Status switch {
+                                            ImprovementActionStatus.Completed => "bg-green-100 text-green-700",
+                                            ImprovementActionStatus.InProgress => "bg-blue-100 text-blue-700",
+                                            ImprovementActionStatus.Pending => "bg-yellow-100 text-yellow-700",
+                                            ImprovementActionStatus.Blocked => "bg-orange-100 text-orange-700",
+                                            _ => "bg-gray-100 text-gray-700"
+                                        };
+                                        <div class="bg-white rounded-lg border border-gray-200 p-3 hover:shadow-md transition-shadow">
+                                            <div class="flex items-center justify-between mb-2 gap-2">
+                                                <h4 class="text-sm font-semibold text-gray-900 truncate">@a.Name</h4>
+                                                <span class="px-2 py-0.5 rounded-full text-xs font-semibold @pillColor flex-shrink-0">@Shared[$"ChangeRequestStatus_{statusKey}"].Value</span>
+                                            </div>
+                                            <div class="flex items-center gap-4 text-xs text-gray-600">
+                                                <div class="flex items-center gap-1">
+                                                    <i data-lucide="user" class="w-3 h-3"></i>
+                                                    <span>@(a.AssignedTo != null ? a.AssignedTo.GetLocalizedFullName() : "-")</span>
+                                                </div>
+                                                @if (a.DueDate.HasValue)
+                                                {
+                                                    <div class="flex items-center gap-1">
+                                                        <i data-lucide="calendar" class="w-3 h-3"></i>
+                                                        <span>@a.DueDate.Value.ToDubaiString("yyyy-MM-dd")</span>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <script nonce="@Context.CspNonce()">
+                        function filterActions(status) {
+                            document.querySelectorAll('.action-group').forEach(g => {
+                                g.style.display = (status === 'all' || g.dataset.status === status) ? '' : 'none';
+                            });
+                            document.querySelectorAll('.action-filter-btn').forEach(b => {
+                                b.classList.toggle('active', b.dataset.status === status);
+                                b.style.background = b.dataset.status === status ? '#005B99' : '';
+                                b.style.color = b.dataset.status === status ? '#fff' : '';
+                            });
+                        }
+                    </script>
+                }
+                else
+                {
+                    <div class="text-center py-12">
+                        <i data-lucide="list-checks" class="w-16 h-16 text-gray-300 mx-auto mb-4"></i>
+                        <p class="text-gray-500 mb-4">@Shared["Text_NoActions"]</p>
+                        <a asp-action="Edit" asp-route-id="@Model.Id" class="inline-flex items-center gap-2 px-4 py-2 text-white rounded-lg transition-colors" style="background-color: #005B99;">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            @Shared["Button_AddActions"]
+                        </a>
+                    </div>
+                }
+            </div>
+
+            <!-- Measurements Tab -->
+            <div x-show="activeTab === 'measurements'" x-cloak>
+                @if (Model.Measurements.Any())
+                {
+                    <div class="flex items-center justify-between mb-6">
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-lg font-bold text-gray-900">@Shared["Title_MeasurementsComparison"]</h3>
+                            <button type="button" class="text-gray-400 hover:text-gray-600 transition-colors" title="@Shared["Help_Measurements"]">
+                                <i data-lucide="help-circle" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button type="button" onclick="openAddMeasurementModal()" class="inline-flex items-center gap-2 px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors shadow-sm" style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+                                <i data-lucide="plus" class="w-4 h-4"></i>
+                                @Shared["Button_AddMeasurement"]
+                            </button>
+                            <a asp-action="Roadmap" class="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                                <i data-lucide="map" class="w-4 h-4"></i>
+                                @Shared["Title_ImprovementRoadmap"]
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Comparison Table -->
+                    <div class="overflow-x-auto mb-6">
+                        <div class="inline-block min-w-full align-middle">
+                            <div class="overflow-hidden border border-gray-200 rounded-lg">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+                                        <tr>
+                                            <th class="px-4 py-3 text-start text-xs font-semibold text-white">
+                                                <div class="flex items-center gap-1">
+                                                    @Shared["Label_Measurement"]
+                                                    <button type="button" class="text-white/60 hover:text-white" title="@Shared["Help_Measurements"]">
+                                                        <i data-lucide="help-circle" class="w-3 h-3"></i>
+                                                    </button>
+                                                </div>
+                                            </th>
+                                            <th class="px-4 py-3 text-center text-xs font-semibold text-white">@Shared["Column_Type"]</th>
+                                            <th class="px-4 py-3 text-center text-xs font-semibold text-white">@Shared["Column_Unit"]</th>
+                                            <th class="px-4 py-3 text-center text-xs font-semibold text-white">
+                                                <div class="flex items-center justify-center gap-1">
+                                                    @Shared["Label_AsIs"]
+                                                    <button type="button" class="text-white/60 hover:text-white" title="@Shared["Help_AsIsValue"]">
+                                                        <i data-lucide="help-circle" class="w-3 h-3"></i>
+                                                    </button>
+                                                </div>
+                                            </th>
+                                            <th class="px-4 py-3 text-center text-xs font-semibold text-white">
+                                                <div class="flex items-center justify-center gap-1">
+                                                    @Shared["Column_Target"]
+                                                    <button type="button" class="text-white/60 hover:text-white" title="@Shared["Help_TargetValue"]">
+                                                        <i data-lucide="help-circle" class="w-3 h-3"></i>
+                                                    </button>
+                                                </div>
+                                            </th>
+                                            <th class="px-4 py-3 text-center text-xs font-semibold text-white">
+                                                <div class="flex items-center justify-center gap-1">
+                                                    @Shared["Label_ToBe"]
+                                                    <button type="button" class="text-white/60 hover:text-white" title="@Shared["Help_ToBeValue"]">
+                                                        <i data-lucide="help-circle" class="w-3 h-3"></i>
+                                                    </button>
+                                                </div>
+                                            </th>
+                                            <th class="px-4 py-3 text-center text-xs font-semibold text-white">@Shared["Label_ImprovementPct"]</th>
+                                            <th class="px-4 py-3 text-center text-xs font-semibold text-white">@Shared["Label_AchievementPct"]</th>
+                                            <th class="px-4 py-3 text-center text-xs font-semibold text-white">@(isRtl ? "إجراءات" : "Actions")</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        @foreach (var m in Model.Measurements.OrderBy(x => x.DisplayOrder))
+                                        {
+                                            var impPct = m.GetImprovementPercentage();
+                                            var achPct = m.GetTargetAchievementPercentage();
+                                            string impColor = impPct.HasValue ? (impPct > 0 ? "#16a34a" : impPct < 0 ? "#dc2626" : "#6b7280") : "#6b7280";
+                                            string achColor = achPct.HasValue ? (achPct >= 100 ? "#16a34a" : achPct >= 80 ? "#f59e0b" : "#dc2626") : "#6b7280";
+                                            // Direction arrow so viewers instantly see whether the metric
+                                            // is higher-is-better or lower-is-better
+                                            var lowerBetter = m.Direction == MeasurementDirection.LowerBetter;
+                                            var dirIcon = lowerBetter ? "arrow-down" : "arrow-up";
+                                            var dirTip = lowerBetter
+                                                ? (isRtl ? "أقل أفضل" : "Lower is better")
+                                                : (isRtl ? "أعلى أفضل" : "Higher is better");
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-3 text-sm font-medium text-gray-900">
+                                                    <div class="flex items-center gap-2">
+                                                        <span title="@dirTip" class="inline-flex items-center justify-center w-5 h-5 rounded bg-indigo-50 text-indigo-600">
+                                                            <i data-lucide="@dirIcon" class="w-3 h-3"></i>
+                                                        </span>
+                                                        @(isRtl ? (m.NameAr ?? m.NameEn) : (m.NameEn ?? m.NameAr))
+                                                    </div>
+                                                </td>
+                                                <td class="px-4 py-3 text-center"><span class="px-2 py-1 bg-blue-100 rounded text-xs font-semibold" style="color: #005B99;">@localizeType(m.GetTypeLabel())</span></td>
+                                                <td class="px-4 py-3 text-center text-sm text-gray-600">@localizeUnit(m.UnitOfMeasure)</td>
+                                                <td class="px-4 py-3 text-center text-sm font-bold bg-red-50 text-red-700">@(m.AsIsValue?.ToString("N2") ?? "-")</td>
+                                                <td class="px-4 py-3 text-center text-sm font-bold bg-blue-50" style="color: #005B99;">@(m.TargetValue?.ToString("N2") ?? "-")</td>
+                                                <td class="px-4 py-3 text-center text-sm font-bold bg-green-50 text-green-700">@(m.ToBeValue?.ToString("N2") ?? "-")</td>
+                                                <td class="px-4 py-3 text-center">
+                                                    @if (impPct.HasValue)
+                                                    {
+                                                        <span class="text-sm font-bold" style="color: @impColor;">
+                                                            @(impPct > 0 ? "+" : "")@impPct.Value.ToString("N1")%
+                                                        </span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-sm text-gray-400">-</span>
+                                                    }
+                                                </td>
+                                                <td class="px-4 py-3 text-center">
+                                                    @if (achPct.HasValue)
+                                                    {
+                                                        <div class="flex items-center gap-2 justify-center">
+                                                            <div class="w-16 bg-gray-200 rounded-full h-2">
+                                                                <div class="h-2 rounded-full transition-all" style="width: @Math.Min(achPct.Value, 100)%; background-color: @achColor;"></div>
+                                                            </div>
+                                                            <span class="text-xs font-bold" style="color: @achColor;">@achPct.Value.ToString("N0")%</span>
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-sm text-gray-400">-</span>
+                                                    }
+                                                </td>
+                                                <td class="px-4 py-3 text-center">
+                                                    @{
+                                                        // Record-reading button is only meaningful while the initiative
+                                                        // is executing; trend button is always available.
+                                                        var canRecord = Model.Status == ImprovementStatus.InProgress || Model.Status == ImprovementStatus.OnHold;
+                                                    }
+                                                    @if (canRecord)
+                                                    {
+                                                        <button type="button" class="measurement-record-btn inline-flex items-center justify-center w-7 h-7 rounded hover:bg-green-50 text-green-600" title="@(isRtl ? "تسجيل قراءة" : "Record reading")" data-id="@m.Id" data-name="@((isRtl ? m.NameAr : m.NameEn) ?? m.Id)" data-unit="@localizeUnit(m.UnitOfMeasure)" data-period="@m.MeasuringPeriod">
+                                                            <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                                                        </button>
+                                                    }
+                                                    <button type="button" class="measurement-trend-btn inline-flex items-center justify-center w-7 h-7 rounded hover:bg-blue-50 text-blue-600" title="@(isRtl ? "عرض الاتجاه" : "View trend")" data-id="@m.Id" data-name="@((isRtl ? m.NameAr : m.NameEn) ?? m.Id)" data-unit="@localizeUnit(m.UnitOfMeasure)">
+                                                        <i data-lucide="trending-up" class="w-4 h-4"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Comparison Chart -->
+                    <div class="bg-white rounded-lg border border-gray-200 p-6">
+                        <h3 class="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                            <i data-lucide="bar-chart-2" class="w-4 h-4" style="color: #005B99;"></i>
+                            @Shared["Title_ComparisonChart"]
+                        </h3>
+                        @* Fixed-height wrapper + maintainAspectRatio:false on the
+                           chart stops the resize feedback loop (chart was
+                           jiggling because responsive was fighting its own
+                           computed aspect ratio). *@
+                        <div style="max-width: 700px; height: 320px; margin: 0 auto; position: relative;">
+                            <canvas id="comparisonChart"></canvas>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center py-12">
+                        <i data-lucide="bar-chart" class="w-16 h-16 text-gray-300 mx-auto mb-4"></i>
+                        <p class="text-gray-500 mb-4">@Shared["Text_NoMeasurementsDefined"]</p>
+                        <button type="button" onclick="openAddMeasurementModal()" class="inline-flex items-center gap-2 px-4 py-2 text-white rounded-lg transition-colors" style="background-color: #005B99;">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            @Shared["Button_AddMeasurement"]
+                        </button>
+                    </div>
+                }
+
+                @* External-system KPIs. Renders nothing when no performance system is configured. *@
+                @if (PerfProvider.IsEnabled)
+                {
+                    <div class="mt-4">
+                        @await Html.PartialAsync("Integrations/_LinkedKpis", new LinkedPanelArgs {
+                            EntityType = LinkedEntityType.Improvement,
+                            EntityId   = Model.Id,
+                            AnchorId   = "linked-kpis-improvement"
+                        })
+                    </div>
+                }
+            </div>
+
+            <!-- ════════════════════════════════════════════════════════════════
+                 Record Reading modal — posted from the Measurements tab
+                 "plus-circle" button. Period is computed server-side from the
+                 measurement's cadence so the user only types the value.
+                 ════════════════════════════════════════════════════════════════ -->
+            <div id="recordReadingBackdrop" class="fixed inset-0 bg-black bg-opacity-50 hidden" style="z-index:1060;"></div>
+            <div id="recordReadingModal" class="fixed inset-0 hidden items-center justify-center p-4" style="z-index:1061;">
+                <div class="bg-white rounded-lg shadow-xl border border-gray-200 w-full max-w-md">
+                    <form method="post" action="@Url.Action("RecordReading", "Improvements")">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="measurementId" id="rrMeasurementId" />
+                        <div class="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+                            <h3 class="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                <i data-lucide="plus-circle" class="w-4 h-4 text-green-600"></i>
+                                <span id="rrTitle">@(isRtl ? "تسجيل قراءة" : "Record Reading")</span>
+                            </h3>
+                            <button type="button" onclick="closeReadingModal()" class="text-gray-400 hover:text-gray-600" aria-label="Close"><i data-lucide="x" class="w-5 h-5"></i></button>
+                        </div>
+                        <div class="px-5 py-4 space-y-3">
+                            <div class="text-xs text-gray-500">
+                                <span id="rrMeasurementName" class="font-semibold text-gray-700"></span><span id="rrMetaSep"> · </span><span id="rrPeriodInfo"></span>
+                            </div>
+                            @* "Updating" banner — surfaces an existing reading
+                               for the current period so the user knows they're
+                               REPLACING a value, not creating a new one.
+                               Hidden by default; openReadingModal() toggles
+                               based on /Improvements/GetReadings response. *@
+                            <div id="rrUpdateBanner" class="hidden text-xs px-3 py-2 rounded-md flex items-center gap-2"
+                                 style="background:#fef3c7;border:1px solid #fcd34d;color:#78350f;">
+                                <i data-lucide="alert-triangle" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                <span id="rrUpdateText"></span>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-600 mb-1">@(isRtl ? "القيمة" : "Value")</label>
+                                <div class="flex items-stretch border border-gray-300 rounded-md overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
+                                    <input id="rrValueInput" type="number" step="0.01" inputmode="decimal" name="value" required
+                                           class="flex-grow w-full px-3 py-2 text-sm bg-transparent border-0 focus:outline-none focus:ring-0" />
+                                    <span id="rrUnit" class="hidden items-center px-3 text-xs font-semibold text-gray-600 bg-gray-50 whitespace-nowrap" style="border-inline-start:1px solid #e5e7eb;"></span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-600 mb-1">@(isRtl ? "ملاحظات (اختيارية)" : "Notes (optional)")</label>
+                                <textarea name="notes" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="@(isRtl ? "سبب القيمة / السياق..." : "Context / reason for the value...")"></textarea>
+                            </div>
+                        </div>
+                        <div class="px-5 py-3 border-t border-gray-200 flex items-center justify-end gap-2">
+                            <button type="button" onclick="closeReadingModal()" class="px-4 py-2 text-sm font-medium border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors">@(isRtl ? "إلغاء" : "Cancel")</button>
+                            <button type="submit" class="px-4 py-2 text-sm font-semibold text-white rounded-md shadow-sm hover:opacity-90 transition-opacity inline-flex items-center gap-1.5" style="background:#005B99">
+                                <i data-lucide="save" class="w-4 h-4"></i>
+                                @(isRtl ? "حفظ" : "Save")
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- ════════════════════════════════════════════════════════════════
+                 Add Measurement modal — adds a new KPI to this initiative
+                 without leaving the Details page. Posts to /Improvements/AddMeasurement.
+                 ════════════════════════════════════════════════════════════════ -->
+            <div id="addMeasurementBackdrop" class="fixed inset-0 bg-black bg-opacity-50 hidden" style="z-index:1060;" onclick="closeAddMeasurementModal()"></div>
+            <div id="addMeasurementModal" class="fixed inset-0 hidden items-start justify-center p-4 overflow-y-auto" style="z-index:1061;">
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl my-10">
+                    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                        <h3 class="text-base font-semibold text-gray-900 flex items-center gap-2">
+                            <i data-lucide="plus-circle" class="w-5 h-5" style="color:#005B99;"></i>
+                            @Shared["Heading_AddMeasurement"]
+                        </h3>
+                        <button type="button" onclick="closeAddMeasurementModal()" class="text-gray-400 hover:text-gray-600">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 mb-1">@Shared["Label_NameEn"] <span class="text-red-500">*</span></label>
+                                <input type="text" id="amNameEn" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" placeholder="@(isRtl ? "مثال: Cycle Time" : "e.g. Cycle Time")" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 mb-1">@Shared["Label_NameAr"]</label>
+                                <input type="text" id="amNameAr" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" dir="rtl" placeholder="@(isRtl ? "مثل: زمن الدورة" : "e.g. زمن الدورة")" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 mb-1">@Shared["Label_MeasurementType"]</label>
+                                <select id="amType" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                                    <option value="0">Satisfaction</option>
+                                    <option value="1">Cost</option>
+                                    <option value="2" selected>Time</option>
+                                    <option value="3">Productivity</option>
+                                    <option value="4">Capacity</option>
+                                    <option value="5">Number of Visits</option>
+                                    <option value="6">Number of Documents</option>
+                                    <option value="7">Custom</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 mb-1">@Shared["Label_UnitOfMeasure"]</label>
+                                <input type="text" id="amUnit" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" placeholder="@(isRtl ? "دقائق، %، درهم، عدد..." : "minutes, %, AED, count...")" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 mb-1">@Shared["Label_Direction"]</label>
+                                <select id="amDirection" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                                    <option value="HigherBetter">@Shared["Option_HigherBetter"]</option>
+                                    <option value="LowerBetter">@Shared["Option_LowerBetter"]</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 mb-1">@Shared["Label_MeasuringPeriod"]</label>
+                                <select id="amPeriod" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                                    <option value="Daily">@(isRtl ? "يومي" : "Daily")</option>
+                                    <option value="Weekly">@(isRtl ? "أسبوعي" : "Weekly")</option>
+                                    <option value="Monthly" selected>@(isRtl ? "شهري" : "Monthly")</option>
+                                    <option value="Quarterly">@(isRtl ? "ربع سنوي" : "Quarterly")</option>
+                                    <option value="Annually">@(isRtl ? "سنوي" : "Annually")</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 mb-1">@Shared["Label_AsIsValue"]</label>
+                                <input type="number" step="0.01" id="amAsIs" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 mb-1">@Shared["Label_TargetValue"]</label>
+                                <input type="number" step="0.01" id="amTarget" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                            </div>
+                            <input type="hidden" id="amWeight" value="0" />
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 mb-1">@Shared["Label_MeasuringMethod"]</label>
+                                <input type="text" id="amMethod" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" placeholder="@(isRtl ? "استبيان، تقرير النظام..." : "Survey, System Report...")" />
+                            </div>
+                        </div>
+                        <div id="amError" class="hidden text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-3"></div>
+                    </div>
+                    <div class="px-6 py-3 border-t border-gray-200 flex items-center justify-end gap-2 bg-gray-50 rounded-b-xl">
+                        <button type="button" onclick="closeAddMeasurementModal()" class="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100">@Shared["Button_Cancel"]</button>
+                        <button type="button" onclick="saveNewMeasurement()" class="px-5 py-2 text-sm text-white rounded-lg inline-flex items-center gap-2" style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+                            <i data-lucide="save" class="w-4 h-4"></i>
+                            @Shared["Button_SaveChanges"]
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ════════════════════════════════════════════════════════════════
+                 Trend chart modal — fetches /Improvements/GetReadings and
+                 plots the time series with Chart.js.
+                 ════════════════════════════════════════════════════════════════ -->
+            <div id="trendBackdrop" class="fixed inset-0 bg-black bg-opacity-50 hidden" style="z-index:1060;"></div>
+            <div id="trendModal" class="fixed inset-0 hidden items-center justify-center p-4" style="z-index:1061;">
+                <div class="bg-white rounded-lg shadow-xl border border-gray-200 w-full max-w-3xl">
+                    <div class="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+                        <h3 class="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                            <i data-lucide="trending-up" class="w-4 h-4 text-blue-600"></i>
+                            <span id="trTitle">@(isRtl ? "الاتجاه" : "Trend")</span>
+                        </h3>
+                        <button type="button" onclick="closeTrendModal()" class="text-gray-400 hover:text-gray-600" aria-label="Close"><i data-lucide="x" class="w-5 h-5"></i></button>
+                    </div>
+                    <div class="px-5 py-4">
+                        <div id="trendEmpty" class="hidden text-center py-10 text-xs text-gray-400">@(isRtl ? "لم يتم تسجيل أي قراءات بعد" : "No readings recorded yet")</div>
+                        <canvas id="trendChart" height="200" style="max-height:300px"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <script nonce="@Context.CspNonce()">
+                // ── Add-Measurement modal ────────────────────────────────
+                function openAddMeasurementModal() {
+                    // Reset form
+                    ['amNameEn','amNameAr','amUnit','amAsIs','amTarget','amMethod'].forEach(function(id) {
+                        var el = document.getElementById(id);
+                        if (el) el.value = '';
+                    });
+                    document.getElementById('amWeight').value = 100;
+                    document.getElementById('amType').value = '2';
+                    document.getElementById('amDirection').value = 'HigherBetter';
+                    document.getElementById('amPeriod').value = 'Monthly';
+                    document.getElementById('amError').classList.add('hidden');
+                    document.getElementById('addMeasurementBackdrop').classList.remove('hidden');
+                    var m = document.getElementById('addMeasurementModal');
+                    m.classList.remove('hidden');
+                    m.style.display = 'flex';
+                    if (window.lucide) lucide.createIcons();
+                    setTimeout(function(){ document.getElementById('amNameEn')?.focus(); }, 50);
+                }
+                function closeAddMeasurementModal() {
+                    document.getElementById('addMeasurementBackdrop').classList.add('hidden');
+                    var m = document.getElementById('addMeasurementModal');
+                    m.classList.add('hidden');
+                    m.style.display = 'none';
+                }
+                async function saveNewMeasurement() {
+                    var errorEl = document.getElementById('amError');
+                    errorEl.classList.add('hidden');
+                    var nameEn = document.getElementById('amNameEn').value.trim();
+                    if (!nameEn) {
+                        errorEl.textContent = '@(isRtl ? "الاسم بالإنجليزية مطلوب" : "Name (English) is required")';
+                        errorEl.classList.remove('hidden');
+                        return;
+                    }
+                    var payload = {
+                        ImprovementId: '@Model.Id',
+                        NameEn: nameEn,
+                        NameAr: document.getElementById('amNameAr').value || nameEn,
+                        MeasurementType: parseInt(document.getElementById('amType').value, 10),
+                        UnitOfMeasure: document.getElementById('amUnit').value || '',
+                        TargetValue: parseFloat(document.getElementById('amTarget').value) || null,
+                        AsIsValue: parseFloat(document.getElementById('amAsIs').value) || null,
+                        ToBeValue: parseFloat(document.getElementById('amAsIs').value) || null,
+                        Weight: parseInt(document.getElementById('amWeight').value, 10) || 100,
+                        DisplayOrder: 1,
+                        IsActive: true,
+                        MeasuringPeriod: document.getElementById('amPeriod').value,
+                        MeasuringMethod: document.getElementById('amMethod').value || '',
+                        Direction: document.getElementById('amDirection').value
+                    };
+                    var token = document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]')?.value
+                             || document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+                    try {
+                        var r = await fetch('/Improvements/AddMeasurement', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'RequestVerificationToken': token || ''
+                            },
+                            body: JSON.stringify(payload)
+                        });
+                        var data = await r.json();
+                        if (data.success) {
+                            closeAddMeasurementModal();
+                            // Simple reload so the table + chart re-render with the new row
+                            location.reload();
+                        } else {
+                            errorEl.textContent = data.error || '@(isRtl ? "فشل إضافة المقياس" : "Failed to add measurement")';
+                            errorEl.classList.remove('hidden');
+                        }
+                    } catch (e) {
+                        errorEl.textContent = e.message || '@(isRtl ? "خطأ في الشبكة" : "Network error")';
+                        errorEl.classList.remove('hidden');
+                    }
+                }
+
+                // ── Record-Reading modal ─────────────────────────────────
+                // Localized labels for the measuring-period codes (the stored
+                // value stays the English enum string; only the display label
+                // is translated).
+                var RR_PERIOD_LABELS = {
+                    Daily: '@(isRtl ? "يومي" : "Daily")',
+                    Weekly: '@(isRtl ? "أسبوعي" : "Weekly")',
+                    Monthly: '@(isRtl ? "شهري" : "Monthly")',
+                    Quarterly: '@(isRtl ? "ربع سنوي" : "Quarterly")',
+                    Annually: '@(isRtl ? "سنوي" : "Annually")'
+                };
+                function rrPeriodLabel(p) { return RR_PERIOD_LABELS[p] || p || ''; }
+                async function openReadingModal(measurementId, name, unit, period) {
+                    document.getElementById('rrMeasurementId').value = measurementId;
+                    var nameEl = document.getElementById('rrMeasurementName');
+                    nameEl.textContent = name || '';
+                    // Hide the "·" separator when there's no measurement name so
+                    // it doesn't dangle in front of the period.
+                    var sepEl = document.getElementById('rrMetaSep');
+                    if (sepEl) sepEl.style.display = (name && name.trim()) ? '' : 'none';
+                    // Show the unit as an attached addon only when one exists.
+                    var unitEl = document.getElementById('rrUnit');
+                    if (unit && unit.trim()) { unitEl.textContent = unit; unitEl.style.display = 'inline-flex'; }
+                    else { unitEl.textContent = ''; unitEl.style.display = 'none'; }
+                    document.getElementById('rrPeriodInfo').textContent = '@(isRtl ? "الفترة:" : "Period:")  ' + rrPeriodLabel(period || 'Monthly');
+                    // Reset banner + value before showing — prior state from a
+                    // previous open shouldn't leak across measurements.
+                    const banner = document.getElementById('rrUpdateBanner');
+                    const valueInput = document.getElementById('rrValueInput');
+                    banner.classList.add('hidden');
+                    if (valueInput) valueInput.value = '';
+                    document.getElementById('recordReadingBackdrop').classList.remove('hidden');
+                    const m = document.getElementById('recordReadingModal');
+                    m.classList.remove('hidden');
+                    m.style.display = 'flex';
+                    if (window.lucide) lucide.createIcons();
+
+                    // Fetch existing readings; if there's already one for the
+                    // current period, pre-fill the value and surface the
+                    // 'updating' banner so the user knows they're REPLACING
+                    // rather than creating. Same-period upsert is intentional
+                    // (corrections happen) but it should be transparent.
+                    try {
+                        const res = await fetch('@Url.Action("GetReadings", "Improvements")?measurementId=' + encodeURIComponent(measurementId), { credentials: 'same-origin' });
+                        if (!res.ok || !(res.headers.get('content-type') || '').includes('application/json')) return;
+                        const j = await res.json();
+                        const arr = Array.isArray(j) ? j : (j?.readings || []);
+                        if (arr.length === 0) return;
+                        // Compute the current period label the same way the
+                        // server will (YYYY-MM for Monthly, etc.). The most
+                        // common cadence is Monthly so default to that.
+                        const now = new Date();
+                        const yyyy = now.getFullYear();
+                        const mm = String(now.getMonth() + 1).padStart(2, '0');
+                        const currentPeriodLabel = (period && period.toLowerCase() !== 'monthly') ? null : (yyyy + '-' + mm);
+                        // Find existing reading for current period; fall back
+                        // to the most recent reading if cadence isn't Monthly
+                        // (controller will ultimately reconcile by period).
+                        const existing = currentPeriodLabel
+                            ? arr.find(r => r.periodLabel === currentPeriodLabel)
+                            : arr[arr.length - 1];
+                        if (!existing) return;
+                        valueInput.value = existing.value;
+                        document.getElementById('rrUpdateText').textContent =
+                            (isRtl
+                                ? 'سيتم تحديث القراءة لـ ' + (existing.periodLabel || '') + ' من ' + existing.value + ' إلى القيمة الجديدة.'
+                                : 'You are updating the ' + (existing.periodLabel || 'current') + ' reading (was ' + existing.value + ').');
+                        banner.classList.remove('hidden');
+                        if (window.lucide) lucide.createIcons();
+                    } catch (_) { /* network noise — silent, modal still works */ }
+                }
+                function closeReadingModal() {
+                    document.getElementById('recordReadingBackdrop').classList.add('hidden');
+                    const m = document.getElementById('recordReadingModal');
+                    m.classList.add('hidden');
+                    m.style.display = 'none';
+                }
+                document.getElementById('recordReadingBackdrop')?.addEventListener('click', closeReadingModal);
+
+                // Delegated listeners — data-* attrs avoid unescaped
+                // user-supplied measurement names/units ending up in JS context.
+                document.addEventListener('click', function (e) {
+                    const rec = e.target.closest('.measurement-record-btn');
+                    if (rec) { openReadingModal(rec.dataset.id, rec.dataset.name, rec.dataset.unit, rec.dataset.period); return; }
+                    const tr = e.target.closest('.measurement-trend-btn');
+                    if (tr) { openTrendModal(tr.dataset.id, tr.dataset.name, tr.dataset.unit); return; }
+                });
+
+                // ── Trend chart modal ────────────────────────────────────
+                let trendChartInstance = null;
+                async function openTrendModal(measurementId, name, unit) {
+                    document.getElementById('trTitle').textContent = (name || '') + ' — @(isRtl ? "الاتجاه" : "Trend")';
+                    document.getElementById('trendBackdrop').classList.remove('hidden');
+                    const m = document.getElementById('trendModal');
+                    m.classList.remove('hidden');
+                    m.style.display = 'flex';
+                    if (window.lucide) lucide.createIcons();
+
+                    try {
+                        const res = await fetch('@Url.Action("GetReadings", "Improvements")?measurementId=' + encodeURIComponent(measurementId));
+                        const data = await res.json();
+                        const empty = document.getElementById('trendEmpty');
+                        const canvas = document.getElementById('trendChart');
+                        if (!Array.isArray(data) || data.length === 0) {
+                            empty.classList.remove('hidden');
+                            canvas.style.display = 'none';
+                            if (trendChartInstance) { trendChartInstance.destroy(); trendChartInstance = null; }
+                            return;
+                        }
+                        empty.classList.add('hidden');
+                        canvas.style.display = '';
+                        const labels = data.map(r => r.periodLabel);
+                        const values = data.map(r => r.value);
+                        if (trendChartInstance) trendChartInstance.destroy();
+                        trendChartInstance = new Chart(canvas, {
+                            type: 'line',
+                            data: {
+                                labels: labels,
+                                datasets: [{
+                                    label: unit || 'Value',
+                                    data: values,
+                                    borderColor: '#005B99',
+                                    backgroundColor: 'rgba(0, 91, 153, 0.1)',
+                                    fill: true,
+                                    tension: 0.25,
+                                    pointRadius: 4,
+                                    pointHoverRadius: 6
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: { legend: { display: false } },
+                                scales: { y: { beginAtZero: false } }
+                            }
+                        });
+                    } catch (err) {
+                        console.error('Failed to load readings', err);
+                    }
+                }
+                function closeTrendModal() {
+                    document.getElementById('trendBackdrop').classList.add('hidden');
+                    const m = document.getElementById('trendModal');
+                    m.classList.add('hidden');
+                    m.style.display = 'none';
+                }
+                document.getElementById('trendBackdrop')?.addEventListener('click', closeTrendModal);
+            </script>
+
+            <!-- Team Members Tab -->
+            <div x-show="activeTab === 'team'" x-cloak>
+                <div class="mb-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-sm font-bold text-gray-900">@Shared["Label_TeamMembers"]</h3>
+                            <button type="button" class="text-gray-400 hover:text-gray-600 transition-colors" title="@Shared["Help_TeamRoles"]">
+                                <i data-lucide="help-circle" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-4">@Shared["Help_TeamRoles"]</p>
+
+                    @{
+                        // Required roles for a fully-staffed initiative. DMAIC /
+                        // MBRHE convention: an initiative should at minimum have
+                        // an Identifier (kicked it off), a ProcessOwner (owns
+                        // the outcome) and an Executor (does the work).
+                        var requiredRoles = new[] {
+                            ImprovementLifecycleRole.Identifier,
+                            ImprovementLifecycleRole.ProcessOwner,
+                            ImprovementLifecycleRole.Executor
+                        };
+                        var assignedRoles = Model.TeamMembers
+                            .Select(m => m.Role)
+                            .Distinct()
+                            .ToHashSet();
+                        var missingRoles = requiredRoles.Where(r => !assignedRoles.Contains(r)).ToList();
+                    }
+                    @if (missingRoles.Count > 0)
+                    {
+                        <div class="mb-4 p-3 rounded-lg border border-amber-200 bg-amber-50 flex items-start gap-2">
+                            <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5"></i>
+                            <div class="text-xs text-amber-800">
+                                <strong>@Shared["Label_RequiredRolesMissing"]:</strong>
+                                @foreach (var r in missingRoles)
+                                {
+                                    <span class="inline-block px-2 py-0.5 ml-1 rounded-full bg-amber-100 border border-amber-200 font-semibold">@Shared[$"Role_{r}"]</span>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Team Members Table -->
+                    <div class="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+                                <tr>
+                                    <th class="px-6 py-3 text-start text-xs font-medium text-white uppercase tracking-wider">@Shared["Label_User"]</th>
+                                    <th class="px-6 py-3 text-start text-xs font-medium text-white uppercase tracking-wider">@Shared["Label_AssignRole"]</th>
+                                    <th class="px-6 py-3 text-start text-xs font-medium text-white uppercase tracking-wider">@Shared["Label_RoleNotes"]</th>
+                                    <th class="px-6 py-3 text-start text-xs font-medium text-white uppercase tracking-wider">@Shared["Label_Actions"]</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                @if (Model.TeamMembers.Any())
+                                {
+                                    @foreach (var member in Model.TeamMembers)
+                                    {
+                                        <tr>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">@member.User?.FullNameEn</td>
+                                            <td class="px-6 py-4 whitespace-nowrap">
+                                                <span class="px-2 py-1 text-xs font-semibold rounded-full" style="background-color: #e6f2ff; color: #005B99;">
+                                                    @Shared[$"Role_{member.Role}"]
+                                                </span>
+                                            </td>
+                                            <td class="px-6 py-4 text-sm text-gray-600">@(member.Notes ?? "-")</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                                <button type="button" onclick="removeTeamMember('@member.Id')" class="text-red-600 hover:text-red-900">
+                                                    @Shared["Label_RemoveRole"]
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="4" class="px-6 py-4 text-center text-sm text-gray-500">@Shared["Text_NoTeamMembers"]</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Add Team Member Form -->
+                    <div class="mt-4 p-4 bg-gray-50 rounded-lg">
+                        <h4 class="text-sm font-semibold text-gray-900 mb-3">@Shared["Button_AddTeamMember"]</h4>
+                        <form id="addTeamMemberForm" class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                            <div>
+                                <select id="teamMemberUserId" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
+                                    <option value="">@Shared["Placeholder_SelectUser"]</option>
+                                    @foreach (var user in ViewBag.AllUsers as List<SelectListItem>)
+                                    {
+                                        <option value="@user.Value">@user.Text</option>
+                                    }
+                                </select>
+                            </div>
+                            <div>
+                                <select id="teamMemberRole" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
+                                    <option value="">@Shared["Placeholder_SelectRole"]</option>
+                                    @foreach (ImprovementLifecycleRole role in Enum.GetValues(typeof(ImprovementLifecycleRole)))
+                                    {
+                                        <option value="@((int)role)">@Shared[$"Role_{role}"]</option>
+                                    }
+                                </select>
+                            </div>
+                            <div>
+                                <input type="text" id="teamMemberNotes" placeholder="@Shared["Label_RoleNotes"]" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" />
+                            </div>
+                            <div>
+                                <button type="button" onclick="addTeamMember()" class="w-full px-4 py-2 text-white rounded-lg transition-colors text-sm font-medium" style="background-color: #005B99;">
+                                    @Shared["Button_AddTeamMember"]
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ════════════════════════════════════════════════════════════
+                 Linked Risks Tab — mirrors PManagement's InitiativeRiskLink
+                 pattern. Shows the risks this initiative mitigates/creates
+                 alongside the current risk score and a relationship type.
+                 ════════════════════════════════════════════════════════ -->
+            <div x-show="activeTab === 'risks'" x-cloak>
+                <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+                    <div>
+                        <h3 class="text-sm font-bold text-gray-900 flex items-center gap-2">
+                            <i data-lucide="shield-alert" class="w-4 h-4" style="color:#005B99"></i>
+                            @(isRtl ? "المخاطر المرتبطة" : "Linked Risks")
+                        </h3>
+                        <p class="text-xs text-gray-500 mt-1">
+                            @(isRtl
+                                ? "المخاطر التي تعالجها هذه المبادرة أو قد تنشأ منها."
+                                : "Risks this initiative addresses or may introduce.")
+                        </p>
+                    </div>
+                    <button type="button" onclick="openLinkRiskModal()" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg text-white" style="background:#005B99;">
+                        <i data-lucide="plus" class="w-4 h-4"></i>
+                        @(isRtl ? "ربط مخاطرة" : "Link Risk")
+                    </button>
+                </div>
+
+                <!-- Empty state -->
+                <div x-show="$store.improvementRisks.loaded && $store.improvementRisks.linked.length === 0" x-cloak class="text-center py-12 border-2 border-dashed border-gray-200 rounded-xl">
+                    <i data-lucide="shield-off" class="w-12 h-12 text-gray-300 mx-auto mb-3"></i>
+                    <p class="text-gray-500 mb-3">@(isRtl ? "لم يتم ربط أي مخاطر بعد" : "No risks linked yet")</p>
+                    <button type="button" onclick="openLinkRiskModal()" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg text-white" style="background:#005B99;">
+                        <i data-lucide="plus" class="w-4 h-4"></i>
+                        @(isRtl ? "ربط مخاطرة الآن" : "Link a risk now")
+                    </button>
+                </div>
+
+                <!-- Loading -->
+                <div x-show="!$store.improvementRisks.loaded" class="text-center py-8 text-gray-500 text-sm">
+                    <div class="inline-block w-6 h-6 border-2 border-gray-300 border-t-[#005B99] rounded-full animate-spin mb-2"></div>
+                    <div>@(isRtl ? "جاري التحميل…" : "Loading risks…")</div>
+                </div>
+
+                <!-- Table of linked risks -->
+                <div x-show="$store.improvementRisks.loaded && $store.improvementRisks.linked.length > 0" x-cloak class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
+                            <tr>
+                                <th class="px-3 py-2 text-start">@(isRtl ? "الرقم" : "Number")</th>
+                                <th class="px-3 py-2 text-start">@(isRtl ? "المخاطرة" : "Risk")</th>
+                                <th class="px-3 py-2 text-start">@(isRtl ? "الفئة" : "Category")</th>
+                                <th class="px-3 py-2 text-center">@(isRtl ? "الدرجة المتبقية / الأولية" : "Residual / Inherent")</th>
+                                <th class="px-3 py-2 text-start">@(isRtl ? "نوع العلاقة" : "Relationship")</th>
+                                <th class="px-3 py-2 text-center">@(isRtl ? "الخفض المتوقع" : "Expected Reduction")</th>
+                                <th class="px-3 py-2 text-end">@(isRtl ? "الإجراءات" : "Actions")</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            <template x-for="link in $store.improvementRisks.linked" :key="link.riskId">
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-3 py-2 font-mono text-xs text-gray-600" x-text="link.risk.riskNumber"></td>
+                                    <td class="px-3 py-2">
+                                        <a :href="'/EnterpriseRisks/Details/' + link.risk.id" class="font-semibold text-gray-900 hover:underline" style="color:#003d6b;" x-text="isRtl ? link.risk.nameAr : link.risk.nameEn"></a>
+                                    </td>
+                                    <td class="px-3 py-2 text-gray-600" x-text="link.risk.categoryName"></td>
+                                    <td class="px-3 py-2 text-center">
+                                        <span class="inline-flex items-center gap-1 text-xs">
+                                            <span class="px-2 py-0.5 rounded font-bold" :style="riskScoreStyle(link.risk.residualRiskScore)" x-text="link.risk.residualRiskScore"></span>
+                                            <span class="text-gray-400">/</span>
+                                            <span class="px-2 py-0.5 rounded font-bold" :style="riskScoreStyle(link.risk.inherentRiskScore)" x-text="link.risk.inherentRiskScore"></span>
+                                        </span>
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full" :class="relationshipClass(link.relationshipType)">
+                                            <i :data-lucide="relationshipIcon(link.relationshipType)" class="w-3 h-3"></i>
+                                            <span x-text="link.relationshipType"></span>
+                                        </span>
+                                    </td>
+                                    <td class="px-3 py-2 text-center text-gray-700">
+                                        <span x-show="link.expectedRiskReduction !== null"><span x-text="link.expectedRiskReduction"></span>%</span>
+                                        <span x-show="link.expectedRiskReduction === null" class="text-gray-400">—</span>
+                                    </td>
+                                    <td class="px-3 py-2 text-end">
+                                        <button type="button" @@click="unlinkRisk(link.riskId)" class="inline-flex items-center gap-1 px-2 py-1 text-xs rounded text-red-600 hover:bg-red-50" :title="isRtl ? 'إلغاء الربط' : 'Unlink'">
+                                            <i data-lucide="unlink" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                @* External-system risks. Renders nothing when no risk system is configured. *@
+                <div class="mt-3">
+                    @await Html.PartialAsync("Integrations/_LinkedRisks", new LinkedPanelArgs {
+                        EntityType = LinkedEntityType.Improvement,
+                        EntityId   = Model.Id,
+                        AnchorId   = "linked-risks-improvement"
+                    })
+                </div>
+            </div>
+
+            <!-- ════════════════════════════════════════════════════════════
+                 Reviews Tab — Pass D
+                 Stage-gate history with Green/Amber/Red health badges,
+                 "Add Review" form, and an overdue banner when the next
+                 review is in the past.
+                 ════════════════════════════════════════════════════════ -->
+            <div x-show="activeTab === 'reviews'" x-cloak>
+                @{
+                    var reviews = (ViewBag.Reviews as List<ImprovementReview>) ?? new List<ImprovementReview>();
+                    var latestReview = reviews.FirstOrDefault();
+                    var overdue = latestReview?.NextReviewDate.HasValue == true && latestReview.NextReviewDate.Value < DateTime.UtcNow;
+                    var terminal = ESEMS.Web.Services.Improvements.ImprovementStatusMachine.Terminal.Contains(Model.Status);
+                }
+
+                <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+                    <div class="flex items-center gap-2">
+                        <h3 class="text-sm font-bold text-gray-900 flex items-center gap-2">
+                            <i data-lucide="shield-check" class="w-4 h-4" style="color:#005B99"></i>
+                            @(isRtl ? "مراجعات المرحلة" : "Stage-Gate Reviews")
+                        </h3>
+                        @if (latestReview != null)
+                        {
+                            var hBg = latestReview.HealthStatus switch { "Green" => "#dcfce7", "Amber" => "#fef3c7", "Red" => "#fee2e2", _ => "#e5e7eb" };
+                            var hFg = latestReview.HealthStatus switch { "Green" => "#166534", "Amber" => "#92400e", "Red" => "#991b1b", _ => "#374151" };
+                            <span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:@hBg;color:@hFg">
+                                @(isRtl ? "الحالة الحالية:" : "Current health:") @latestReview.HealthStatus
+                            </span>
+                        }
+                    </div>
+                    @if (!terminal)
+                    {
+                        <button type="button" onclick="openReviewModal()" class="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-white rounded" style="background:#005B99">
+                            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                            @(isRtl ? "إضافة مراجعة" : "Add Review")
+                        </button>
+                    }
+                </div>
+
+                @if (overdue)
+                {
+                    <div class="mb-4 p-3 rounded-lg border border-amber-200 bg-amber-50 flex items-start gap-2">
+                        <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5"></i>
+                        <div class="text-xs text-amber-800">
+                            <strong>@(isRtl ? "المراجعة متأخرة" : "Review overdue"):</strong>
+                            @(isRtl ? "كان من المقرر إجراء المراجعة التالية في" : "The next review was scheduled for")
+                            <strong>@latestReview!.NextReviewDate!.Value.ToDubaiString("yyyy-MM-dd")</strong>.
+                        </div>
+                    </div>
+                }
+
+                @if (reviews.Count == 0)
+                {
+                    <div class="text-center py-10 text-xs text-gray-400 border border-dashed border-gray-300 rounded-lg">
+                        @(isRtl ? "لم يتم تسجيل أي مراجعات بعد" : "No reviews recorded yet")
+                    </div>
+                }
+                else
+                {
+                    <div class="space-y-3">
+                        @foreach (var r in reviews)
+                        {
+                            var rBg = r.HealthStatus switch { "Green" => "#dcfce7", "Amber" => "#fef3c7", "Red" => "#fee2e2", _ => "#e5e7eb" };
+                            var rFg = r.HealthStatus switch { "Green" => "#166534", "Amber" => "#92400e", "Red" => "#991b1b", _ => "#374151" };
+                            var rIcon = r.HealthStatus switch { "Green" => "check-circle-2", "Amber" => "alert-triangle", "Red" => "x-circle", _ => "help-circle" };
+                            <div class="bg-white rounded-lg border border-gray-200 p-3">
+                                <div class="flex items-start justify-between gap-2 mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold" style="background:@rBg;color:@rFg">
+                                            <i data-lucide="@rIcon" class="w-3 h-3"></i>
+                                            @r.HealthStatus
+                                        </span>
+                                        <span class="text-xs text-gray-600">@r.ReviewDate.ToDubaiString("yyyy-MM-dd")</span>
+                                        <span class="text-xs text-gray-400">· @(r.ReviewedByName ?? "-")</span>
+                                    </div>
+                                    @if (r.ProgressPercentageSnapshot.HasValue)
+                                    {
+                                        <span class="text-xs text-gray-500">@(isRtl ? "التقدم:" : "Progress:") <strong>@r.ProgressPercentageSnapshot%</strong></span>
+                                    }
+                                </div>
+                                @{
+                                    var notes = (isRtl ? r.NotesAr : r.NotesEn) ?? r.NotesEn ?? r.NotesAr;
+                                }
+                                @if (!string.IsNullOrWhiteSpace(notes))
+                                {
+                                    <p class="text-xs text-gray-700 whitespace-pre-line">@notes</p>
+                                }
+                                @if (r.NextReviewDate.HasValue)
+                                {
+                                    <div class="mt-2 text-[10px] text-gray-500">
+                                        <i data-lucide="calendar" class="w-3 h-3 inline-block"></i>
+                                        @(isRtl ? "المراجعة التالية:" : "Next review:") @r.NextReviewDate.Value.ToDubaiString("yyyy-MM-dd")
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <!-- Add Review modal -->
+            <div id="reviewBackdrop" class="fixed inset-0 bg-black bg-opacity-50 hidden" style="z-index:1060;"></div>
+            <div id="reviewModal" class="fixed inset-0 hidden items-center justify-center p-4" style="z-index:1061;">
+                <div class="bg-white rounded-lg shadow-xl border border-gray-200 w-full max-w-xl">
+                    <form method="post" action="@Url.Action("AddReview", "Improvements", new { id = Model.Id })">
+                        @Html.AntiForgeryToken()
+                        <div class="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+                            <h3 class="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                <i data-lucide="shield-check" class="w-4 h-4" style="color:#005B99"></i>
+                                @(isRtl ? "إضافة مراجعة" : "Add Stage-Gate Review")
+                            </h3>
+                            <button type="button" onclick="closeReviewModal()" class="text-gray-400 hover:text-gray-600" aria-label="Close"><i data-lucide="x" class="w-5 h-5"></i></button>
+                        </div>
+                        <div class="px-5 py-4 space-y-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-600 mb-1">@(isRtl ? "حالة الصحة" : "Health Status")</label>
+                                <div class="grid grid-cols-3 gap-2">
+                                    <label class="flex items-center gap-2 p-2 rounded border border-green-300 bg-green-50 cursor-pointer">
+                                        <input type="radio" name="healthStatus" value="Green" required checked class="text-green-600" />
+                                        <span class="text-xs text-green-700 font-semibold">🟢 @(isRtl ? "أخضر — على المسار" : "Green — On track")</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 p-2 rounded border border-amber-300 bg-amber-50 cursor-pointer">
+                                        <input type="radio" name="healthStatus" value="Amber" class="text-amber-600" />
+                                        <span class="text-xs text-amber-700 font-semibold">🟡 @(isRtl ? "أصفر — في خطر" : "Amber — At risk")</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 p-2 rounded border border-red-300 bg-red-50 cursor-pointer">
+                                        <input type="radio" name="healthStatus" value="Red" class="text-red-600" />
+                                        <span class="text-xs text-red-700 font-semibold">🔴 @(isRtl ? "أحمر — خارج المسار" : "Red — Off track")</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-600 mb-1">@(isRtl ? "ملاحظات المراجعة (إنجليزي)" : "Review Notes (English)")</label>
+                                <textarea name="notesEn" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" placeholder="@(isRtl ? "الإنجازات المحققة، المعوقات، المخاطر، التغييرات في النطاق..." : "Milestones delivered, blockers, risks, changes to scope...")"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-600 mb-1">@(isRtl ? "ملاحظات المراجعة (عربي)" : "Review Notes (Arabic)")</label>
+                                <textarea name="notesAr" rows="2" dir="rtl" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"></textarea>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-600 mb-1">@(isRtl ? "نسبة التقدم (%)" : "Progress (%)")</label>
+                                    <input type="number" name="progressPercentage" min="0" max="100" value="@Model.ProgressPercentage" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-600 mb-1">@(isRtl ? "تاريخ المراجعة التالية" : "Next Review Date")</label>
+                                    <input type="date" name="nextReviewDate" value="@DateTime.UtcNow.AddMonths(3).ToDubaiString("yyyy-MM-dd")" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="px-5 py-3 border-t border-gray-200 flex items-center justify-end gap-2">
+                            <button type="button" onclick="closeReviewModal()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 rounded hover:bg-gray-50">@(isRtl ? "إلغاء" : "Cancel")</button>
+                            <button type="submit" class="px-3 py-1.5 text-xs text-white rounded" style="background:#005B99">@(isRtl ? "حفظ المراجعة" : "Save Review")</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <script nonce="@Context.CspNonce()">
+                function openReviewModal() {
+                    document.getElementById('reviewBackdrop').classList.remove('hidden');
+                    const m = document.getElementById('reviewModal');
+                    m.classList.remove('hidden');
+                    m.style.display = 'flex';
+                    if (window.lucide) lucide.createIcons();
+                }
+                function closeReviewModal() {
+                    document.getElementById('reviewBackdrop').classList.add('hidden');
+                    const m = document.getElementById('reviewModal');
+                    m.classList.add('hidden');
+                    m.style.display = 'none';
+                }
+                document.getElementById('reviewBackdrop')?.addEventListener('click', closeReviewModal);
+            </script>
+        </div>
+    </div>
+        </main>
+
+        <!-- Right rail — sticky status & lifecycle, score summary, quadrant
+             viz, priority chips, key facts, scope. Order is value-density:
+             status first (what action does the user take?), score (how
+             important is this?), quadrant viz (where does it sit?), then
+             slower-changing metadata. -->
+        <aside class="imp-rail" aria-label="@(isRtl ? "تفاصيل المبادرة" : "Initiative details")">
+            <!-- Status & Lifecycle -->
+            <section class="imp-rail-section">
+                <div class="imp-rail-label">@(isRtl ? "الحالة الحالية" : "Current Status")</div>
+                <div class="imp-rail-status">
+                    <span class="imp-status-pill imp-status-pill-lg" style="background:@statusBg;color:@statusFg">@statusLabel</span>
+                </div>
+
+                @* Score summary (Readiness / Value / Total) — three compact
+                   stacked rows so the rail stays narrow but the numbers are
+                   always visible while scrolling through the tab content. *@
+                @if (railRawReadiness.HasValue || railRawValue.HasValue || railRawTotal.HasValue)
+                {
+                    <div class="imp-rail-scoregrid">
+                        <div class="imp-rail-score">
+                            <div class="imp-rail-score-label">@(isRtl ? "الجاهزية" : "Readiness")</div>
+                            <div class="imp-rail-score-value" style="color:#005B99">@(railRawReadiness?.ToString("N1") ?? "—")</div>
+                            <div class="imp-rail-score-weight">@(isRtl ? "30٪" : "30%")</div>
+                        </div>
+                        <div class="imp-rail-score">
+                            <div class="imp-rail-score-label">@(isRtl ? "القيمة" : "Value")</div>
+                            <div class="imp-rail-score-value" style="color:#15803D">@(railRawValue?.ToString("N1") ?? "—")</div>
+                            <div class="imp-rail-score-weight">@(isRtl ? "70٪" : "70%")</div>
+                        </div>
+                        <div class="imp-rail-score imp-rail-score-total">
+                            <div class="imp-rail-score-label">@(isRtl ? "الإجمالي" : "Total")</div>
+                            <div class="imp-rail-score-value" style="color:#fff">@(railRawTotal?.ToString("N1") ?? "—")</div>
+                            <div class="imp-rail-score-weight" style="color:rgba(255,255,255,.7)">/ 10</div>
+                        </div>
+                    </div>
+                }
+
+                @* Quadrant placement mini-viz — 2x2 grid mapping Effort
+                   (X axis) and Impact (Y axis). Active cell highlighted
+                   based on Model.Quadrant. Tells reviewers at a glance:
+                   is this a Quick Win or a Major Project? *@
+                @{
+                    var qActive = Model.Quadrant;
+                    string qCls(ImprovementQuadrant q) => qActive == q ? "imp-q-cell imp-q-active" : "imp-q-cell";
+                }
+                <div class="imp-rail-quadrant" aria-label="@(isRtl ? "الموقع في مصفوفة التأثير/الجهد" : "Position in Impact/Effort matrix")">
+                    <div class="imp-q-axis-y">@(isRtl ? "تأثير ↑" : "Impact ↑")</div>
+                    <div class="imp-q-grid">
+                        <div class="@qCls(ImprovementQuadrant.QuickWins)" data-q="QuickWins" title="@Shared["ImprovementQuadrant_QuickWins"]">
+                            <span class="imp-q-name">@(isRtl ? "مكاسب سريعة" : "Quick Wins")</span>
+                        </div>
+                        <div class="@qCls(ImprovementQuadrant.MajorProjects)" data-q="MajorProjects" title="@Shared["ImprovementQuadrant_MajorProjects"]">
+                            <span class="imp-q-name">@(isRtl ? "مشاريع كبرى" : "Major")</span>
+                        </div>
+                        <div class="@qCls(ImprovementQuadrant.FillIns)" data-q="FillIns" title="@Shared["ImprovementQuadrant_FillIns"]">
+                            <span class="imp-q-name">@(isRtl ? "للتعبئة" : "Fill-In")</span>
+                        </div>
+                        <div class="@qCls(ImprovementQuadrant.ThanklessTasks)" data-q="ThanklessTasks" title="@Shared["ImprovementQuadrant_ThanklessTasks"]">
+                            <span class="imp-q-name">@(isRtl ? "تجنب" : "Avoid")</span>
+                        </div>
+                    </div>
+                    <div class="imp-q-axis-x">@(isRtl ? "← جهد" : "Effort →")</div>
+                </div>
+                <div class="imp-rail-actions">
+                    @{
+                        // FLOW-005: hide approval decision buttons unless the
+                        // current user is the assigned approver of the active
+                        // workflow. Non-approval lifecycle actions are unaffected.
+                        var visibleActions = allowedActions
+                            .Where(a => isAssignedApprover || !approvalGatedActions.Contains(a.Key))
+                            .ToList();
+                    }
+                    @foreach (var act in visibleActions)
+                    {
+                        var label = isRtl ? act.LabelAr : act.LabelEn;
+                        if (act.Key == "Close")
+                        {
+                            <button type="button" onclick="openClosureModal()" class="imp-rail-actionbtn" style="background:@act.Color">
+                                <i data-lucide="@act.Icon" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                @label
+                            </button>
+                            continue;
+                        }
+                        var formAction = act.Key switch
+                        {
+                            "Submit"   => Url.Action("Submit",     "Improvements", new { id = Model.Id }),
+                            "Approve"  => Url.Action("Approve",    "Improvements", new { id = Model.Id }),
+                            "Reject"   => Url.Action("Reject",     "Improvements", new { id = Model.Id }),
+                            "Return"   => Url.Action("Return",     "Improvements", new { id = Model.Id }),
+                            _          => Url.Action("Transition", "Improvements", new { id = Model.Id })
+                        };
+                        var needsComment = commentRequired.Contains(act.Key);
+                        <form method="post" action="@formAction" onsubmit="return confirmLifecycleAction(this, '@act.Key', @needsComment.ToString().ToLower());">
+                            @Html.AntiForgeryToken()
+                            @if (act.Key != "Submit" && act.Key != "Approve" && act.Key != "Reject" && act.Key != "Return")
+                            {
+                                <input type="hidden" name="target" value="@act.TargetStatus" />
+                            }
+                            <input type="hidden" name="comments" value="" class="lifecycle-comments" />
+                            <button type="submit" class="imp-rail-actionbtn" style="background:@act.Color">
+                                <i data-lucide="@act.Icon" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                @label
+                            </button>
+                        </form>
+                    }
+                    @if (!visibleActions.Any())
+                    {
+                        <span class="imp-rail-empty">@(isRtl ? "لا توجد إجراءات متاحة" : "No actions available")</span>
+                    }
+                </div>
+            </section>
+
+            <!-- Priority chips -->
+            <section class="imp-rail-section">
+                <div class="imp-rail-label">@(isRtl ? "الأولوية" : "Priority")</div>
+                <div class="imp-rail-chips">
+                    <span class="imp-chip" style="border-color:@quadrantColor;color:@quadrantColor">
+                        <i data-lucide="target" class="w-3 h-3" style="color:@quadrantColor" aria-hidden="true"></i>
+                        @Shared[$"ImprovementQuadrant_{Model.Quadrant}"].Value
+                    </span>
+                    @if (Model.Horizon.HasValue)
+                    {
+                        <span class="imp-chip" style="border-color:#ddd6fe;color:#6d28d9">
+                            <i data-lucide="calendar-range" class="w-3 h-3" aria-hidden="true"></i>
+                            @Shared[$"Option_{Model.Horizon}"]
+                        </span>
+                    }
+                    @if (Model.TotalPrioritizationScore.HasValue)
+                    {
+                        <span class="imp-chip" style="border-color:#005B99;color:#005B99">
+                            <i data-lucide="star" class="w-3 h-3" style="color:#005B99" aria-hidden="true"></i>
+                            @Shared["Label_PriorityScore"]: @Model.TotalPrioritizationScore.Value.ToString("N2")
+                        </span>
+                    }
+                </div>
+                <div class="imp-rail-kv">
+                    <div class="imp-kv">
+                        <span class="imp-kv-k">@Shared["Column_Priority"]</span>
+                        <span class="imp-kv-v">@Model.Priority</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Key facts -->
+            <section class="imp-rail-section">
+                <div class="imp-rail-label">@(isRtl ? "تفاصيل" : "Details")</div>
+                <div class="imp-rail-kv">
+                    <div class="imp-kv">
+                        <span class="imp-kv-k">@(isRtl ? "المصدر" : "Source")</span>
+                        <span class="imp-kv-v">@Shared[$"ChangeRequestSource_{Model.Source}"].Value</span>
+                    </div>
+                    <div class="imp-kv">
+                        <span class="imp-kv-k">@Shared["Label_Owner"]</span>
+                        <span class="imp-kv-v">@(Model.Owner != null ? Model.Owner.GetLocalizedFullName() : "-")</span>
+                    </div>
+                    @if (Model.InnovationType.HasValue)
+                    {
+                        <div class="imp-kv">
+                            <span class="imp-kv-k">@Shared["Label_InnovationType"]</span>
+                            <span class="imp-kv-v">@Shared[$"InnovationType_{Model.InnovationType}"].Value</span>
+                        </div>
+                    }
+                    <div class="imp-kv">
+                        <span class="imp-kv-k">@(isRtl ? "تاريخ الإنجاز" : "Target Date")</span>
+                        <span class="imp-kv-v">@(Model.TargetDate?.ToDubaiString("yyyy-MM-dd") ?? "-")</span>
+                    </div>
+                    <div class="imp-kv">
+                        <span class="imp-kv-k">@(isRtl ? "أُنشئ في" : "Created")</span>
+                        <span class="imp-kv-v">@Model.CreatedAt.ToDubaiString("yyyy-MM-dd")</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Scope chips -->
+            @if (processNames.Any() || serviceNames.Any())
+            {
+                <section class="imp-rail-section">
+                    <div class="imp-rail-label">@(isRtl ? "النطاق" : "Scope")</div>
+                    <div class="imp-rail-chips">
+                        @foreach (var p in processNames)
+                        {
+                            <span class="imp-chip imp-chip-process">
+                                <i data-lucide="git-branch" class="w-3 h-3" aria-hidden="true"></i>@p
+                            </span>
+                        }
+                        @foreach (var s in serviceNames)
+                        {
+                            <span class="imp-chip imp-chip-service">
+                                <i data-lucide="briefcase" class="w-3 h-3" aria-hidden="true"></i>@s
+                            </span>
+                        }
+                    </div>
+                </section>
+            }
+        </aside>
+    </div>
+</div>
+
+<!-- Floating Help Button -->
+<div class="fixed bottom-6 right-6 z-50">
+    <button type="button" onclick="window.location.href='@Url.Action("UserManual", "Home")'" class="w-14 h-14 rounded-full shadow-lg text-white flex items-center justify-center transition-all hover:shadow-xl hover:scale-110" style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);" title="@Shared["Help_ImprovementJourney"]">
+        <i data-lucide="help-circle" class="w-6 h-6"></i>
+    </button>
+</div>
+
+@section Scripts {
+    <script src="~/lib/chartjs/chart.umd.js" asp-append-version="true"></script>
+    <script nonce="@Context.CspNonce()">
+        lucide.createIcons();
+
+        // The "?" help buttons (and other titled buttons) in the tabs use a
+        // native `title`, which only appears on hover and never on click — so
+        // tapping "?" did nothing. Promote them to Bootstrap tooltips: trigger
+        // 'hover focus' means a click (which focuses the button) reveals the
+        // text too, and it works on touch. Bootstrap reads the existing title,
+        // so no markup change is needed. All tabs are in the DOM (Alpine
+        // x-show only toggles display), so one pass at load covers them.
+        (function initHelpTooltips() {
+            if (!(window.bootstrap && window.bootstrap.Tooltip)) return;
+            document.querySelectorAll('.imp-tabs button[title], .imp-tabs [data-bs-toggle="tooltip"]').forEach(function (el) {
+                if (!bootstrap.Tooltip.getInstance(el)) {
+                    new bootstrap.Tooltip(el, { trigger: 'hover focus', placement: 'top' });
+                    // Safari/Firefox don't focus a <button> on click, so the
+                    // 'focus' trigger wouldn't fire on tap. Force focus so a
+                    // click/tap reliably reveals the tooltip everywhere.
+                    el.addEventListener('click', function () { el.focus(); });
+                }
+            });
+        })();
+
+        @if (Model.Measurements.Any())
+        {
+            var labels = Model.Measurements.OrderBy(x => x.DisplayOrder).Select(m => isRtl ? (m.NameAr ?? m.NameEn) : (m.NameEn ?? m.NameAr)).ToList();
+            var asIsVals = Model.Measurements.OrderBy(x => x.DisplayOrder).Select(m => m.AsIsValue ?? 0).ToList();
+            var targetVals = Model.Measurements.OrderBy(x => x.DisplayOrder).Select(m => m.TargetValue ?? 0).ToList();
+            var toBeVals = Model.Measurements.OrderBy(x => x.DisplayOrder).Select(m => m.ToBeValue ?? 0).ToList();
+            <text>
+            // RTL configuration for Chart.js
+            const isRtlJs = @(isRtl ? "true" : "false");
+            if (isRtlJs) {
+                Chart.defaults.plugins.legend.rtl = true;
+                Chart.defaults.plugins.legend.textDirection = 'rtl';
+                Chart.defaults.plugins.tooltip.rtl = true;
+                Chart.defaults.plugins.tooltip.textDirection = 'rtl';
+            }
+
+            // Defer chart creation until the measurements tab is visible
+            // (canvas inside x-show has zero dimensions while hidden)
+            let compChartCreated = false;
+            function createComparisonChart() {
+                if (compChartCreated) return;
+                const ctx = document.getElementById('comparisonChart')?.getContext('2d');
+                if (!ctx) return;
+                compChartCreated = true;
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(labels)),
+                        datasets: [
+                            {
+                                label: @Html.Raw(Json.Serialize(Shared["Label_AsIs"].Value)),
+                                data: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(asIsVals)),
+                                backgroundColor: 'rgba(239, 68, 68, 0.7)',
+                                borderColor: '#ef4444',
+                                borderWidth: 2,
+                                borderRadius: 4
+                            },
+                            {
+                                label: @Html.Raw(Json.Serialize(Shared["Column_Target"].Value)),
+                                data: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(targetVals)),
+                                backgroundColor: 'rgba(0, 91, 153, 0.7)',
+                                borderColor: '#005B99',
+                                borderWidth: 2,
+                                borderRadius: 4
+                            },
+                            {
+                                label: @Html.Raw(Json.Serialize(Shared["Label_ToBe"].Value)),
+                                data: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(toBeVals)),
+                                backgroundColor: 'rgba(52, 195, 143, 0.7)',
+                                borderColor: '#34C38F',
+                                borderWidth: 2,
+                                borderRadius: 4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false, // wrapper has fixed height
+                        animation: { duration: 0 },
+                        resizeDelay: 120,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    font: { size: 12, weight: 'bold' },
+                                    padding: 15
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                position: isRtlJs ? 'right' : 'left',
+                                beginAtZero: true,
+                                grid: { color: 'rgba(0, 0, 0, 0.05)' }
+                            },
+                            x: {
+                                grid: { display: false }
+                            }
+                        }
+                    }
+                });
+            }
+            // Watch for the measurements tab panel (not the whole body) flipping
+            // visible, then create the chart once. Scoping the observer to the
+            // panel prevents Chart.js's own style mutations from re-triggering
+            // it and keeping the page busy.
+            (function watchForTab() {
+                const panel = document.getElementById('comparisonChart')?.closest('[x-show]');
+                if (!panel) { setTimeout(createComparisonChart, 100); return; }
+                if (panel.style.display !== 'none') { createComparisonChart(); return; }
+                const obs = new MutationObserver(() => {
+                    if (panel.style.display !== 'none') {
+                        createComparisonChart();
+                        obs.disconnect();
+                    }
+                });
+                obs.observe(panel, { attributes: true, attributeFilter: ['style'] });
+            })();
+            </text>
+        }
+
+        // Team Member Management Functions
+        function addTeamMember() {
+            const userId = document.getElementById('teamMemberUserId').value;
+            const role = document.getElementById('teamMemberRole').value;
+            const notes = document.getElementById('teamMemberNotes').value;
+
+            if (!userId || !role) {
+                Swal.fire({ icon: 'warning', title: @Html.Raw(Json.Serialize(isRtl ? "تنبيه" : "Required")), text: @Html.Raw(Json.Serialize(Shared["Placeholder_SelectUser"].Value + " & " + Shared["Placeholder_SelectRole"].Value)), confirmButtonColor: '#005B99' });
+                return;
+            }
+
+            fetch('@Url.Action("AddTeamMember", "Improvements")', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
+                },
+                body: JSON.stringify({
+                    improvementId: '@Model.Id',
+                    userId: userId,
+                    role: parseInt(role),
+                    notes: notes
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    Swal.fire({ icon: 'error', title: @Html.Raw(Json.Serialize(isRtl ? "خطأ" : "Error")), text: data.message, confirmButtonColor: '#005B99' });
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                Swal.fire({ icon: 'error', title: @Html.Raw(Json.Serialize(isRtl ? "خطأ" : "Error")), text: @Html.Raw(Json.Serialize(isRtl ? "حدث خطأ أثناء إضافة عضو الفريق." : "An error occurred while adding the team member.")), confirmButtonColor: '#005B99' });
+            });
+        }
+
+        function removeTeamMember(teamMemberId) {
+            Swal.fire({
+                title: @Html.Raw(Json.Serialize(isRtl ? "تأكيد الحذف" : "Confirm removal")),
+                text: @Html.Raw(Json.Serialize(isRtl ? "هل أنت متأكد من إزالة هذا العضو من الفريق؟" : "Are you sure you want to remove this team member?")),
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: @Html.Raw(Json.Serialize(isRtl ? "نعم، إزالة" : "Yes, remove")),
+                cancelButtonText: @Html.Raw(Json.Serialize(isRtl ? "إلغاء" : "Cancel")),
+                confirmButtonColor: '#005B99'
+            }).then((result) => {
+                if (!result.isConfirmed) return;
+
+                fetch('@Url.Action("RemoveTeamMember", "Improvements")', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
+                    },
+                    body: JSON.stringify({
+                        teamMemberId: teamMemberId
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    } else {
+                        Swal.fire({ icon: 'error', title: @Html.Raw(Json.Serialize(isRtl ? "خطأ" : "Error")), text: data.message, confirmButtonColor: '#005B99' });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    Swal.fire({ icon: 'error', title: @Html.Raw(Json.Serialize(isRtl ? "خطأ" : "Error")), text: @Html.Raw(Json.Serialize(isRtl ? "حدث خطأ أثناء إزالة عضو الفريق." : "An error occurred while removing the team member.")), confirmButtonColor: '#005B99' });
+                });
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // Improvement ↔ Risk linking (mirrors PManagement InitiativeRiskLink)
+        // ═══════════════════════════════════════════════════════════════
+        const improvementId = '@Model.Id';
+        const isRtl = @(isRtl ? "true" : "false");
+
+        document.addEventListener('alpine:init', () => {
+            Alpine.store('improvementRisks', {
+                loaded: false,
+                linked: [],
+                async load(id) {
+                    try {
+                        const r = await fetch(`/Improvements/GetLinkedRisks?improvementId=${encodeURIComponent(id)}`);
+                        const data = await r.json();
+                        this.linked = data.map(link => ({
+                            riskId: link.riskId,
+                            relationshipType: link.relationshipType,
+                            expectedRiskReduction: link.expectedRiskReduction,
+                            impactDescription: link.impactDescription,
+                            notes: link.notes,
+                            risk: {
+                                id: link.risk.id,
+                                riskNumber: link.risk.riskNumber,
+                                nameEn: link.risk.nameEn,
+                                nameAr: link.risk.nameAr,
+                                inherentRiskScore: link.risk.inherentRiskScore,
+                                residualRiskScore: link.risk.residualRiskScore,
+                                riskLevel: link.risk.riskLevel,
+                                categoryName: link.risk.categoryName
+                            }
+                        }));
+                        this.loaded = true;
+                        if (window.lucide) lucide.createIcons();
+                    } catch (e) {
+                        console.error('Failed to load linked risks', e);
+                        this.loaded = true;
+                    }
+                }
+            });
+        });
+
+        // Heat-map colour bands identical to EnterpriseRisks/HeatMap.cshtml
+        function riskScoreStyle(score) {
+            if (!score && score !== 0) return 'background:#f3f4f6;color:#6b7280;';
+            if (score >= 15) return 'background:#fee2e2;color:#991b1b;';
+            if (score >= 10) return 'background:#ffedd5;color:#9a3412;';
+            if (score >= 5)  return 'background:#fef3c7;color:#92400e;';
+            return 'background:#dcfce7;color:#166534;';
+        }
+
+        function relationshipClass(type) {
+            switch (type) {
+                case 'Mitigates':
+                case 'Decreases':
+                    return 'bg-green-50 text-green-700';
+                case 'Creates':
+                case 'Increases':
+                    return 'bg-red-50 text-red-700';
+                default:
+                    return 'bg-gray-100 text-gray-700';
+            }
+        }
+
+        function relationshipIcon(type) {
+            switch (type) {
+                case 'Mitigates':  return 'shield-check';
+                case 'Decreases':  return 'trending-down';
+                case 'Creates':    return 'alert-triangle';
+                case 'Increases':  return 'trending-up';
+                default:           return 'link';
+            }
+        }
+
+        async function openLinkRiskModal() {
+            const res = await fetch(`/Improvements/GetAvailableRisks?improvementId=${encodeURIComponent(improvementId)}`);
+            const risks = await res.json();
+
+            if (risks.length === 0) {
+                Swal.fire({
+                    icon: 'info',
+                    title: isRtl ? 'لا توجد مخاطر متاحة' : 'No available risks',
+                    text: isRtl
+                        ? 'جميع المخاطر النشطة مرتبطة بالفعل بهذه المبادرة.'
+                        : 'All active risks are already linked to this improvement.'
+                });
+                return;
+            }
+
+            const optionsHtml = risks.map(r =>
+                `<option value="${r.id}" data-score="${r.inherentRiskScore}">${r.riskNumber} — ${isRtl ? r.nameAr : r.nameEn} (${isRtl ? 'الدرجة' : 'Score'}: ${r.inherentRiskScore})</option>`
+            ).join('');
+
+            const { value: formValues } = await Swal.fire({
+                title: isRtl ? 'ربط مخاطرة' : 'Link a risk',
+                width: '640px',
+                html: `
+                    <div class="text-start" style="text-align:${isRtl ? 'right' : 'left'};">
+                        <label class="block text-sm font-semibold mb-1">${isRtl ? 'المخاطرة' : 'Risk'} *</label>
+                        <select id="linkRiskSelect" class="swal2-select" style="width:100%;margin:0 0 1rem 0;">
+                            <option value="">${isRtl ? '— اختر —' : '— Select —'}</option>
+                            ${optionsHtml}
+                        </select>
+
+                        <label class="block text-sm font-semibold mb-1">${isRtl ? 'نوع العلاقة' : 'Relationship type'} *</label>
+                        <select id="linkRiskRelationship" class="swal2-select" style="width:100%;margin:0 0 1rem 0;">
+                            <option value="Mitigates">${isRtl ? 'تعالج' : 'Mitigates'}</option>
+                            <option value="Decreases">${isRtl ? 'تقلل' : 'Decreases'}</option>
+                            <option value="Creates">${isRtl ? 'تنشئ' : 'Creates'}</option>
+                            <option value="Increases">${isRtl ? 'تزيد' : 'Increases'}</option>
+                        </select>
+
+                        <label class="block text-sm font-semibold mb-1">${isRtl ? 'الخفض المتوقع للمخاطرة (%)' : 'Expected risk reduction (%)'}</label>
+                        <input id="linkRiskReduction" type="number" min="0" max="100" placeholder="0-100" class="swal2-input" style="width:100%;margin:0 0 1rem 0;">
+
+                        <label class="block text-sm font-semibold mb-1">${isRtl ? 'وصف التأثير' : 'Impact description'}</label>
+                        <textarea id="linkRiskImpact" rows="2" class="swal2-textarea" style="width:100%;margin:0 0 1rem 0;"></textarea>
+
+                        <label class="block text-sm font-semibold mb-1">${isRtl ? 'ملاحظات' : 'Notes'}</label>
+                        <textarea id="linkRiskNotes" rows="2" class="swal2-textarea" style="width:100%;margin:0;"></textarea>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: isRtl ? 'ربط' : 'Link',
+                cancelButtonText: isRtl ? 'إلغاء' : 'Cancel',
+                confirmButtonColor: '#005B99',
+                focusConfirm: false,
+                preConfirm: () => {
+                    const riskId = document.getElementById('linkRiskSelect').value;
+                    if (!riskId) {
+                        Swal.showValidationMessage(isRtl ? 'يرجى اختيار مخاطرة' : 'Please pick a risk');
+                        return false;
+                    }
+                    return {
+                        riskId,
+                        relationshipType: document.getElementById('linkRiskRelationship').value,
+                        expectedRiskReduction: document.getElementById('linkRiskReduction').value || null,
+                        impactDescription: document.getElementById('linkRiskImpact').value || null,
+                        notes: document.getElementById('linkRiskNotes').value || null
+                    };
+                }
+            });
+
+            if (!formValues) return;
+
+            const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+            const form = new FormData();
+            form.append('improvementId', improvementId);
+            form.append('riskId', formValues.riskId);
+            form.append('relationshipType', formValues.relationshipType);
+            if (formValues.expectedRiskReduction) form.append('expectedRiskReduction', formValues.expectedRiskReduction);
+            if (formValues.impactDescription) form.append('impactDescription', formValues.impactDescription);
+            if (formValues.notes) form.append('notes', formValues.notes);
+
+            try {
+                const resp = await fetch('/Improvements/LinkRisk', {
+                    method: 'POST',
+                    headers: { 'RequestVerificationToken': token },
+                    body: form
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: isRtl ? 'تم ربط المخاطرة' : 'Risk linked',
+                        timer: 1500,
+                        showConfirmButton: false
+                    });
+                    Alpine.store('improvementRisks').loaded = false;
+                    Alpine.store('improvementRisks').linked = [];
+                    await Alpine.store('improvementRisks').load(improvementId);
+                } else {
+                    Swal.fire({ icon: 'error', title: isRtl ? 'خطأ' : 'Error', text: data.message });
+                }
+            } catch (e) {
+                Swal.fire({ icon: 'error', title: isRtl ? 'خطأ' : 'Error', text: e.message });
+            }
+        }
+
+        async function unlinkRisk(riskId) {
+            const confirmation = await Swal.fire({
+                icon: 'warning',
+                title: isRtl ? 'إلغاء الربط؟' : 'Unlink risk?',
+                text: isRtl
+                    ? 'سيتم إزالة الربط بين هذه المبادرة والمخاطرة.'
+                    : 'This will remove the link between this improvement and the risk.',
+                showCancelButton: true,
+                confirmButtonText: isRtl ? 'نعم، إلغاء الربط' : 'Yes, unlink',
+                cancelButtonText: isRtl ? 'إلغاء' : 'Cancel',
+                confirmButtonColor: '#005B99'
+            });
+            if (!confirmation.isConfirmed) return;
+
+            const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+            const form = new FormData();
+            form.append('improvementId', improvementId);
+            form.append('riskId', riskId);
+
+            try {
+                const resp = await fetch('/Improvements/UnlinkRisk', {
+                    method: 'POST',
+                    headers: { 'RequestVerificationToken': token },
+                    body: form
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: isRtl ? 'تم الإلغاء' : 'Unlinked',
+                        timer: 1200,
+                        showConfirmButton: false
+                    });
+                    Alpine.store('improvementRisks').loaded = false;
+                    Alpine.store('improvementRisks').linked = [];
+                    await Alpine.store('improvementRisks').load(improvementId);
+                } else {
+                    Swal.fire({ icon: 'error', title: isRtl ? 'خطأ' : 'Error', text: data.message });
+                }
+            } catch (e) {
+                Swal.fire({ icon: 'error', title: isRtl ? 'خطأ' : 'Error', text: e.message });
+            }
+        }
+    </script>
+}
+
+<style>
+    /* ── Outer shell ──────────────────────────────────────── */
+    .imp-shell {
+        min-height: calc(100vh - 60px);
+        padding: 1rem;
+        background: #f3f5f8;
+    }
+
+    /* ── Sticky compact header ─────────────────────────── */
+    .imp-header {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 0.6rem 1rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .imp-header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    .imp-header-title {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        min-width: 0;
+        flex: 1;
+    }
+    .imp-icon { flex-shrink: 0; display: flex; }
+    .imp-code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: var(--fs-xs);
+        font-weight: 600;
+        background: #eff6ff;
+        color: #005B99;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        flex-shrink: 0;
+        border: 1px solid #dbeafe;
+    }
+    .imp-title {
+        font-size: var(--fs-base);
+        font-weight: 600;
+        color: #1f2937;
+        margin: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+        flex: 1;
+    }
+    .imp-status-pill {
+        font-size: var(--fs-xs);
+        font-weight: 700;
+        padding: 0.2rem 0.65rem;
+        border-radius: 999px;
+        white-space: nowrap;
+        flex-shrink: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+    .imp-status-pill-lg {
+        font-size: var(--fs-sm);
+        padding: 0.35rem 0.85rem;
+        text-transform: none;
+        letter-spacing: 0;
+    }
+    .imp-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        flex-shrink: 0;
+    }
+    .imp-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: var(--fs-sm);
+        font-weight: 500;
+        padding: 0.4rem 0.75rem;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        cursor: pointer;
+        text-decoration: none;
+        transition: opacity 0.15s, background 0.15s;
+        white-space: nowrap;
+    }
+    .imp-btn:hover { text-decoration: none; opacity: 0.92; }
+    .imp-btn-ghost {
+        background: transparent;
+        border-color: #d1d5db;
+        color: #4b5563;
+    }
+    .imp-btn-ghost:hover { background: #f3f5f8; color: #1f2937; }
+    .imp-btn-primary {
+        background: #005B99;
+        color: #fff;
+        border-color: #005B99;
+    }
+    .imp-btn-primary:hover { background: #004580; color: #fff; }
+    .imp-btn-success {
+        background: #15803D;
+        color: #fff;
+        border-color: #15803D;
+    }
+    .imp-btn-success:hover { background: #14532d; color: #fff; }
+    .imp-btn-ai {
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        color: #fff;
+    }
+
+    /* Ready-to-close banner — surfaces the next action when status =
+       Completed so the user doesn't hunt for the Close button in the
+       right rail. */
+    .imp-ready-close-banner {
+        display: flex;
+        align-items: center;
+        gap: .85rem;
+        background: linear-gradient(90deg, #f0fdf4 0%, #dcfce7 100%);
+        border: 1px solid #86efac;
+        border-radius: 8px;
+        padding: .75rem 1rem;
+        margin-bottom: .85rem;
+    }
+    .imp-ready-close-text {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: .15rem;
+        line-height: 1.35;
+    }
+    .imp-ready-close-text strong { color: #166534; font-size: var(--fs-sm); }
+    .imp-ready-close-text span { color: #15803D; font-size: var(--fs-sm); }
+
+    /* ── Body grid (main + rail) ────────────────────────── */
+    .imp-body {
+        display: grid;
+        grid-template-columns: 1fr 320px;
+        gap: 1rem;
+        align-items: start;
+    }
+    @@media (max-width: 1199px) {
+        .imp-body { grid-template-columns: 1fr; }
+    }
+    .imp-main { min-width: 0; }
+
+    /* Sticky tab navigation row inside the tabs card */
+    .imp-tabs .imp-tabnav {
+        position: sticky;
+        top: 70px;
+        z-index: 10;
+        background: #fff;
+        border-radius: 8px 8px 0 0;
+    }
+
+    /* ── Right rail ──────────────────────────────────────── */
+    .imp-rail {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        position: sticky;
+        top: 80px;
+    }
+    @@media (max-width: 1199px) {
+        .imp-rail { position: static; }
+    }
+    .imp-rail-section {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 0.85rem;
+    }
+    .imp-rail-label {
+        font-size: var(--fs-xs);
+        font-weight: 700;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 0.55rem;
+    }
+    .imp-rail-status { margin-bottom: 0.7rem; }
+    .imp-rail-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+    }
+    .imp-rail-actions form { display: block; margin: 0; }
+    .imp-rail-actionbtn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: var(--fs-xs);
+        font-weight: 600;
+        padding: 0.45rem 0.75rem;
+        border-radius: 6px;
+        border: none;
+        color: #fff;
+        cursor: pointer;
+        width: 100%;
+        justify-content: center;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        transition: opacity 0.15s;
+    }
+    .imp-rail-actionbtn:hover { opacity: 0.9; }
+    .imp-rail-empty {
+        font-size: var(--fs-xs);
+        color: #9ca3af;
+        font-style: italic;
+    }
+    .imp-rail-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+    }
+    .imp-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: var(--fs-xs);
+        font-weight: 500;
+        padding: 0.25rem 0.55rem;
+        border-radius: 999px;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        white-space: nowrap;
+    }
+    .imp-chip-process { border-color: #dbeafe; background: #eff6ff; color: #1e40af; }
+    .imp-chip-service { border-color: #dcfce7; background: #f0fdf4; color: #166534; }
+    .imp-rail-kv {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        margin-top: 0.5rem;
+    }
+    .imp-kv {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.5rem;
+        font-size: var(--fs-xs);
+    }
+    .imp-kv-k { color: #6b7280; flex-shrink: 0; }
+    .imp-kv-v {
+        color: #1f2937;
+        font-weight: 500;
+        text-align: end;
+        min-width: 0;
+        word-break: break-word;
+    }
+
+    /* ── Rail score summary ─────────────────────────────────── */
+    .imp-rail-scoregrid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: .4rem;
+        margin: .75rem 0 0;
+    }
+    .imp-rail-score {
+        background: #f8fafc;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: .5rem .6rem;
+        text-align: center;
+        line-height: 1.2;
+    }
+    .imp-rail-score-label {
+        font-size: var(--fs-xs);
+        color: #6b7280;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .03em;
+    }
+    .imp-rail-score-value {
+        font-size: var(--fs-xl);
+        font-weight: 800;
+        margin: .15rem 0;
+    }
+    .imp-rail-score-weight {
+        font-size: var(--fs-xs);
+        color: #94a3b8;
+        font-weight: 500;
+    }
+    /* Total spans both columns and uses brand-blue gradient */
+    .imp-rail-score-total {
+        grid-column: 1 / -1;
+        background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);
+        border-color: #003d6b;
+    }
+    .imp-rail-score-total .imp-rail-score-label {
+        color: rgba(255, 255, 255, .85);
+    }
+
+    /* ── Quadrant placement mini-viz ────────────────────────── */
+    .imp-rail-quadrant {
+        margin-top: .85rem;
+        display: grid;
+        grid-template-columns: auto 1fr;
+        grid-template-rows: 1fr auto;
+        gap: .25rem;
+        font-size: 10px;
+        color: #6b7280;
+    }
+    .imp-q-axis-y {
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        text-align: center;
+        align-self: stretch;
+        font-weight: 600;
+    }
+    .imp-q-axis-x {
+        grid-column: 2 / 3;
+        text-align: center;
+        font-weight: 600;
+        margin-top: .15rem;
+    }
+    .imp-q-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr 1fr;
+        gap: 2px;
+        background: #e5e7eb;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        overflow: hidden;
+        aspect-ratio: 2 / 1;
+    }
+    .imp-q-cell {
+        background: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: .35rem .25rem;
+        font-size: 10px;
+        color: #6b7280;
+        font-weight: 600;
+        text-align: center;
+        line-height: 1.15;
+        cursor: default;
+    }
+    .imp-q-cell .imp-q-name { white-space: nowrap; }
+    .imp-q-cell[data-q="QuickWins"]      { background: #f0fdf4; }
+    .imp-q-cell[data-q="MajorProjects"]  { background: #eff6ff; }
+    .imp-q-cell[data-q="FillIns"]        { background: #fefce8; }
+    .imp-q-cell[data-q="ThanklessTasks"] { background: #fef2f2; }
+    .imp-q-cell.imp-q-active {
+        outline: 2px solid #005B99;
+        outline-offset: -2px;
+        color: #005B99;
+        font-weight: 800;
+        position: relative;
+    }
+    .imp-q-cell.imp-q-active[data-q="QuickWins"]      { background: #bbf7d0; outline-color: #15803D; color: #15803D; }
+    .imp-q-cell.imp-q-active[data-q="MajorProjects"]  { background: #bfdbfe; outline-color: #005B99; color: #005B99; }
+    .imp-q-cell.imp-q-active[data-q="FillIns"]        { background: #fef08a; outline-color: #B45309; color: #B45309; }
+    .imp-q-cell.imp-q-active[data-q="ThanklessTasks"] { background: #fecaca; outline-color: #991b1b; color: #991b1b; }
+</style>

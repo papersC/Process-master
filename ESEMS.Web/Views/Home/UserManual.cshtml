@@ -1,0 +1,362 @@
+@inject IStringLocalizer<ESEMS.Web.SharedResource> Shared
+@{
+    ViewData["Title"] = Shared["Label_UserManual"].Value;
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+
+    // TOC entries — id matches the URL hash and the section data-section attr.
+    // Order = order of appearance in the panel. Add a new entry here + the
+    // matching <section data-section="..."> below to extend the manual.
+    var sections = new[]
+    {
+        new { Id = "introduction",       Icon = "info",            En = "Introduction",          Ar = "مقدمة" },
+        new { Id = "getting-started",    Icon = "play-circle",     En = "Getting Started",       Ar = "البدء" },
+        new { Id = "navigation",         Icon = "compass",         En = "Navigation",            Ar = "التنقل" },
+        new { Id = "service-catalog",    Icon = "layers",          En = "Service Catalog",       Ar = "كتالوج الخدمات" },
+        new { Id = "process-management", Icon = "workflow",        En = "Process Management",    Ar = "إدارة العمليات" },
+        new { Id = "asset-risk",         Icon = "shield-alert",    En = "Assets & Risks",        Ar = "الأصول والمخاطر" },
+        new { Id = "improvement",        Icon = "trending-up",     En = "Continuous Improvement",Ar = "التحسين المستمر" },
+        new { Id = "incident-problem",   Icon = "alert-circle",    En = "Incidents & Problems",  Ar = "الحوادث والمشاكل" },
+        new { Id = "customer-feedback",  Icon = "message-square",  En = "Customer Feedback",     Ar = "ملاحظات العملاء" },
+        new { Id = "ai-features",        Icon = "sparkles",        En = "AI Assistant",          Ar = "مساعد الذكاء الاصطناعي" },
+        new { Id = "shortcuts",          Icon = "keyboard",        En = "Keyboard Shortcuts",    Ar = "اختصارات لوحة المفاتيح" }
+    };
+
+    // Sections without full content yet — get a "coming soon" placeholder
+    // so master-detail navigation still works for them.
+    var stubSections = new HashSet<string>
+    {
+        "process-management", "asset-risk", "improvement",
+        "incident-problem", "customer-feedback", "ai-features", "shortcuts"
+    };
+}
+
+@*  Master-detail manual. Left = TOC list with search filter; right =
+    one section at a time, picked by URL hash. Replaces the prior
+    11-section single-scroll page, which forced the user to either
+    trust the TOC or scroll forever.   *@
+
+<style>
+    .um-shell { display: flex; flex-direction: column; gap: .6rem; height: calc(100vh - 130px); min-height: 540px; }
+    .um-header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; flex-wrap: wrap; }
+    .um-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .um-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .um-back { display: inline-flex; align-items: center; gap: .35rem; padding: .35rem .65rem; border-radius: .375rem; font-size: var(--fs-xs); font-weight: 600; text-decoration: none; border: 1px solid #cbd5e1; background: #fff; color: #1f2937; }
+    .um-back:hover { background: #f1f5f9; color: #1f2937; }
+
+    .um-body { display: grid; grid-template-columns: 280px 1fr; gap: .85rem; flex: 1; min-height: 0; }
+    @@media (max-width: 1023px) { .um-body { grid-template-columns: 1fr; } }
+
+    /* TOC pane. */
+    .um-toc { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .um-toc-search { padding: .5rem .65rem; border-bottom: 1px solid #f1f5f9; }
+    .um-toc-search input { width: 100%; padding: .35rem .55rem; border: 1px solid #e5e7eb; border-radius: 5px; font-size: var(--fs-xs); }
+    .um-toc-search input:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .um-toc-list { flex: 1; overflow-y: auto; padding: .35rem 0; }
+    .um-toc-item { display: flex; align-items: center; gap: .55rem; padding: .5rem .8rem; color: #1f2937; text-decoration: none; font-size: var(--fs-xs); cursor: pointer; border-inline-start: 3px solid transparent; transition: background .12s, border-color .12s; }
+    .um-toc-item:hover { background: #f8fafc; color: #005B99; }
+    .um-toc-item.active { background: #f0f7fc; color: #005B99; font-weight: 700; border-inline-start-color: #005B99; }
+    .um-toc-item i { width: 14px; height: 14px; color: #6b7280; flex-shrink: 0; }
+    .um-toc-item.active i { color: #005B99; }
+    .um-toc-item.hidden { display: none; }
+
+    /* Detail pane. */
+    .um-detail { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem 1.15rem; overflow-y: auto; min-height: 0; }
+    .um-section { display: none; }
+    .um-section.active { display: block; }
+    .um-sec-head { display: flex; align-items: center; gap: .55rem; padding-bottom: .65rem; margin-bottom: .9rem; border-bottom: 1px solid #f1f5f9; }
+    .um-sec-icon { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; background: rgba(0,91,153,.12); color: #005B99; flex-shrink: 0; }
+    .um-sec-icon i { width: 18px; height: 18px; }
+    .um-sec-title { font-size: var(--fs-base); font-weight: 700; color: #111827; }
+
+    .um-content h5, .um-content h6 { color: #111827; font-weight: 700; margin: 1rem 0 .55rem; font-size: var(--fs-sm); }
+    .um-content h5:first-child, .um-content h6:first-child { margin-top: 0; }
+    .um-content p { font-size: var(--fs-sm); color: #374151; line-height: 1.6; margin: 0 0 .75rem; }
+    .um-content ul, .um-content ol { font-size: var(--fs-sm); color: #374151; line-height: 1.65; margin: 0 0 .75rem 1.25rem; padding: 0; }
+    .um-content li { margin-bottom: .25rem; }
+    .um-content strong { color: #111827; }
+
+    .um-features { display: grid; grid-template-columns: 1fr 1fr; gap: .55rem; margin: .5rem 0 1rem; }
+    @@media (max-width: 767px) { .um-features { grid-template-columns: 1fr; } }
+    .um-feature { display: flex; align-items: flex-start; gap: .5rem; padding: .55rem .65rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; }
+    .um-feature i { width: 16px; height: 16px; color: #15803d; flex-shrink: 0; margin-top: 2px; }
+    .um-feature strong { display: block; font-size: var(--fs-xs); color: #111827; margin-bottom: 1px; }
+    .um-feature p { margin: 0; font-size: 11px; color: #6b7280; line-height: 1.4; }
+
+    .um-step { display: flex; align-items: flex-start; gap: .65rem; padding: .55rem 0; }
+    .um-step-num { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; background: #005B99; color: #fff; border-radius: 50%; font-weight: 700; font-size: var(--fs-xs); flex-shrink: 0; }
+    .um-step-text { flex: 1; }
+    .um-step-text strong { display: block; font-size: var(--fs-xs); color: #111827; margin-bottom: 1px; }
+    .um-step-text p { margin: 0; font-size: 11px; color: #6b7280; line-height: 1.45; }
+
+    .um-tip { background: #f0f7fc; border-inline-start: 3px solid #005B99; padding: .65rem .8rem; border-radius: 5px; margin: .85rem 0; font-size: var(--fs-xs); color: #1e3a8a; }
+    .um-tip strong { color: #005B99; }
+    .um-warn { background: #fff7ed; border-inline-start: 3px solid #f59e0b; padding: .65rem .8rem; border-radius: 5px; margin: .85rem 0; font-size: var(--fs-xs); color: #78350f; }
+    .um-warn strong { color: #b45309; }
+
+    .um-kbd { display: inline-block; padding: .12rem .45rem; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 4px; font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 11px; color: #1f2937; }
+
+    .um-stub { padding: 2rem 1rem; text-align: center; color: #94a3b8; }
+    .um-stub i { display: block; margin: 0 auto .65rem; opacity: .4; }
+    .um-stub p { margin: 0; font-size: var(--fs-xs); }
+</style>
+
+<div class="um-shell">
+    <div class="um-header">
+        <div>
+            <h1>
+                <i data-lucide="book-open" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>
+                @ViewData["Title"]
+            </h1>
+            <p>@(isRtl ? "اختر قسماً من القائمة لقراءته." : "Pick a section from the list to read it.")</p>
+        </div>
+        <a href="~/Help" class="um-back">
+            <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            @(isRtl ? "مركز المساعدة" : "Help Hub")
+        </a>
+    </div>
+
+    <div class="um-body">
+
+        @* ── TOC pane ─────────────────────────────────── *@
+        <aside class="um-toc">
+            <div class="um-toc-search">
+                <input type="text" id="umSearch" placeholder="@(isRtl ? "ابحث في الأقسام..." : "Filter sections...")" autocomplete="off" />
+            </div>
+            <div class="um-toc-list" id="umTocList">
+                @foreach (var s in sections)
+                {
+                    <a href="#@s.Id" class="um-toc-item" data-section="@s.Id" data-search="@((isRtl ? s.Ar : s.En).ToLowerInvariant())">
+                        <i data-lucide="@s.Icon" aria-hidden="true"></i>
+                        <span>@(isRtl ? s.Ar : s.En)</span>
+                    </a>
+                }
+            </div>
+        </aside>
+
+        @* ── Detail pane: one section at a time ────── *@
+        <main class="um-detail" id="umDetail">
+
+            @* — Section: Introduction — *@
+            <section class="um-section" data-section="introduction">
+                <div class="um-sec-head">
+                    <span class="um-sec-icon"><i data-lucide="info" aria-hidden="true"></i></span>
+                    <span class="um-sec-title">@(isRtl ? "مقدمة" : "Introduction")</span>
+                </div>
+                <div class="um-content">
+                    <h5>@(isRtl ? "ما هو ESEMS؟" : "What is ESEMS?")</h5>
+                    <p>@(isRtl ? "نظام ESEMS (نظام إدارة التميز في الخدمات المؤسسية) هو منصة متكاملة وشاملة مصممة لمساعدة المؤسسات على تحقيق التميز التشغيلي من خلال إدارة فعالة للعمليات والخدمات والمخاطر والتحسين المستمر." : "ESEMS (Enterprise Service Excellence Management System) is an integrated and comprehensive platform designed to help organizations achieve operational excellence through effective management of processes, services, risks, and continuous improvement.")</p>
+
+                    <h5>@(isRtl ? "الميزات الرئيسية" : "Key Features")</h5>
+                    <div class="um-features">
+                        <div class="um-feature">
+                            <i data-lucide="check-circle" aria-hidden="true"></i>
+                            <div>
+                                <strong>@(isRtl ? "إدارة العمليات بمعيار BPMN 2.0" : "BPMN 2.0 Process Management")</strong>
+                                <p>@(isRtl ? "توثيق ونمذجة العمليات باستخدام معيار BPMN الدولي" : "Document and model processes using the international BPMN standard")</p>
+                            </div>
+                        </div>
+                        <div class="um-feature">
+                            <i data-lucide="check-circle" aria-hidden="true"></i>
+                            <div>
+                                <strong>@(isRtl ? "كتالوج الخدمات" : "Service Catalog")</strong>
+                                <p>@(isRtl ? "إدارة شاملة للخدمات مع اتفاقيات مستوى الخدمة" : "Comprehensive service management with SLAs")</p>
+                            </div>
+                        </div>
+                        <div class="um-feature">
+                            <i data-lucide="check-circle" aria-hidden="true"></i>
+                            <div>
+                                <strong>@(isRtl ? "إدارة المخاطر وفق ISO 31000" : "ISO 31000 Risk Management")</strong>
+                                <p>@(isRtl ? "تقييم وإدارة المخاطر المؤسسية" : "Enterprise risk assessment and management")</p>
+                            </div>
+                        </div>
+                        <div class="um-feature">
+                            <i data-lucide="check-circle" aria-hidden="true"></i>
+                            <div>
+                                <strong>@(isRtl ? "رحلة التحسين المستمر" : "Continuous Improvement Journey")</strong>
+                                <p>@(isRtl ? "منهجية منظمة للتحسين المستمر" : "Structured methodology for continuous improvement")</p>
+                            </div>
+                        </div>
+                        <div class="um-feature">
+                            <i data-lucide="check-circle" aria-hidden="true"></i>
+                            <div>
+                                <strong>@(isRtl ? "مساعد الذكاء الاصطناعي" : "AI-Powered Assistant")</strong>
+                                <p>@(isRtl ? "تحليل ذكي وتوصيات آلية" : "Intelligent analysis and automated recommendations")</p>
+                            </div>
+                        </div>
+                        <div class="um-feature">
+                            <i data-lucide="check-circle" aria-hidden="true"></i>
+                            <div>
+                                <strong>@(isRtl ? "دعم ثنائي اللغة" : "Bilingual Support")</strong>
+                                <p>@(isRtl ? "واجهة كاملة بالعربية والإنجليزية" : "Full Arabic and English interface")</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="um-tip">
+                        <strong>@(isRtl ? "نصيحة:" : "Tip:")</strong>
+                        @(isRtl ? "يمكنك التبديل بين اللغتين العربية والإنجليزية في أي وقت باستخدام زر اللغة في أعلى الصفحة." : "Switch between Arabic and English at any time using the language button at the top of the page.")
+                    </div>
+                </div>
+            </section>
+
+            @* — Section: Getting Started — *@
+            <section class="um-section" data-section="getting-started">
+                <div class="um-sec-head">
+                    <span class="um-sec-icon"><i data-lucide="play-circle" aria-hidden="true"></i></span>
+                    <span class="um-sec-title">@(isRtl ? "البدء" : "Getting Started")</span>
+                </div>
+                <div class="um-content">
+                    <h5>@(isRtl ? "الخطوات الأولى" : "First Steps")</h5>
+                    <div class="um-step"><span class="um-step-num">1</span><div class="um-step-text"><strong>@(isRtl ? "تسجيل الدخول" : "Login")</strong><p>@(isRtl ? "استخدم بيانات اعتماد المؤسسة الخاصة بك للوصول إلى النظام." : "Use your organization credentials to access the system.")</p></div></div>
+                    <div class="um-step"><span class="um-step-num">2</span><div class="um-step-text"><strong>@(isRtl ? "اختر اللغة المفضلة" : "Choose your preferred language")</strong><p>@(isRtl ? "انقر على زر اللغة في أعلى الصفحة للتبديل بين العربية والإنجليزية." : "Click the language button at the top to switch between Arabic and English.")</p></div></div>
+                    <div class="um-step"><span class="um-step-num">3</span><div class="um-step-text"><strong>@(isRtl ? "استكشف لوحة المعلومات" : "Explore the Dashboard")</strong><p>@(isRtl ? "تعرف على المقاييس الرئيسية والإحصائيات في لوحة المعلومات الرئيسية." : "Familiarise yourself with the key metrics on the main dashboard.")</p></div></div>
+                    <div class="um-step"><span class="um-step-num">4</span><div class="um-step-text"><strong>@(isRtl ? "تصفح الوحدات" : "Browse Modules")</strong><p>@(isRtl ? "استخدم القائمة الجانبية للوصول إلى الوحدات المختلفة." : "Use the sidebar menu to access different modules.")</p></div></div>
+                    <div class="um-warn">
+                        <strong>@(isRtl ? "ملاحظة مهمة:" : "Important:")</strong>
+                        @(isRtl ? "تأكد من حفظ عملك بانتظام. النظام يحفظ تلقائياً كل 5 دقائق، لكن يُفضل الحفظ يدوياً بعد التغييرات المهمة." : "Save your work regularly. The system auto-saves every 5 minutes, but it's best to save manually after important changes.")
+                    </div>
+                </div>
+            </section>
+
+            @* — Section: Navigation — *@
+            <section class="um-section" data-section="navigation">
+                <div class="um-sec-head">
+                    <span class="um-sec-icon"><i data-lucide="compass" aria-hidden="true"></i></span>
+                    <span class="um-sec-title">@(isRtl ? "التنقل في النظام" : "System Navigation")</span>
+                </div>
+                <div class="um-content">
+                    <h5>@(isRtl ? "القائمة الجانبية" : "Sidebar Menu")</h5>
+                    <p>@(isRtl ? "القائمة الجانبية هي الطريقة الرئيسية للتنقل بين الوحدات:" : "The sidebar menu is the primary way to navigate between modules:")</p>
+                    <ul>
+                        <li><strong>@(isRtl ? "لوحة المعلومات" : "Dashboard")</strong> — @(isRtl ? "نظرة عامة على المقاييس الرئيسية" : "Overview of key metrics")</li>
+                        <li><strong>@(isRtl ? "كتالوج الخدمات" : "Service Catalog")</strong> — @(isRtl ? "إدارة الخدمات واتفاقيات مستوى الخدمة" : "Manage services and SLAs")</li>
+                        <li><strong>@(isRtl ? "العمليات" : "Processes")</strong> — @(isRtl ? "توثيق ونمذجة العمليات" : "Document and model processes")</li>
+                        <li><strong>@(isRtl ? "الأصول" : "Assets")</strong> — @(isRtl ? "تتبع الأصول المؤسسية" : "Track enterprise assets")</li>
+                        <li><strong>@(isRtl ? "المخاطر" : "Risks")</strong> — @(isRtl ? "إدارة المخاطر المؤسسية" : "Manage enterprise risks")</li>
+                        <li><strong>@(isRtl ? "التحسين" : "Improvement")</strong> — @(isRtl ? "مبادرات التحسين المستمر" : "Continuous-improvement initiatives")</li>
+                    </ul>
+
+                    <h5>@(isRtl ? "البحث السريع" : "Quick Search")</h5>
+                    <p>@(isRtl ? "استخدم اختصار لوحة المفاتيح للعثور على أي عنصر:" : "Use the keyboard shortcut to find any item:")</p>
+                    <p><span class="um-kbd">Ctrl</span> + <span class="um-kbd">K</span> &nbsp;<span style="color:#6b7280;font-size:var(--fs-xs);">@(isRtl ? "— يفتح البحث السريع" : "— opens quick search")</span></p>
+
+                    <h5>@(isRtl ? "مسار التنقل (Breadcrumbs)" : "Breadcrumbs")</h5>
+                    <p>@(isRtl ? "يظهر مسار التنقل في أعلى كل صفحة. انقر على أي جزء من المسار للعودة إلى تلك الصفحة." : "Breadcrumbs appear at the top of each page. Click any part of the path to jump back.")</p>
+
+                    <h5>@(isRtl ? "قائمة المستخدم" : "User Menu")</h5>
+                    <p>@(isRtl ? "انقر على ملفك الشخصي في الزاوية العلوية للوصول إلى:" : "Click your profile in the top corner to access:")</p>
+                    <ul>
+                        <li>@(isRtl ? "الملف الشخصي" : "Profile")</li>
+                        <li>@(isRtl ? "دليل المستخدم — هذه الصفحة" : "User Manual — this page")</li>
+                        <li>@(isRtl ? "تسجيل الخروج" : "Sign out")</li>
+                    </ul>
+                </div>
+            </section>
+
+            @* — Section: Service Catalog — *@
+            <section class="um-section" data-section="service-catalog">
+                <div class="um-sec-head">
+                    <span class="um-sec-icon"><i data-lucide="layers" aria-hidden="true"></i></span>
+                    <span class="um-sec-title">@(isRtl ? "كتالوج الخدمات" : "Service Catalog")</span>
+                </div>
+                <div class="um-content">
+                    <p>@(isRtl ? "وحدة كتالوج الخدمات تتيح إدارة جميع الخدمات المؤسسية، بما في ذلك اتفاقيات مستوى الخدمة (SLA) والمقاييس والأداء." : "The Service Catalog module manages all enterprise services, including SLAs, metrics, and performance.")</p>
+
+                    <h5>@(isRtl ? "إنشاء خدمة جديدة" : "Creating a new service")</h5>
+                    <ol>
+                        <li>@(isRtl ? "انتقل إلى كتالوج الخدمات من القائمة الجانبية." : "Open Service Catalog from the sidebar.")</li>
+                        <li>@(isRtl ? "انقر زر 'إضافة خدمة جديدة'." : "Click the 'Add new service' button.")</li>
+                        <li>@(isRtl ? "املأ المعلومات الأساسية (الاسم، الوصف، النوع)." : "Fill in basic information (name, description, type).")</li>
+                        <li>@(isRtl ? "حدد الوحدة المالكة والمسؤولين." : "Specify the owning unit and responsible parties.")</li>
+                        <li>@(isRtl ? "احفظ الخدمة." : "Save the service.")</li>
+                    </ol>
+
+                    <h5>@(isRtl ? "إدارة اتفاقيات مستوى الخدمة (SLA)" : "Service-Level Agreements (SLA)")</h5>
+                    <p>@(isRtl ? "لكل خدمة، يمكنك تحديد اتفاقيات مستوى الخدمة:" : "For each service you can define SLAs:")</p>
+                    <ul>
+                        <li>@(isRtl ? "وقت الاستجابة المستهدف" : "Target response time")</li>
+                        <li>@(isRtl ? "وقت الحل المستهدف" : "Target resolution time")</li>
+                        <li>@(isRtl ? "نسبة التوفر المستهدفة" : "Target availability percentage")</li>
+                        <li>@(isRtl ? "مقاييس الجودة" : "Quality metrics")</li>
+                    </ul>
+
+                    <div class="um-tip">
+                        <strong>@(isRtl ? "نصيحة:" : "Tip:")</strong>
+                        @(isRtl ? "استخدم لوحة معلومات الخدمة لمراقبة الأداء الفعلي مقابل اتفاقيات مستوى الخدمة." : "Use the service dashboard to monitor actual performance against the defined SLAs.")
+                    </div>
+                </div>
+            </section>
+
+            @* — Coming-soon stubs for the remaining 7 sections — *@
+            @foreach (var s in sections.Where(x => stubSections.Contains(x.Id)))
+            {
+                <section class="um-section" data-section="@s.Id">
+                    <div class="um-sec-head">
+                        <span class="um-sec-icon"><i data-lucide="@s.Icon" aria-hidden="true"></i></span>
+                        <span class="um-sec-title">@(isRtl ? s.Ar : s.En)</span>
+                    </div>
+                    <div class="um-stub">
+                        <i data-lucide="file-clock" class="w-10 h-10" aria-hidden="true"></i>
+                        <p>@(isRtl ? "هذا القسم قيد الإعداد. زر الوحدة مباشرة من القائمة الجانبية للاطلاع على المزيد." : "This section is being prepared. Open the module directly from the sidebar menu for the latest features.")</p>
+                    </div>
+                </section>
+            }
+
+            @* — Default empty state shown if hash is empty/unknown — *@
+            <div id="umEmpty" class="um-stub">
+                <i data-lucide="book-open" class="w-10 h-10" aria-hidden="true"></i>
+                <p>@(isRtl ? "اختر قسماً من القائمة على اليمين." : "Pick a section from the list on the left.")</p>
+            </div>
+        </main>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+
+        const tocItems = Array.from(document.querySelectorAll('#umTocList .um-toc-item'));
+        const sections = Array.from(document.querySelectorAll('#umDetail .um-section'));
+        const empty    = document.getElementById('umEmpty');
+        const search   = document.getElementById('umSearch');
+
+        function showSection(id) {
+            let found = false;
+            sections.forEach(s => {
+                const match = s.dataset.section === id;
+                s.classList.toggle('active', match);
+                if (match) found = true;
+            });
+            tocItems.forEach(t => t.classList.toggle('active', t.dataset.section === id));
+            if (empty) empty.style.display = found ? 'none' : '';
+            // Scroll the detail pane back to top whenever we switch sections.
+            const detail = document.getElementById('umDetail');
+            if (detail) detail.scrollTop = 0;
+        }
+
+        // Initial section: hash if present + valid, otherwise the first item.
+        function syncFromHash() {
+            const raw = (window.location.hash || '').replace('#', '').trim();
+            const target = sections.some(s => s.dataset.section === raw) ? raw : (sections[0]?.dataset.section || '');
+            if (target) showSection(target);
+        }
+        syncFromHash();
+        window.addEventListener('hashchange', syncFromHash);
+
+        // Click handler — let the browser update the hash, then we re-render.
+        tocItems.forEach(t => t.addEventListener('click', e => {
+            // Don't preventDefault — letting the browser update the hash gives
+            // us free deep-linking + back-button support. The hashchange
+            // listener will then call showSection().
+        }));
+
+        // TOC search — filter list items only; no content search yet.
+        search?.addEventListener('input', () => {
+            const q = (search.value || '').toLowerCase().trim();
+            tocItems.forEach(t => {
+                const ok = !q || (t.dataset.search || '').includes(q);
+                t.classList.toggle('hidden', !ok);
+            });
+        });
+    </script>
+}

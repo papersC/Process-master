@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_640d5001"
+                  targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_7d445250" name="Microsoft_Visio_Drawing81" isExecutable="false">
+    <bpmn:task id="Shape_3" name="توزيع البريد"/>
+    <bpmn:task id="Shape_7" name="الموظف\ الإدارة المعنية"/>
+    <bpmn:task id="Shape_10" name="المدخلات"/>
+    <bpmn:task id="Shape_13" name="المخرجات"/>
+    <bpmn:task id="Shape_16" name="قسم الشؤون الإدارية"/>
+    <bpmn:startEvent id="Shape_21" name="البداية"/>
+    <bpmn:task id="Shape_22" name="البريد الوارد"/>
+    <bpmn:task id="Shape_23" name="استلام البريد"/>
+    <bpmn:endEvent id="Shape_24" name="النهاية"/>
+    <bpmn:task id="Shape_25" name="تنفيذ زيارة أسبوعية من قبل الموظف المعني لصندوق البريد لاستلام البريد"/>
+    <bpmn:task id="Shape_26" name="استلام البريد والتوقيع على الاستلام"/>
+    <bpmn:task id="Shape_27" name="تسليم البريد للموظف\ الإدارة المعنية"/>
+    <bpmn:sequenceFlow id="Flow_53" sourceRef="Shape_26" targetRef="Shape_23"/>
+    <bpmn:sequenceFlow id="Flow_52" sourceRef="Shape_26" targetRef="Shape_24"/>
+    <bpmn:sequenceFlow id="Flow_28" sourceRef="Shape_22" targetRef="Shape_21"/>
+    <bpmn:sequenceFlow id="Flow_35" sourceRef="Shape_21" targetRef="Shape_25"/>
+    <bpmn:sequenceFlow id="Flow_44" sourceRef="Shape_25" targetRef="Shape_27"/>
+    <bpmn:sequenceFlow id="Flow_51" sourceRef="Shape_27" targetRef="Shape_26"/>
+    <bpmn:laneSet id="LaneSet_1">
+      <bpmn:lane id="Lane_14" name="قسم الشؤون الإدارية">
+        <bpmn:flowNodeRef>Shape_21</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_25</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_27</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_5" name="الموظف\ الإدارة المعنية">
+        <bpmn:flowNodeRef>Shape_7</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_16</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_24</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Shape_26</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_8" name="المدخلات">
+        <bpmn:flowNodeRef>Shape_22</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_11" name="المخرجات">
+        <bpmn:flowNodeRef>Shape_23</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+  </bpmn:process>
+  <bpmn:collaboration id="Collaboration_8528c9a0">
+    <bpmn:participant id="Participant_1" name="توزيع البريد" processRef="Process_7d445250"/>
+  </bpmn:collaboration>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_8528c9a0">
+      <bpmndi:BPMNShape id="Participant_1_di" bpmnElement="Participant_1">
+        <dc:Bounds x="1" y="247" width="1079" height="552"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_14_di" bpmnElement="Lane_14" isHorizontal="false">
+        <dc:Bounds x="541" y="304" width="387" height="495"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_5_di" bpmnElement="Lane_5" isHorizontal="false">
+        <dc:Bounds x="171" y="304" width="370" height="495"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_8_di" bpmnElement="Lane_8" isHorizontal="false">
+        <dc:Bounds x="929" y="304" width="151" height="495"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_11_di" bpmnElement="Lane_11" isHorizontal="false">
+        <dc:Bounds x="90" y="304" width="10" height="495"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_3_di" bpmnElement="Shape_3">
+        <dc:Bounds x="0" y="248" width="1079" height="57"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_7_di" bpmnElement="Shape_7">
+        <dc:Bounds x="0" y="304" width="370" height="40"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_10_di" bpmnElement="Shape_10">
+        <dc:Bounds x="-48" y="304" width="96" height="40"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_13_di" bpmnElement="Shape_13">
+        <dc:Bounds x="-48" y="304" width="96" height="40"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_16_di" bpmnElement="Shape_16">
+        <dc:Bounds x="0" y="304" width="387" height="40"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_21_di" bpmnElement="Shape_21">
+        <dc:Bounds x="711" y="365" width="36" height="36"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_22_di" bpmnElement="Shape_22">
+        <dc:Bounds x="955" y="369" width="99" height="40"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_23_di" bpmnElement="Shape_23">
+        <dc:Bounds x="48" y="562" width="99" height="40"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_24_di" bpmnElement="Shape_24">
+        <dc:Bounds x="308" y="662" width="36" height="36"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_25_di" bpmnElement="Shape_25">
+        <dc:Bounds x="711" y="467" width="96" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_26_di" bpmnElement="Shape_26">
+        <dc:Bounds x="308" y="558" width="96" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_27_di" bpmnElement="Shape_27">
+        <dc:Bounds x="711" y="558" width="96" height="48"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_53_di" bpmnElement="Flow_53">
+        <di:waypoint x="296" y="582"/>
+        <di:waypoint x="228" y="582"/>
+        <di:waypoint x="159" y="582"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_52_di" bpmnElement="Flow_52">
+        <di:waypoint x="356" y="618"/>
+        <di:waypoint x="356" y="634"/>
+        <di:waypoint x="326" y="634"/>
+        <di:waypoint x="326" y="650"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_28_di" bpmnElement="Flow_28">
+        <di:waypoint x="943" y="389"/>
+        <di:waypoint x="851" y="389"/>
+        <di:waypoint x="851" y="383"/>
+        <di:waypoint x="759" y="383"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_35_di" bpmnElement="Flow_35">
+        <di:waypoint x="729" y="413"/>
+        <di:waypoint x="729" y="434"/>
+        <di:waypoint x="759" y="434"/>
+        <di:waypoint x="759" y="455"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_44_di" bpmnElement="Flow_44">
+        <di:waypoint x="759" y="527"/>
+        <di:waypoint x="759" y="536"/>
+        <di:waypoint x="759" y="546"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_51_di" bpmnElement="Flow_51">
+        <di:waypoint x="699" y="582"/>
+        <di:waypoint x="557" y="582"/>
+        <di:waypoint x="416" y="582"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

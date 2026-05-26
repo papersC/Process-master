@@ -1,0 +1,296 @@
+@inject IStringLocalizer<SharedResource> Shared
+@{
+    ViewData["Title"] = Shared["Title_ImportExport"].Value;
+    ViewBag.BannerIcon = "database";
+    ViewBag.BannerTitle = Shared["Title_ImportExport"].Value;
+    ViewBag.BannerSubtitle = Shared["Text_BulkImportExport"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    var isAdmin = User.IsInRole("ADMIN") || User.HasClaim("Permission", "*.*");
+
+    // Entity rows used by the matrix.
+    var entities = new[]
+    {
+        new {
+            Key = "Processes", Icon = "workflow", Tone = "#0891b2", Bg = "#ecfeff",
+            Label = Shared["Label_Processes"].Value,
+            Desc = Shared["Text_ImportBusinessProcesses"].Value,
+            DownloadAction = "DownloadProcessesTemplate",
+            ExportAction = "ExportProcesses"
+        },
+        new {
+            Key = "Services", Icon = "concierge-bell", Tone = "#0d9488", Bg = "#f0fdfa",
+            Label = Shared["Label_Services"].Value,
+            Desc = Shared["Text_ImportServiceCatalog"].Value,
+            DownloadAction = "DownloadServicesTemplate",
+            ExportAction = "ExportServices"
+        },
+        new {
+            Key = "Assets", Icon = "package", Tone = "#ea580c", Bg = "#fff7ed",
+            Label = Shared["Label_Assets"].Value,
+            Desc = Shared["Text_ImportAssetInventory"].Value,
+            DownloadAction = "DownloadAssetsTemplate",
+            ExportAction = "ExportAssets"
+        },
+        new {
+            Key = "Risks", Icon = "triangle-alert", Tone = "#dc2626", Bg = "#fef2f2",
+            Label = Shared["Label_Risks"].Value,
+            Desc = Shared["Text_ImportRiskRegister"].Value,
+            DownloadAction = "DownloadRisksTemplate",
+            ExportAction = "ExportRisks"
+        }
+    };
+}
+
+@await Html.PartialAsync("_ModuleBanner")
+
+<style>
+    .ie-shell { --b: #005B99; --bd: #e5e7eb; --tx: #111827; --mu: #6b7280; --fs-xs: 11px; --fs-sm: 12px; --fs-base: 13px; --fs-lg: 15px; }
+    .ie-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .ie-tile { background: #fff; border: 1px solid var(--bd); border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; }
+    .ie-tile-ico { width: 36px; height: 36px; border-radius: 8px; background: rgba(0,91,153,.1); color: var(--b); display: inline-flex; align-items: center; justify-content: center; flex: 0 0 36px; }
+    .ie-tile-num { font-size: 20px; font-weight: 700; color: var(--tx); line-height: 1; }
+    .ie-tile-lbl { font-size: var(--fs-xs); color: var(--mu); text-transform: uppercase; letter-spacing: .04em; }
+    .ie-card { background: #fff; border: 1px solid var(--bd); border-radius: 12px; overflow: hidden; }
+    .ie-card-head { padding: 12px 16px; border-bottom: 1px solid var(--bd); display: flex; align-items: center; justify-content: space-between; gap: 12px; background: linear-gradient(180deg, #fafbfc 0%, #fff 100%); }
+    .ie-card-title { font-size: var(--fs-lg); font-weight: 600; color: var(--tx); margin: 0; display: flex; align-items: center; gap: 8px; }
+    .ie-card-title svg { width: 18px; height: 18px; color: var(--b); }
+    .ie-table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
+    .ie-table th { text-align: start; padding: 10px 16px; background: #f9fafb; border-bottom: 1px solid var(--bd); font-size: var(--fs-xs); font-weight: 600; color: var(--mu); text-transform: uppercase; letter-spacing: .04em; }
+    .ie-table td { padding: 14px 16px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+    .ie-table tbody tr:last-child td { border-bottom: none; }
+    .ie-table tbody tr:hover { background: #fafbfc; }
+    .ie-entity { display: flex; align-items: center; gap: 12px; }
+    .ie-entity-ico { width: 36px; height: 36px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 36px; }
+    .ie-entity-name { font-weight: 600; color: var(--tx); font-size: var(--fs-base); margin: 0; line-height: 1.3; }
+    .ie-entity-desc { color: var(--mu); font-size: var(--fs-sm); margin: 2px 0 0; line-height: 1.3; }
+    .ie-act { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--bd); border-radius: 6px; background: #fff; color: var(--tx); font-size: var(--fs-sm); font-weight: 500; cursor: pointer; transition: all .15s; text-decoration: none; }
+    .ie-act:hover { border-color: var(--b); color: var(--b); background: rgba(0,91,153,.04); }
+    .ie-act svg { width: 14px; height: 14px; }
+    .ie-act-primary { background: var(--b); color: #fff; border-color: var(--b); }
+    .ie-act-primary:hover { background: #00477a; color: #fff; }
+    .ie-act-export:hover { border-color: #059669; color: #059669; background: rgba(5,150,105,.04); }
+    .ie-actions-cell { white-space: nowrap; text-align: end; }
+    .ie-bpmn { background: #fff; border: 1px solid var(--bd); border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 14px; transition: border-color .15s; }
+    .ie-bpmn:hover { border-color: var(--b); }
+    .ie-bpmn-ico { width: 40px; height: 40px; border-radius: 8px; background: rgba(0,91,153,.1); color: var(--b); display: inline-flex; align-items: center; justify-content: center; flex: 0 0 40px; }
+    .ie-notes { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 14px; font-size: var(--fs-sm); display: flex; gap: 10px; align-items: start; margin-top: 12px; }
+    .ie-notes svg { width: 16px; height: 16px; color: #d97706; flex: 0 0 16px; margin-top: 2px; }
+    .ie-notes ul { margin: 0; padding-inline-start: 18px; color: #78350f; line-height: 1.6; }
+
+    /* Modal upload zone */
+    .ie-drop { border: 2px dashed #d1d5db; border-radius: 8px; padding: 24px; text-align: center; cursor: pointer; transition: all .15s; background: #f9fafb; }
+    .ie-drop:hover, .ie-drop.is-drag { border-color: var(--b); background: rgba(0,91,153,.04); }
+    .ie-drop svg { width: 32px; height: 32px; color: #9ca3af; margin-bottom: 8px; }
+    .ie-drop-name { color: var(--b); font-weight: 600; margin-top: 8px; font-size: var(--fs-base); }
+
+    @@media (max-width: 768px) {
+        .ie-strip { grid-template-columns: 1fr; }
+        .ie-table thead { display: none; }
+        .ie-table tbody tr { display: block; padding: 12px; border-bottom: 1px solid var(--bd); }
+        .ie-table tbody td { display: block; padding: 6px 0; border: none; }
+        .ie-actions-cell { text-align: start; }
+    }
+</style>
+
+<div class="ie-shell">
+
+    @if (isAdmin)
+    {
+        <a asp-controller="BpmnImport" asp-action="Index" class="ie-bpmn text-decoration-none">
+            <span class="ie-bpmn-ico"><i data-lucide="file-cog"></i></span>
+            <div style="flex: 1 1 auto;">
+                <div style="font-weight: 600; color: var(--esems-primary, #005B99); font-size: 14px;">@(isRtl ? "استيراد دفعي من Visio إلى BPMN" : "Visio → BPMN Batch Import")</div>
+                <div style="color: #6b7280; font-size: 12px; margin-top: 2px;">@(isRtl ? "تحويل مخططات Visio المضمنة في full.xlsx إلى BPMN 2.0 وربطها بالعمليات." : "Convert embedded Visio diagrams in full.xlsx to BPMN 2.0 and link to processes.")</div>
+            </div>
+            <i data-lucide="arrow-@(isRtl ? "left" : "right")" style="width: 16px; height: 16px; color: #94a3b8;"></i>
+        </a>
+    }
+
+    <div class="ie-strip">
+        <div class="ie-tile">
+            <span class="ie-tile-ico"><i data-lucide="layers" style="width:18px;height:18px;"></i></span>
+            <div>
+                <div class="ie-tile-num">4</div>
+                <div class="ie-tile-lbl">@(isRtl ? "أنواع البيانات" : "Entity types")</div>
+            </div>
+        </div>
+        <div class="ie-tile">
+            <span class="ie-tile-ico"><i data-lucide="file-spreadsheet" style="width:18px;height:18px;"></i></span>
+            <div>
+                <div class="ie-tile-num">.xlsx</div>
+                <div class="ie-tile-lbl">@(isRtl ? "الصيغة المدعومة" : "Supported format")</div>
+            </div>
+        </div>
+        <div class="ie-tile">
+            <span class="ie-tile-ico"><i data-lucide="shield-check" style="width:18px;height:18px;"></i></span>
+            <div>
+                <div class="ie-tile-num" style="font-size: 14px;">@(isRtl ? "تحقق تلقائي" : "Auto-validated")</div>
+                <div class="ie-tile-lbl">@(isRtl ? "تخطي السجلات المكررة" : "Duplicates skipped")</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="ie-card">
+        <div class="ie-card-head">
+            <h2 class="ie-card-title">
+                <i data-lucide="database"></i>
+                @(isRtl ? "البيانات حسب النوع" : "Data by entity")
+            </h2>
+            <span style="font-size: 12px; color: #6b7280;">@(isRtl ? "نزّل القالب · املأه · ارفعه" : "Download template · Fill it · Upload")</span>
+        </div>
+        <table class="ie-table">
+            <thead>
+                <tr>
+                    <th style="width: 45%;">@(isRtl ? "الكيان" : "Entity")</th>
+                    <th class="ie-actions-cell">@(isRtl ? "الإجراءات" : "Actions")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var e in entities)
+                {
+                    <tr>
+                        <td>
+                            <div class="ie-entity">
+                                <span class="ie-entity-ico" style="background: @e.Bg; color: @e.Tone;">
+                                    <i data-lucide="@e.Icon" style="width: 18px; height: 18px;"></i>
+                                </span>
+                                <div>
+                                    <p class="ie-entity-name">@e.Label</p>
+                                    <p class="ie-entity-desc">@e.Desc</p>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="ie-actions-cell">
+                            <a asp-action="@e.DownloadAction" class="ie-act" title="@(isRtl ? "تنزيل القالب" : "Download template")">
+                                <i data-lucide="download"></i>
+                                <span>@(isRtl ? "القالب" : "Template")</span>
+                            </a>
+                            <button type="button" class="ie-act ie-act-primary ie-import-btn" data-entity="@e.Key" data-label="@e.Label" data-icon="@e.Icon">
+                                <i data-lucide="upload"></i>
+                                <span>@(isRtl ? "استيراد" : "Import")</span>
+                            </button>
+                            <form asp-action="@e.ExportAction" method="post" style="display: inline;">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="ie-act ie-act-export" title="@(isRtl ? "تصدير الكل" : "Export all")">
+                                    <i data-lucide="file-down"></i>
+                                    <span>@(isRtl ? "تصدير" : "Export")</span>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <div style="padding: 12px 16px; background: #f9fafb; border-top: 1px solid var(--bd);">
+            <div class="ie-notes" style="margin: 0; background: transparent; border: none; padding: 0;">
+                <i data-lucide="info"></i>
+                <ul>
+                    <li>@Shared["Text_FollowTemplateFormat"]</li>
+                    <li>@Shared["Text_RequiredFieldsFilled"]</li>
+                    <li>@Shared["Text_DuplicateSkipped"]</li>
+                    <li>@Shared["Text_InvalidDataReported"]</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Shared upload modal -->
+<div class="modal fade" id="ieImportModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form asp-action="ImportData" method="post" enctype="multipart/form-data" id="ieImportForm">
+                @Html.AntiForgeryToken()
+                <div class="modal-header" style="padding: 14px 18px;">
+                    <h5 class="modal-title d-flex align-items-center gap-2" style="font-size: 15px; font-weight: 600;">
+                        <span id="ieModalIcon" class="d-inline-flex align-items-center justify-content-center" style="width: 28px; height: 28px; border-radius: 6px; background: rgba(0,91,153,.1); color: #005B99;">
+                            <i data-lucide="upload" style="width: 16px; height: 16px;"></i>
+                        </span>
+                        <span id="ieModalTitle">@(isRtl ? "استيراد البيانات" : "Import data")</span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="padding: 18px;">
+                    <input type="hidden" name="dataType" id="ieDataType" />
+                    <label class="ie-drop" id="ieDropZone">
+                        <i data-lucide="upload-cloud"></i>
+                        <div style="font-size: 13px; color: #374151;">
+                            <span style="font-weight: 600; color: #005B99;">@Shared["Text_ClickToUpload"]</span>
+                            @Shared["Text_DragAndDrop"]
+                        </div>
+                        <div style="font-size: 11px; color: #9ca3af; margin-top: 4px;">@Shared["Text_ExcelFilesOnly"]</div>
+                        <div class="ie-drop-name" id="ieFileName" style="display: none;"></div>
+                        <input type="file" name="file" id="ieFileInput" accept=".xlsx,.xls" required style="display: none;" />
+                    </label>
+                    <div style="margin-top: 12px; padding: 10px 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; font-size: 12px; color: #78350f;">
+                        <i data-lucide="alert-triangle" style="width: 14px; height: 14px; vertical-align: -2px; color: #d97706;"></i>
+                        @(isRtl ? "تأكد من اتباع تنسيق القالب. السجلات المكررة سيتم تخطيها." : "Make sure your file follows the template format. Duplicates will be skipped.")
+                    </div>
+                </div>
+                <div class="modal-footer" style="padding: 12px 18px; gap: 8px;">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">@(isRtl ? "إلغاء" : "Cancel")</button>
+                    <button type="submit" class="btn btn-sm" style="background: #005B99; color: #fff; border: none;">
+                        <i data-lucide="upload" style="width: 14px; height: 14px; vertical-align: -2px;"></i>
+                        @Shared["Button_ImportData"]
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        (function () {
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+
+            var modalEl = document.getElementById('ieImportModal');
+            var modal = modalEl ? new bootstrap.Modal(modalEl) : null;
+            var titleEl = document.getElementById('ieModalTitle');
+            var iconEl = document.getElementById('ieModalIcon');
+            var dataTypeInput = document.getElementById('ieDataType');
+            var fileInput = document.getElementById('ieFileInput');
+            var fileNameEl = document.getElementById('ieFileName');
+            var dropZone = document.getElementById('ieDropZone');
+
+            document.querySelectorAll('.ie-import-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var key = btn.getAttribute('data-entity');
+                    var label = btn.getAttribute('data-label');
+                    var icon = btn.getAttribute('data-icon');
+                    if (dataTypeInput) dataTypeInput.value = key;
+                    if (titleEl) titleEl.textContent = (label || key);
+                    if (iconEl) iconEl.innerHTML = '<i data-lucide="' + (icon || 'upload') + '" style="width:16px;height:16px;"></i>';
+                    if (fileInput) fileInput.value = '';
+                    if (fileNameEl) { fileNameEl.style.display = 'none'; fileNameEl.textContent = ''; }
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                    if (modal) modal.show();
+                });
+            });
+
+            if (fileInput) {
+                fileInput.addEventListener('change', function () {
+                    if (fileInput.files && fileInput.files[0]) {
+                        fileNameEl.textContent = fileInput.files[0].name;
+                        fileNameEl.style.display = 'block';
+                    }
+                });
+            }
+
+            if (dropZone) {
+                ['dragenter', 'dragover'].forEach(function (ev) {
+                    dropZone.addEventListener(ev, function (e) { e.preventDefault(); dropZone.classList.add('is-drag'); });
+                });
+                ['dragleave', 'drop'].forEach(function (ev) {
+                    dropZone.addEventListener(ev, function (e) { e.preventDefault(); dropZone.classList.remove('is-drag'); });
+                });
+                dropZone.addEventListener('drop', function (e) {
+                    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+                        fileInput.files = e.dataTransfer.files;
+                        fileInput.dispatchEvent(new Event('change'));
+                    }
+                });
+            }
+        })();
+    </script>
+}

@@ -1,0 +1,829 @@
+@model Process
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = Shared["Action_CreateProcess"].Value;
+    var lockedUnitId = ViewBag.LockedOwningUnitId as string;
+    var lockedUnitName = ViewBag.LockedOwningUnitName as string;
+
+    var step1Title = isRtl ? "الهوية"             : "Identity";
+    var step1Sub   = isRtl ? "الاسم والتصنيف"      : "Name and classification";
+    var step2Title = isRtl ? "الروابط"             : "Linking";
+    var step2Sub   = isRtl ? "خدمات وأهداف وأصول"  : "Services, objectives, assets, risks";
+    var step3Title = isRtl ? "تشغيلي ووثائق"       : "Operational & Docs";
+    var step3Sub   = isRtl ? "المدة، التكلفة، الأتمتة" : "Duration, cost, automation";
+    var step4Title = isRtl ? "الأنشطة و BPMN"      : "Activities & BPMN";
+    var step4Sub   = isRtl ? "الخطوات والمخطط"     : "Steps and diagram";
+}
+
+@*  4-step wizard, 3-column layout (left stepper · middle content · right summary).
+    All field bindings, chip-select component, tag input, activities builder,
+    locked-OwningUnit flow, BPMN choice radios, _ProcessDocumentLinking partial,
+    hidden field names (TagList, ActivitiesJson, ContinueToBpmn), and the
+    submit-time SelectedXxxIds[] injection are preserved verbatim — only the
+    layout changes. *@
+
+<style>
+    /* ===== Wizard chrome (3-column) ===== */
+    .wiz-pageheader { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .25rem 0 .55rem; border-bottom: 1px solid #e5e7eb; margin-bottom: .85rem; flex-wrap: wrap; }
+    .wiz-pagetitle { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: inline-flex; align-items: center; gap: .5rem; }
+    .wiz-stepcount { font-size: var(--fs-xs); color: #6b7280; font-weight: 600; }
+    .wiz-stepcount b { color: #005B99; }
+    .wiz-cancellink { font-size: var(--fs-xs); color: #6b7280; text-decoration: none; display: inline-flex; align-items: center; gap: .3rem; }
+    .wiz-cancellink:hover { color: #111827; }
+
+    .wiz-grid { display: grid; grid-template-columns: 260px minmax(0,1fr) 300px; gap: .75rem; align-items: start; }
+    @@media (max-width: 1200px) { .wiz-grid { grid-template-columns: 240px minmax(0,1fr); } .wiz-summary { display: none; } }
+    @@media (max-width: 992px)  { .wiz-grid { grid-template-columns: 1fr; } .wiz-summary { display: block; } }
+
+    /* Left rail — vertical stepper */
+    .wiz-rail { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; padding: .5rem; position: sticky; top: 1rem; }
+    .wiz-steps { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .15rem; }
+    .wiz-step { display: flex; align-items: flex-start; gap: .55rem; padding: .55rem .65rem; border-radius: .375rem; cursor: pointer; transition: background .12s; }
+    .wiz-step:hover { background: #f8fafc; }
+    .wiz-step.active { background: #eff6ff; }
+    .wiz-stepnum { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: #f1f5f9; color: #6b7280; font-size: var(--fs-xs); font-weight: 700; flex-shrink: 0; transition: background .15s, color .15s; }
+    .wiz-step.active .wiz-stepnum { background: #005B99; color: #fff; box-shadow: 0 0 0 3px rgba(0,91,153,.15); }
+    .wiz-step.completed .wiz-stepnum { background: #22c55e; color: #fff; }
+    .wiz-steptext { display: flex; flex-direction: column; min-width: 0; }
+    .wiz-steptitle { font-size: var(--fs-xs); font-weight: 600; color: #374151; line-height: 1.2; }
+    .wiz-step.active .wiz-steptitle { color: #005B99; }
+    .wiz-step.completed .wiz-steptitle { color: #166534; }
+    .wiz-stepsub { font-size: var(--fs-xs); color: #9ca3af; margin-top: .15rem; }
+
+    /* Middle — main content card */
+    .wiz-main { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; padding: 1rem; }
+    .wiz-stephdr { display: flex; align-items: center; gap: .5rem; padding-bottom: .65rem; margin-bottom: .85rem; border-bottom: 1px solid #f1f5f9; }
+    .wiz-stephdr h2 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; }
+    .wiz-stephdr i { color: #005B99; }
+    .wiz-step-content { display: none; animation: wizFade .18s ease-out; }
+    .wiz-step-content.active { display: block; }
+    @@keyframes wizFade { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+    .wiz-footer { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding-top: .85rem; margin-top: 1rem; border-top: 1px solid #f1f5f9; }
+
+    /* Right rail — stacked summary cards + actions */
+    .wiz-summary { position: sticky; top: 1rem; display: flex; flex-direction: column; gap: .55rem; }
+    .wiz-sum-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; padding: .85rem 1rem; }
+    .wiz-sum-hdr { display: flex; align-items: center; gap: .45rem; padding-bottom: .5rem; margin-bottom: .55rem; border-bottom: 1px solid #f1f5f9; }
+    .wiz-sum-hdr h3 { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: #111827; }
+    .wiz-sum-hdr i { color: #005B99; width: 16px; height: 16px; }
+    .wiz-sum-note { font-size: var(--fs-xs); color: #6b7280; margin: 0 0 .35rem; }
+    .wiz-sum-codepreview { font-family: ui-monospace, monospace; font-size: var(--fs-sm); font-weight: 700; color: #005B99; background: #eff6ff; padding: .4rem .6rem; border-radius: .25rem; text-align: center; letter-spacing: .05em; }
+    .wiz-sum-row { display: flex; align-items: center; justify-content: space-between; padding: .35rem 0; gap: .5rem; border-bottom: 1px dashed #f1f5f9; font-size: var(--fs-xs); color: #475569; }
+    .wiz-sum-row:last-child { border-bottom: none; }
+    .wiz-sum-label { display: inline-flex; align-items: center; gap: .35rem; min-width: 0; }
+    .wiz-sum-label i { width: 13px; height: 13px; color: #94a3b8; }
+    .wiz-sum-pill { display: inline-block; padding: .12rem .55rem; font-size: var(--fs-xs); font-weight: 700; border-radius: .25rem; background: #eff6ff; color: #1d4ed8; min-width: 1.6rem; text-align: center; }
+    .wiz-sum-actions { display: flex; flex-direction: column; gap: .35rem; padding-top: .25rem; }
+
+    /* ===== Reused .pc-* tokens for buttons + form fields ===== */
+    .pc-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; border: 1px solid transparent; line-height: 1.1; }
+    .pc-btn-primary { background: #005B99; color: #fff; border-color: #005B99; } .pc-btn-primary:hover { background: #003d6b; color: #fff; }
+    .pc-btn-success { background: #16a34a; color: #fff; border-color: #16a34a; } .pc-btn-success:hover { background: #15803d; color: #fff; }
+    .pc-btn-outline { background: #fff; color: #005B99; border-color: #cbd5e1; } .pc-btn-outline:hover { background: #f1f5f9; }
+    .pc-btn-ghost   { background: transparent; color: #374151; border-color: #d1d5db; } .pc-btn-ghost:hover { background: #f9fafb; }
+    .pc-btn-block { width: 100%; justify-content: center; padding: .55rem .85rem; }
+    .pc-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .pc-label { display: block; font-size: var(--fs-xs); font-weight: 600; color: #374151; margin-bottom: .25rem; }
+    .pc-label .req { color: #dc2626; }
+    .pc-input, .pc-select, .pc-textarea { width: 100%; padding: .42rem .65rem; border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-sm); background: #fff; color: #111827; }
+    .pc-input:focus, .pc-select:focus, .pc-textarea:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .pc-input.invalid { border-color: #dc2626; }
+    .pc-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+    .pc-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .65rem; }
+    .pc-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: .65rem; }
+    @@media (max-width: 768px) { .pc-grid-2, .pc-grid-3, .pc-grid-4 { grid-template-columns: 1fr; } .wiz-stepsub { display: none; } }
+    .pc-row { margin-bottom: .65rem; }
+    .pc-help { font-size: var(--fs-xs); color: #6b7280; margin-top: .2rem; }
+    .pc-err { font-size: var(--fs-xs); color: #dc2626; margin-top: .2rem; display: block; }
+    .pc-radio-row { display: flex; align-items: flex-start; gap: .5rem; padding: .5rem; border: 1px solid #e5e7eb; border-radius: .375rem; cursor: pointer; transition: all .15s; margin-bottom: .35rem; }
+    .pc-radio-row:hover { background: #f9fafb; border-color: #cbd5e1; }
+    .pc-radio-row.active { border-color: #005B99; background: #eff6ff; }
+    .pc-radio-row input { margin-top: .15rem; }
+    .pc-radio-row .pc-radio-title { font-size: var(--fs-xs); font-weight: 600; color: #111827; }
+    .pc-radio-row .pc-radio-sub { font-size: var(--fs-xs); color: #6b7280; margin-top: .1rem; line-height: 1.3; }
+    .pc-locked { display: flex; align-items: center; justify-content: space-between; gap: .4rem; padding: .42rem .65rem; border: 1px solid #bfdbfe; background: #eff6ff; border-radius: .375rem; font-size: var(--fs-xs); color: #1e40af; }
+    .pc-locked button { background: transparent; border: none; color: #1d4ed8; font-size: var(--fs-xs); text-decoration: underline; cursor: pointer; }
+    .pc-act-table { width: 100%; font-size: var(--fs-xs); border-collapse: collapse; }
+    .pc-act-table th { font-size: var(--fs-xs); text-transform: uppercase; color: #6b7280; font-weight: 600; padding: .35rem .5rem; text-align: start; background: #f8fafc; border-bottom: 1px solid #e5e7eb; }
+    .pc-act-table td { padding: .35rem .5rem; border-bottom: 1px solid #f3f4f6; }
+    .pc-checkbox-row { display: inline-flex; align-items: center; gap: .45rem; cursor: pointer; }
+    .pc-checkbox-row input { width: 1rem; height: 1rem; accent-color: #005B99; }
+</style>
+
+<div class="wiz-pageheader">
+    <h1 class="wiz-pagetitle"><i data-lucide="file-plus" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>@ViewData["Title"]</h1>
+    <div style="display:inline-flex;align-items:center;gap:.85rem;">
+        <span class="wiz-stepcount">@(isRtl ? "الخطوة" : "Step") <b id="stepCounter">1</b> @(isRtl ? "من" : "of") 4</span>
+        <a asp-action="Index" class="wiz-cancellink"><i data-lucide="x" style="width:14px;height:14px;"></i> @Shared["Action_Back"]</a>
+    </div>
+</div>
+
+<form id="createForm" asp-action="Create" method="post" novalidate data-guard-unsaved>
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" style="margin-bottom:.6rem;padding:.6rem .8rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.375rem;color:#b91c1c;font-size: var(--fs-xs);"></div>
+
+    @* Hidden bindings — same names the controller expects *@
+    <input type="hidden" asp-for="Code" />
+    <input type="hidden" asp-for="DisplayOrder" />
+    <input type="hidden" name="ContinueToBpmn" id="ContinueToBpmn" value="0" />
+    <input type="hidden" name="ActivitiesJson" id="ActivitiesJson" />
+    <input type="hidden" id="tagListHidden" name="TagList" />
+
+    <div class="wiz-grid">
+        <!-- ============ LEFT: vertical stepper ============ -->
+        <aside class="wiz-rail">
+            <ul class="wiz-steps" id="wizardSteps">
+                <li class="wiz-step active" data-step="1" onclick="wizGoTo(1)">
+                    <span class="wiz-stepnum">1</span>
+                    <span class="wiz-steptext">
+                        <span class="wiz-steptitle">@step1Title</span>
+                        <span class="wiz-stepsub">@step1Sub</span>
+                    </span>
+                </li>
+                <li class="wiz-step" data-step="2" onclick="wizGoTo(2)">
+                    <span class="wiz-stepnum">2</span>
+                    <span class="wiz-steptext">
+                        <span class="wiz-steptitle">@step2Title</span>
+                        <span class="wiz-stepsub">@step2Sub</span>
+                    </span>
+                </li>
+                <li class="wiz-step" data-step="3" onclick="wizGoTo(3)">
+                    <span class="wiz-stepnum">3</span>
+                    <span class="wiz-steptext">
+                        <span class="wiz-steptitle">@step3Title</span>
+                        <span class="wiz-stepsub">@step3Sub</span>
+                    </span>
+                </li>
+                <li class="wiz-step" data-step="4" onclick="wizGoTo(4)">
+                    <span class="wiz-stepnum">4</span>
+                    <span class="wiz-steptext">
+                        <span class="wiz-steptitle">@step4Title</span>
+                        <span class="wiz-stepsub">@step4Sub</span>
+                    </span>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- ============ MIDDLE: step content ============ -->
+        <section class="wiz-main">
+            @* Live checklist — wired by SP_LIVE_CHECKLIST in site.js. Updates
+               on every keystroke / select change. Visible across all 4 steps. *@
+            <div class="wiz-checklist" data-state="missing"
+                 data-required-checklist
+                 data-required-fields='NameEn:@(isRtl ? "الاسم بالإنجليزية" : "English name")|NameAr:@(isRtl ? "الاسم بالعربية" : "Arabic name")|ProcessGroupId:@(isRtl ? "مجموعة العمليات" : "Process group")'
+                 data-text-prefix='@(isRtl ? "ما زال يلزم: " : "Still need: ")'
+                 data-text-ok='@(isRtl ? "جاهز للحفظ." : "Ready to submit.")'
+                 data-text-sep=' · '>
+                <i data-lucide="circle-dashed" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                <span class="wiz-checklist-text"></span>
+            </div>
+
+            <!-- Step 1 — Identity -->
+            <div class="wiz-step-content active" data-step="1">
+                <div class="wiz-stephdr">
+                    <i data-lucide="file-text" style="width:18px;height:18px;" aria-hidden="true"></i>
+                    <h2>@(isRtl ? "الخطوة" : "Step") 1: @step1Title</h2>
+                </div>
+
+                <div class="pc-row">
+                    <label asp-for="ProcessGroupId" class="pc-label">@Shared["Column_ProcessGroup"] <span class="req">*</span></label>
+                    <select asp-for="ProcessGroupId" asp-items="ViewBag.ProcessGroups" class="pc-select"></select>
+                    <span asp-validation-for="ProcessGroupId" class="pc-err"></span>
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="NameEn" class="pc-label">@Shared["Label_NameEn"] <span class="req">*</span></label>
+                        <input asp-for="NameEn" class="pc-input" />
+                        <span asp-validation-for="NameEn" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NameAr" class="pc-label">@Shared["Label_NameAr"] <span class="req">*</span></label>
+                        <input asp-for="NameAr" dir="rtl" class="pc-input" />
+                        <span asp-validation-for="NameAr" class="pc-err"></span>
+                    </div>
+                </div>
+
+                <div class="pc-grid-3 pc-row">
+                    <div>
+                        <label asp-for="ProcessType" class="pc-label">@Shared["Column_Type"]</label>
+                        <select asp-for="ProcessType" asp-items="@(new SelectList((IEnumerable<dynamic>)ViewBag.ProcessTypes, "Value", "DisplayName"))" class="pc-select"></select>
+                    </div>
+                    <div>
+                        <label asp-for="Status" class="pc-label">@Shared["Column_Status"]</label>
+                        <select asp-for="Status" asp-items="@(new SelectList((IEnumerable<dynamic>)ViewBag.ProcessStatuses, "Value", "DisplayName"))" class="pc-select"></select>
+                    </div>
+                    <div>
+                        <label asp-for="OwningUnitId" class="pc-label">@Shared["Column_OwningUnit"]</label>
+                        @if (!string.IsNullOrWhiteSpace(lockedUnitId))
+                        {
+                            <div class="pc-locked" id="lockedUnitChip">
+                                <span style="display:flex;align-items:center;gap:.35rem;min-width:0;">
+                                    <i data-lucide="lock" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">@lockedUnitName</span>
+                                </span>
+                                <button type="button" id="unlockOwningUnitBtn">@(isRtl ? "تغيير" : "Change")</button>
+                            </div>
+                            <input type="hidden" asp-for="OwningUnitId" />
+                            <select id="OwningUnitIdEditable" asp-items="ViewBag.OrganizationUnits" class="pc-select" style="margin-top:.35rem;display:none;">
+                                <option value="">@Shared["Option_Optional"]</option>
+                            </select>
+                        }
+                        else
+                        {
+                            <select asp-for="OwningUnitId" asp-items="ViewBag.OrganizationUnits" class="pc-select">
+                                <option value="">@Shared["Option_Optional"]</option>
+                            </select>
+                        }
+                    </div>
+                </div>
+
+                <div class="pc-grid-2">
+                    <div>
+                        <label asp-for="DescriptionEn" class="pc-label">@Shared["Label_DescriptionEn"]</label>
+                        <textarea asp-for="DescriptionEn" rows="3" class="pc-textarea"></textarea>
+                    </div>
+                    <div>
+                        <label asp-for="DescriptionAr" class="pc-label">@Shared["Label_DescriptionAr"]</label>
+                        <textarea asp-for="DescriptionAr" dir="rtl" rows="3" class="pc-textarea"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2 — Linking -->
+            <div class="wiz-step-content" data-step="2">
+                <div class="wiz-stephdr">
+                    <i data-lucide="link" style="width:18px;height:18px;" aria-hidden="true"></i>
+                    <h2>@(isRtl ? "الخطوة" : "Step") 2: @step2Title</h2>
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label class="pc-label"><i data-lucide="briefcase" class="w-3.5 h-3.5 inline-block" style="color:#005B99;" aria-hidden="true"></i> @Shared["Label_LinkedServices"]</label>
+                        <div class="cs-wrap relative" id="csWrap_services">
+                            <div class="cs-trigger flex flex-wrap items-center gap-1 px-2 py-1.5 border border-gray-300 rounded-md min-h-[36px] bg-white cursor-pointer" onclick="csToggle('services')">
+                                <span id="csChips_services" class="flex flex-wrap gap-1"></span>
+                                <span id="csPh_services" class="text-xs text-gray-400 truncate">@(isRtl ? "اختر الخدمات..." : "Select services...")</span>
+                                <svg class="w-4 h-4 text-gray-400 ml-auto shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </div>
+                            <div id="csDrop_services" class="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg hidden">
+                                <div class="p-2 border-b border-gray-100"><input type="text" placeholder="@(isRtl ? "بحث..." : "Search...")" class="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none" oninput="csFilter('services',this.value)"></div>
+                                <div class="overflow-y-auto" style="max-height:180px;">
+                                    @if (ViewBag.Services != null) { foreach (var item in ViewBag.Services as SelectList) {
+                                        <label class="cs-opt flex items-center gap-2 px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs">
+                                            <input type="checkbox" value="@item.Value" class="rounded text-blue-600 cs-chk" data-csid="services" data-label="@item.Text" onchange="csUpdate('services')">
+                                            <span class="truncate">@item.Text</span>
+                                        </label>
+                                    } }
+                                </div>
+                            </div>
+                        </div>
+                        @* Per-link criticality + mandatory flag default to 3 (Medium) / true
+                           server-side. Users tune them per-row on Process Details after creation. *@
+                    </div>
+
+                    <div>
+                        <label class="pc-label"><i data-lucide="target" class="w-3.5 h-3.5 inline-block" style="color:#005B99;" aria-hidden="true"></i> @Shared["Label_StrategicObjective"]</label>
+                        <div class="cs-wrap relative" id="csWrap_objectives">
+                            <div class="cs-trigger flex flex-wrap items-center gap-1 px-2 py-1.5 border border-gray-300 rounded-md min-h-[36px] bg-white cursor-pointer" onclick="csToggle('objectives')">
+                                <span id="csChips_objectives" class="flex flex-wrap gap-1"></span>
+                                <span id="csPh_objectives" class="text-xs text-gray-400 truncate">@(isRtl ? "اختر الأهداف..." : "Select objectives...")</span>
+                                <svg class="w-4 h-4 text-gray-400 ml-auto shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </div>
+                            <div id="csDrop_objectives" class="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg hidden">
+                                <div class="p-2 border-b border-gray-100"><input type="text" placeholder="@(isRtl ? "بحث..." : "Search...")" class="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none" oninput="csFilter('objectives',this.value)"></div>
+                                <div class="overflow-y-auto" style="max-height:180px;">
+                                    @if (ViewBag.StrategicObjectives != null) { foreach (var item in ViewBag.StrategicObjectives as SelectList) {
+                                        <label class="cs-opt flex items-center gap-2 px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs">
+                                            <input type="checkbox" value="@item.Value" class="rounded text-blue-600 cs-chk" data-csid="objectives" data-label="@item.Text" onchange="csUpdate('objectives')">
+                                            <span class="truncate">@item.Text</span>
+                                        </label>
+                                    } }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="pc-label"><i data-lucide="package" class="w-3.5 h-3.5 inline-block" style="color:#005B99;" aria-hidden="true"></i> @(isRtl ? "الأصول المرتبطة" : "Linked Assets")</label>
+                        <div class="cs-wrap relative" id="csWrap_assets">
+                            <div class="cs-trigger flex flex-wrap items-center gap-1 px-2 py-1.5 border border-gray-300 rounded-md min-h-[36px] bg-white cursor-pointer" onclick="csToggle('assets')">
+                                <span id="csChips_assets" class="flex flex-wrap gap-1"></span>
+                                <span id="csPh_assets" class="text-xs text-gray-400 truncate">@(isRtl ? "اختر الأصول..." : "Select assets...")</span>
+                                <svg class="w-4 h-4 text-gray-400 ml-auto shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </div>
+                            <div id="csDrop_assets" class="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg hidden">
+                                <div class="p-2 border-b border-gray-100"><input type="text" placeholder="@(isRtl ? "بحث..." : "Search...")" class="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none" oninput="csFilter('assets',this.value)"></div>
+                                <div class="overflow-y-auto" style="max-height:180px;">
+                                    @if (ViewBag.Assets != null) { foreach (var item in ViewBag.Assets as SelectList) {
+                                        <label class="cs-opt flex items-center gap-2 px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs">
+                                            <input type="checkbox" value="@item.Value" class="rounded text-blue-600 cs-chk" data-csid="assets" data-label="@item.Text" onchange="csUpdate('assets')">
+                                            <span class="truncate">@item.Text</span>
+                                        </label>
+                                    } }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="pc-label"><i data-lucide="alert-triangle" class="w-3.5 h-3.5 inline-block" style="color:#005B99;" aria-hidden="true"></i> @(isRtl ? "المخاطر المرتبطة" : "Linked Risks")</label>
+                        <div class="cs-wrap relative" id="csWrap_risks">
+                            <div class="cs-trigger flex flex-wrap items-center gap-1 px-2 py-1.5 border border-gray-300 rounded-md min-h-[36px] bg-white cursor-pointer" onclick="csToggle('risks')">
+                                <span id="csChips_risks" class="flex flex-wrap gap-1"></span>
+                                <span id="csPh_risks" class="text-xs text-gray-400 truncate">@(isRtl ? "اختر المخاطر..." : "Select risks...")</span>
+                                <svg class="w-4 h-4 text-gray-400 ml-auto shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </div>
+                            <div id="csDrop_risks" class="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg hidden">
+                                <div class="p-2 border-b border-gray-100"><input type="text" placeholder="@(isRtl ? "بحث..." : "Search...")" class="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none" oninput="csFilter('risks',this.value)"></div>
+                                <div class="overflow-y-auto" style="max-height:180px;">
+                                    @if (ViewBag.Risks != null) { foreach (var item in ViewBag.Risks as SelectList) {
+                                        <label class="cs-opt flex items-center gap-2 px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs">
+                                            <input type="checkbox" value="@item.Value" class="rounded text-blue-600 cs-chk" data-csid="risks" data-label="@item.Text" onchange="csUpdate('risks')">
+                                            <span class="truncate">@item.Text</span>
+                                        </label>
+                                    } }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pc-row">
+                    <label class="pc-label">
+                        <i data-lucide="clipboard-check" class="w-3.5 h-3.5 inline-block" style="color:#005B99;" aria-hidden="true"></i>
+                        @(isRtl ? "المسؤوليات المُلباة" : "Fulfills responsibilities")
+                    </label>
+                    <partial name="_ResponsibilityPicker" model="@(ViewBag.ResponsibilityPicker as ESEMS.Web.Models.ViewModels.ResponsibilityPickerVM)" />
+                    <div class="pc-help">
+                        @(isRtl
+                            ? "اربط هذه العملية بالمسؤوليات المعتمدة للوحدة التنظيمية (ISO 9001 §4.4)."
+                            : "Link this process to the chartered mandates it fulfills (ISO 9001 §4.4).")
+                    </div>
+                </div>
+
+                <div class="pc-grid-2">
+                    <div>
+                        <label asp-for="SystemId" class="pc-label">@Shared["Label_System"]</label>
+                        <select asp-for="SystemId" asp-items="ViewBag.Systems" class="pc-select">
+                            <option value="">@Shared["Option_Optional"]</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="pc-label"><i data-lucide="tag" class="w-3.5 h-3.5 inline-block" style="color:#005B99;" aria-hidden="true"></i> @Shared["Column_Tags"]</label>
+                        <div id="tagContainer" class="flex flex-wrap gap-1 px-2 py-1.5 border border-gray-300 rounded-md min-h-[36px] bg-white cursor-text" onclick="document.getElementById('tagInput').focus()">
+                            <input id="tagInput" type="text" placeholder="@(isRtl ? "اكتب واضغط Enter" : "Type and press Enter")" class="flex-1 min-w-[120px] outline-none text-xs border-none p-0 m-0 bg-transparent" />
+                        </div>
+                        <div class="pc-help">@(isRtl ? "اكتب كل وسم ثم اضغط Enter لإضافته" : "Type each tag then press Enter")</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3 — Operational & Documents -->
+            <div class="wiz-step-content" data-step="3">
+                <div class="wiz-stephdr">
+                    <i data-lucide="settings" style="width:18px;height:18px;" aria-hidden="true"></i>
+                    <h2>@(isRtl ? "الخطوة" : "Step") 3: @step3Title</h2>
+                </div>
+
+                <div class="pc-grid-4 pc-row">
+                    <div>
+                        <label asp-for="EstimatedDuration" class="pc-label">@Shared["Label_EstimatedDuration"]</label>
+                        <input asp-for="EstimatedDuration" type="number" step="0.01" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="DurationUnit" class="pc-label">@Shared["Label_TimeUnit"]</label>
+                        <select asp-for="DurationUnit" asp-items="@(new SelectList(Enum.GetValues<TimeUnit>().Select(t => new { Value = t.ToString(), Display = Shared[$"TimeUnit_{t}"].Value }), "Value", "Display"))" class="pc-select">
+                            <option value="">@Shared["Option_Optional"]</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label asp-for="EstimatedCost" class="pc-label">@Shared["Label_EstimatedCost"]</label>
+                        <input asp-for="EstimatedCost" type="number" step="0.01" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="AutomationStatus" class="pc-label">@(isRtl ? "حالة الأتمتة" : "Automation")</label>
+                        <select asp-for="AutomationStatus" asp-items="@(new SelectList((IEnumerable<dynamic>)ViewBag.AutomationStatuses, "Value", "DisplayName"))" class="pc-select"></select>
+                    </div>
+                </div>
+
+                <label class="pc-checkbox-row pc-row">
+                    <input asp-for="HasDetailedBreakdown" />
+                    <span style="font-size: var(--fs-xs);color:#374151;">@Shared["Label_HasDetailedBreakdown"]</span>
+                </label>
+
+                <div class="pc-row">
+                    <partial name="_ProcessDocumentLinking" />
+                </div>
+            </div>
+
+            <!-- Step 4 — Activities & BPMN -->
+            <div class="wiz-step-content" data-step="4">
+                <div class="wiz-stephdr">
+                    <i data-lucide="list-checks" style="width:18px;height:18px;" aria-hidden="true"></i>
+                    <h2>@(isRtl ? "الخطوة" : "Step") 4: @step4Title</h2>
+                </div>
+
+                <div class="pc-row">
+                    <label class="pc-label">@(isRtl ? "الأنشطة (اختياري)" : "Activities (optional)")</label>
+                    <div class="pc-help" style="margin:.2rem 0 .5rem;">
+                        <i data-lucide="info" class="w-3 h-3 inline-block" aria-hidden="true"></i>
+                        @(isRtl ? "يتم توليد رمز النشاط تلقائيًا بصيغة {رمز العملية}.01 ، {رمز العملية}.02 ..." : "Activity codes auto-generate as {ProcessCode}.01, {ProcessCode}.02 …")
+                    </div>
+                    <table class="pc-act-table" id="activitiesTable">
+                        <thead>
+                            <tr>
+                                <th style="width:8%">#</th>
+                                <th>@(isRtl ? "الاسم (إنجليزي)" : "Name (EN)")</th>
+                                <th>@(isRtl ? "الاسم (عربي)" : "Name (AR)")</th>
+                                <th style="width:40px"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="activitiesBody"></tbody>
+                    </table>
+                    <button type="button" id="addActivityRow" class="pc-btn pc-btn-outline" style="font-size: var(--fs-xs);padding:.35rem .7rem;margin-top:.35rem;">
+                        <i data-lucide="plus" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                        @(isRtl ? "إضافة نشاط" : "Add Activity")
+                    </button>
+                </div>
+
+                <div class="pc-row" style="margin-top:1.25rem;">
+                    <label class="pc-label"><i data-lucide="git-branch" class="w-3.5 h-3.5 inline-block" style="color:#005B99;" aria-hidden="true"></i> @(isRtl ? "مخطط BPMN" : "BPMN Diagram")</label>
+                    <label class="pc-radio-row" id="bpmnRow_skip">
+                        <input type="radio" name="bpmnChoice" value="0" checked />
+                        <span>
+                            <span class="pc-radio-title">@(isRtl ? "تخطي الآن" : "Skip for now")</span>
+                            <span class="pc-radio-sub">@(isRtl ? "أنشئ العملية وأضف المخطط لاحقًا" : "Create the process and add diagram later")</span>
+                        </span>
+                    </label>
+                    <label class="pc-radio-row" id="bpmnRow_draw">
+                        <input type="radio" name="bpmnChoice" value="1" />
+                        <span>
+                            <span class="pc-radio-title">@(isRtl ? "ارسم المخطط الآن" : "Draw diagram now")</span>
+                            <span class="pc-radio-sub">@(isRtl ? "افتح محرر BPMN فور الإنشاء" : "Open the BPMN editor right after create")</span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Footer: Previous + Next -->
+            <div class="wiz-footer">
+                <button type="button" class="pc-btn pc-btn-ghost" id="prevBtn" disabled>
+                    <i data-lucide="@(isRtl ? "chevron-right" : "chevron-left")" class="w-4 h-4" aria-hidden="true"></i>
+                    @(isRtl ? "السابق" : "Previous")
+                </button>
+                <button type="button" class="pc-btn pc-btn-primary" id="nextBtn">
+                    @(isRtl ? "التالي" : "Next")
+                    <i data-lucide="@(isRtl ? "chevron-left" : "chevron-right")" class="w-4 h-4" aria-hidden="true"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- ============ RIGHT: summary cards + Submit/Cancel ============ -->
+        <aside class="wiz-summary">
+            @* Summary — mirrors the L2 ProcessGroups Create sidebar. Code populates
+               via /Processes/NextCode AJAX when the parent ProcessGroup is picked. *@
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr">
+                    <i data-lucide="info" aria-hidden="true"></i>
+                    <h3>@(isRtl ? "ملخص" : "Summary")</h3>
+                </div>
+                <div class="wiz-sum-row">
+                    <span class="wiz-sum-label"><i data-lucide="hash"></i> @(isRtl ? "الكود" : "Code")</span>
+                    <span class="wiz-sum-pill" id="sumCode">—</span>
+                </div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr">
+                    <i data-lucide="link" aria-hidden="true"></i>
+                    <h3>@(isRtl ? "ملخص الروابط" : "Linked Summary")</h3>
+                </div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="briefcase"></i> @Shared["Label_LinkedServices"]</span><span class="wiz-sum-pill" id="sumServices">0</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="target"></i> @(isRtl ? "الأهداف" : "Objectives")</span><span class="wiz-sum-pill" id="sumObjectives">0</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="package"></i> @(isRtl ? "الأصول" : "Assets")</span><span class="wiz-sum-pill" id="sumAssets">0</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="alert-triangle"></i> @(isRtl ? "المخاطر" : "Risks")</span><span class="wiz-sum-pill" id="sumRisks">0</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="list-checks"></i> @(isRtl ? "الأنشطة" : "Activities")</span><span class="wiz-sum-pill" id="sumActivities">0</span></div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr">
+                    <i data-lucide="gauge" aria-hidden="true"></i>
+                    <h3>@(isRtl ? "تكلفة ومدة" : "Cost & Duration")</h3>
+                </div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="banknote"></i> @Shared["Label_EstimatedCost"]</span><span class="wiz-sum-pill" id="sumCost">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="clock"></i> @Shared["Label_EstimatedDuration"]</span><span class="wiz-sum-pill" id="sumDuration">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="zap"></i> @(isRtl ? "الأتمتة" : "Automation")</span><span class="wiz-sum-pill" id="sumAutomation">—</span></div>
+            </div>
+
+            <div class="wiz-sum-actions">
+                @* Submit starts disabled — only enabled when the user
+                   reaches the final step (handled by showStep). *@
+                <button type="submit" class="pc-btn pc-btn-primary pc-btn-block" id="submitBtn"
+                        disabled title="@(isRtl ? "أكمل جميع الخطوات لتفعيل الزر" : "Complete all steps to enable")">
+                    <i data-lucide="check" class="w-4 h-4" aria-hidden="true"></i>
+                    <span id="btnSubmitText">@(isRtl ? "إنشاء العملية" : "Create Process")</span>
+                </button>
+                <a asp-action="Index" class="pc-btn pc-btn-ghost pc-btn-block">
+                    <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
+                    @Shared["Button_Cancel"]
+                </a>
+            </div>
+        </aside>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+        const isRtl = @Html.Raw(isRtl ? "true" : "false");
+
+        // ========== Code preview (Summary card) ==========
+        // Mirrors L2 ProcessGroups Create. Hits /Processes/NextCode whenever the
+        // ProcessGroup parent changes; populates the #sumCode badge so users see
+        // the code they will get on save (e.g. "1.2.5") without submitting.
+        (function () {
+            const pgSel = document.querySelector('select[name="ProcessGroupId"]');
+            const sumCode = document.getElementById('sumCode');
+            if (!pgSel || !sumCode) return;
+            let reqId = 0;
+            async function refresh() {
+                const id = pgSel.value;
+                if (!id) { sumCode.textContent = '—'; return; }
+                const myReq = ++reqId;
+                sumCode.textContent = isRtl ? '…' : '…';
+                try {
+                    const r = await fetch('/Processes/NextCode?processGroupId=' + encodeURIComponent(id), { headers: { Accept: 'application/json' } });
+                    if (myReq !== reqId) return; // stale
+                    const data = await r.json();
+                    sumCode.textContent = data && data.code ? data.code : '—';
+                } catch (_) {
+                    if (myReq === reqId) sumCode.textContent = '—';
+                }
+            }
+            pgSel.addEventListener('change', refresh);
+            refresh();
+        })();
+
+        // ========== Wizard navigation ==========
+        const TOTAL_STEPS = 4;
+        let currentStep   = 1;
+        let highestVisited = 1;
+        const prevBtn   = document.getElementById('prevBtn');
+        const nextBtn   = document.getElementById('nextBtn');
+        const submitBtn = document.getElementById('submitBtn');
+        const stepCounterEl = document.getElementById('stepCounter');
+
+        function validateStep(n) {
+            if (n !== 1) return true;
+            const errors = [];
+            const mark = (id, label) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const v = (el.value || '').trim();
+                if (!v) { el.classList.add('invalid'); errors.push(label); }
+                else { el.classList.remove('invalid'); }
+            };
+            mark('NameEn',         isRtl ? "الاسم بالإنجليزية مطلوب" : "English name is required");
+            mark('NameAr',         isRtl ? "الاسم بالعربية مطلوب"   : "Arabic name is required");
+            mark('ProcessGroupId', isRtl ? "مجموعة العمليات مطلوبة" : "Process group is required");
+            if (errors.length > 0) {
+                Swal.fire({ icon:'warning', title: isRtl ? "حقول مطلوبة" : "Required Fields",
+                            html: errors.join('<br>'), confirmButtonColor:'#005B99' });
+                return false;
+            }
+            return true;
+        }
+
+        function showStep(n) {
+            currentStep = Math.max(1, Math.min(TOTAL_STEPS, n));
+            highestVisited = Math.max(highestVisited, currentStep);
+            document.querySelectorAll('.wiz-step').forEach(el => {
+                const s = parseInt(el.dataset.step, 10);
+                el.classList.toggle('active', s === currentStep);
+                el.classList.toggle('completed', s < highestVisited && s !== currentStep);
+            });
+            document.querySelectorAll('.wiz-step-content').forEach(p => {
+                p.classList.toggle('active', parseInt(p.dataset.step, 10) === currentStep);
+            });
+            prevBtn.disabled = (currentStep === 1);
+            nextBtn.classList.toggle('d-none', currentStep === TOTAL_STEPS);
+            // Submit stays disabled until the user reaches the final step.
+            if (submitBtn) submitBtn.disabled = (currentStep !== TOTAL_STEPS);
+            if (stepCounterEl) stepCounterEl.textContent = currentStep;
+            if (window.lucide) lucide.createIcons();
+        }
+
+        // wizGoTo: clicking a stepper item. Allow going BACK to any step,
+        // FORWARD only one step at a time and only if current is valid.
+        window.wizGoTo = function (n) {
+            if (n <= currentStep) { showStep(n); return; }
+            if (n === currentStep + 1) {
+                if (validateStep(currentStep)) showStep(n);
+                return;
+            }
+            // Trying to skip ahead more than one step — validate and only advance one.
+            if (validateStep(currentStep)) showStep(currentStep + 1);
+        };
+
+        prevBtn.addEventListener('click', () => showStep(currentStep - 1));
+        nextBtn.addEventListener('click', () => {
+            if (validateStep(currentStep)) showStep(currentStep + 1);
+        });
+
+        // ========== Chip-Select component (services / objectives / assets / risks) ==========
+        let openCS = null;
+        function csToggle(id) {
+            const drop = document.getElementById('csDrop_' + id);
+            if (openCS && openCS !== id) document.getElementById('csDrop_' + openCS).classList.add('hidden');
+            drop.classList.toggle('hidden');
+            openCS = drop.classList.contains('hidden') ? null : id;
+            if (!drop.classList.contains('hidden')) drop.querySelector('input[type="text"]').focus();
+        }
+        document.addEventListener('click', function(e) {
+            if (openCS && !e.target.closest('.cs-wrap')) {
+                document.getElementById('csDrop_' + openCS).classList.add('hidden');
+                openCS = null;
+            }
+        });
+        function csFilter(id, query) {
+            const q = (query || '').toLowerCase();
+            document.querySelectorAll('#csDrop_' + id + ' .cs-opt').forEach(lbl => {
+                lbl.style.display = lbl.textContent.toLowerCase().includes(q) ? '' : 'none';
+            });
+        }
+        function csUpdate(id) {
+            const chips = document.getElementById('csChips_' + id);
+            const ph = document.getElementById('csPh_' + id);
+            const checks = document.querySelectorAll('.cs-chk[data-csid="' + id + '"]:checked');
+            chips.innerHTML = '';
+            checks.forEach(chk => {
+                const label = chk.dataset.label || '';
+                const short = label.length > 22 ? label.substring(0, 20) + '…' : label;
+                chips.innerHTML += `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium" style="background:#dbeafe;color:#1e40af;">${short}<button type="button" class="ml-0.5 hover:text-red-600 font-bold" onclick="event.stopPropagation();csRemove('${id}','${chk.value}')">&times;</button></span>`;
+            });
+            ph.style.display = checks.length > 0 ? 'none' : '';
+            refreshSummary();
+        }
+        function csRemove(id, val) {
+            const chk = document.querySelector('.cs-chk[data-csid="' + id + '"][value="' + val + '"]');
+            if (chk) { chk.checked = false; csUpdate(id); }
+        }
+        function csGetValues(id) {
+            return Array.from(document.querySelectorAll('.cs-chk[data-csid="' + id + '"]:checked')).map(c => c.value);
+        }
+
+        // ========== Activities builder ==========
+        (function () {
+            const body = document.getElementById('activitiesBody');
+            const addBtn = document.getElementById('addActivityRow');
+            if (!body || !addBtn) return;
+            function renumber() {
+                Array.from(body.querySelectorAll('tr.activity-row')).forEach((tr, i) => {
+                    const numCell = tr.querySelector('.num');
+                    if (numCell) numCell.textContent = (i + 1).toString();
+                });
+                refreshSummary();
+            }
+            function makeRow() {
+                const tr = document.createElement('tr');
+                tr.className = 'activity-row';
+                tr.innerHTML =
+                    '<td class="num" style="color:#6b7280;"></td>' +
+                    '<td><input type="text" class="act-name-en pc-input" style="padding:.3rem .55rem;font-size: var(--fs-xs);"></td>' +
+                    '<td><input type="text" dir="rtl" class="act-name-ar pc-input" style="padding:.3rem .55rem;font-size: var(--fs-xs);"></td>' +
+                    '<td><button type="button" class="remove-row" style="background:transparent;border:none;color:#dc2626;cursor:pointer;padding:.2rem;" aria-label="Remove" title="Remove"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td>';
+                return tr;
+            }
+            addBtn.addEventListener('click', () => {
+                body.appendChild(makeRow());
+                renumber();
+                if (window.lucide) lucide.createIcons();
+            });
+            body.addEventListener('click', (e) => {
+                const btn = e.target.closest('.remove-row');
+                if (!btn) return;
+                btn.closest('tr')?.remove();
+                renumber();
+            });
+        })();
+
+        // ========== Tag input ==========
+        const tags = [];
+        const tagInput = document.getElementById('tagInput');
+        const tagContainer = document.getElementById('tagContainer');
+        const tagListHidden = document.getElementById('tagListHidden');
+        tagInput.addEventListener('keydown', function(e) {
+            if ((e.key === 'Enter' || e.key === ',') && this.value.trim()) {
+                e.preventDefault();
+                const tag = this.value.trim().replace(/,/g, '');
+                if (tag && !tags.includes(tag)) { tags.push(tag); renderTags(); }
+                this.value = '';
+            }
+            if (e.key === 'Backspace' && !this.value && tags.length > 0) { tags.pop(); renderTags(); }
+        });
+        function renderTags() {
+            tagContainer.querySelectorAll('.tag-badge').forEach(t => t.remove());
+            tags.forEach((tag, i) => {
+                const b = document.createElement('span');
+                b.className = 'tag-badge inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium';
+                b.style.cssText = 'background:#dbeafe;color:#1e40af;';
+                b.innerHTML = `${tag} <button type="button" class="ml-1 hover:text-red-600" onclick="removeTag(${i})">&times;</button>`;
+                tagContainer.insertBefore(b, tagInput);
+            });
+            tagListHidden.value = tags.join(',');
+        }
+        window.removeTag = function(i) { tags.splice(i, 1); renderTags(); };
+
+        // ========== BPMN choice radios drive ContinueToBpmn + submit label ==========
+        document.querySelectorAll('input[name="bpmnChoice"]').forEach(r => {
+            r.addEventListener('change', function () {
+                const v = this.value;
+                document.getElementById('ContinueToBpmn').value = v;
+                const label = document.getElementById('btnSubmitText');
+                if (label) label.textContent = v === '1'
+                    ? (isRtl ? "إنشاء وفتح المحرر" : "Create & Draw BPMN")
+                    : (isRtl ? "إنشاء العملية" : "Create Process");
+                document.getElementById('bpmnRow_skip').classList.toggle('active', v === '0');
+                document.getElementById('bpmnRow_draw').classList.toggle('active', v === '1');
+            });
+        });
+        document.getElementById('bpmnRow_skip').classList.add('active');
+
+        // ========== Locked OwningUnit unlock ==========
+        (function () {
+            const unlockBtn = document.getElementById('unlockOwningUnitBtn');
+            if (!unlockBtn) return;
+            unlockBtn.addEventListener('click', function () {
+                const lockChip = document.getElementById('lockedUnitChip');
+                const editable = document.getElementById('OwningUnitIdEditable');
+                const hidden = document.querySelector('input[type="hidden"][name="OwningUnitId"]');
+                if (!editable || !hidden) return;
+                editable.style.display = '';
+                if (lockChip) lockChip.style.display = 'none';
+                editable.value = hidden.value || '';
+                editable.addEventListener('change', function () { hidden.value = editable.value; });
+            });
+        })();
+
+        // ========== Live overall-summary (right rail) ==========
+        function refreshSummary() {
+            const set = (id, txt) => { const e = document.getElementById(id); if (e) e.textContent = txt; };
+            set('sumServices',   csGetValues('services').length);
+            set('sumObjectives', csGetValues('objectives').length);
+            set('sumAssets',     csGetValues('assets').length);
+            set('sumRisks',      csGetValues('risks').length);
+            set('sumActivities', document.querySelectorAll('#activitiesBody tr.activity-row').length);
+
+            const cost = document.getElementById('EstimatedCost')?.value;
+            const dur  = document.getElementById('EstimatedDuration')?.value;
+            const unit = document.getElementById('DurationUnit');
+            const auto = document.getElementById('AutomationStatus');
+            set('sumCost',       cost ? Number(cost).toLocaleString() : '—');
+            set('sumDuration',   dur  ? `${dur} ${unit?.options[unit.selectedIndex]?.text || ''}`.trim() : '—');
+            set('sumAutomation', auto?.value ? auto.options[auto.selectedIndex].text : '—');
+        }
+        ['EstimatedCost','EstimatedDuration','DurationUnit','AutomationStatus'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', refreshSummary);
+            document.getElementById(id)?.addEventListener('input', refreshSummary);
+        });
+
+        // ========== Form submit — final validation, chip injection, activity serialization ==========
+        document.getElementById('createForm').addEventListener('submit', function (e) {
+            // Re-run Step 1 validation as a safety net (the user could click
+            // Submit from the right rail while still on Step 1).
+            if (!validateStep(1)) {
+                e.preventDefault();
+                showStep(1);
+                return;
+            }
+
+            // Inject chip-select selections as repeated hidden inputs
+            function addCSHidden(form, csId, inputName) {
+                form.querySelectorAll(`input[type="hidden"][name="${inputName}"]`).forEach(el => el.remove());
+                csGetValues(csId).forEach(val => {
+                    const inp = document.createElement('input');
+                    inp.type = 'hidden'; inp.name = inputName; inp.value = val;
+                    form.appendChild(inp);
+                });
+            }
+            addCSHidden(this, 'services',   'SelectedServiceIds');
+            addCSHidden(this, 'objectives', 'SelectedObjectiveIds');
+            addCSHidden(this, 'assets',     'SelectedAssetIds');
+            addCSHidden(this, 'risks',      'SelectedRiskIds');
+
+            // Serialize activities into ActivitiesJson
+            const body = document.getElementById('activitiesBody');
+            const rows = Array.from(body.querySelectorAll('tr.activity-row')).map(tr => ({
+                nameEn: tr.querySelector('.act-name-en')?.value?.trim() || '',
+                nameAr: tr.querySelector('.act-name-ar')?.value?.trim() || ''
+            })).filter(r => r.nameEn || r.nameAr);
+            document.getElementById('ActivitiesJson').value = JSON.stringify(rows);
+        });
+
+        // Init wizard at step 1 + first summary refresh
+        showStep(1);
+        refreshSummary();
+    </script>
+}

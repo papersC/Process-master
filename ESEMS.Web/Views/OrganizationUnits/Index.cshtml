@@ -1,0 +1,198 @@
+@using System.Globalization
+@using ESEMS.Web.Models.APQC
+@model IEnumerable<OrganizationUnit>
+@inject IStringLocalizer<SharedResource> Shared
+@{
+    ViewData["Title"] = Shared["Nav_OrganizationUnits"].Value;
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewBag.BannerIcon = "building-2";
+    ViewBag.BannerTitle = Shared["Nav_OrganizationUnits"].Value;
+    ViewBag.BannerSubtitle = Shared["Text_OrganizationalHierarchy"].Value;
+
+    string LevelName(int level) => level switch
+    {
+        1 => Shared["OrgLevel_Department"].Value,
+        2 => Shared["OrgLevel_Section"].Value,
+        3 => Shared["OrgLevel_Function"].Value,
+        4 => Shared["OrgLevel_SubFunction"].Value,
+        _ => Shared["OrgLevel_Unit"].Value
+    };
+
+    int CountAll(OrganizationUnit u)
+    {
+        var n = 1;
+        if (u.Children != null)
+        {
+            foreach (var c in u.Children) n += CountAll(c);
+        }
+        return n;
+    }
+}
+
+@await Html.PartialAsync("_ModuleBanner")
+
+<!-- Action bar -->
+<div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+    <!-- Search -->
+    <div class="relative flex-1 max-w-sm">
+        <i data-lucide="search" class="absolute start-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400"></i>
+        <input type="text" id="treeSearch" class="w-full ps-10 pe-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="@Shared["Placeholder_SearchOrgUnits"]" />
+    </div>
+    <div class="flex items-center gap-2">
+        <button type="button" onclick="OrgTree.expandAll()" class="px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 inline-flex items-center gap-1">
+            <i data-lucide="chevrons-down" class="w-4 h-4"></i>
+            @Shared["Button_ExpandAll"]
+        </button>
+        <button type="button" onclick="OrgTree.collapseAll()" class="px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 inline-flex items-center gap-1">
+            <i data-lucide="chevrons-up" class="w-4 h-4"></i>
+            @Shared["Button_CollapseAll"]
+        </button>
+        <a asp-action="Create" class="inline-flex items-center gap-2 px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors shadow-sm" style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            @Shared["Button_AddUnit"]
+        </a>
+    </div>
+</div>
+
+<!-- Tree -->
+@if (Model != null && Model.Any())
+{
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+            <div class="text-xs font-semibold text-gray-600 uppercase tracking-wide">@Shared["Heading_OrgTree"]</div>
+            <div class="text-xs text-gray-500">@string.Format(Shared["Text_TotalUnits"].Value, Model.Sum(CountAll))</div>
+        </div>
+        <ul class="org-tree" id="orgTreeRoot">
+            @foreach (var unit in Model)
+            {
+                @await Html.PartialAsync("_OrgTreeNode", (unit, 0, isRtl, (Func<int, string>)LevelName))
+            }
+        </ul>
+    </div>
+}
+else
+{
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 text-center py-12">
+        <i data-lucide="building-2" class="w-12 h-12 text-gray-300 mx-auto mb-3"></i>
+        <h3 class="text-sm font-semibold text-gray-700">@Shared["Text_NoOrgUnits"]</h3>
+        <p class="text-xs text-gray-500 mt-1">@Shared["Text_CreateFirstUnit"]</p>
+        <a asp-action="Create" class="inline-flex items-center gap-2 mt-4 px-4 py-2 text-white text-sm font-medium rounded-lg" style="background:#005B99;">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            @Shared["Button_AddUnit"]
+        </a>
+    </div>
+}
+
+@* F-011: shared hidden delete form — the per-node trash buttons populate
+   #deleteId then submit this (same pattern as Categories/Index). *@
+<form id="deleteForm" asp-action="Delete" method="post" style="display:none;">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="id" id="deleteId" />
+</form>
+
+<style>
+    .org-tree { list-style:none; padding:0; margin:0; }
+    .org-tree .node-delete {
+        background:none; border:none; cursor:pointer; color:#cbd5e1;
+        padding:2px; display:inline-flex; align-items:center; flex-shrink:0;
+        opacity:0; transition: opacity .15s, color .15s;
+    }
+    .org-tree .node-row:hover .node-delete { opacity:1; }
+    .org-tree .node-delete:hover { color:#dc2626; }
+    .org-tree li { border-bottom:1px solid #f1f5f9; }
+    .org-tree li:last-child { border-bottom:none; }
+    .org-tree .node-row {
+        display:flex; align-items:center; gap:.5rem;
+        padding:.65rem 1rem; transition: background .15s;
+    }
+    .org-tree .node-row:hover { background:#f8fafc; }
+    .org-tree .node-row[data-depth="0"] { background:#f8fafc; font-weight:600; }
+    .org-tree .node-row[data-depth="0"]:hover { background:#f1f5f9; }
+    .org-tree .toggle-btn {
+        width:18px; height:18px; display:inline-flex;
+        align-items:center; justify-content:center;
+        cursor:pointer; color:#64748b; flex-shrink:0;
+    }
+    .org-tree .toggle-btn.empty { visibility:hidden; }
+    .org-tree .node-icon { flex-shrink:0; color:#005B99; }
+    .org-tree .node-name { color:#0f172a; text-decoration:none; }
+    .org-tree .node-name:hover { color:#005B99; text-decoration:underline; }
+    .org-tree .node-name-secondary { font-size: var(--fs-xs); color:#94a3b8; margin-top:2px; }
+    .org-tree .node-code { font-family: ui-monospace, Consolas, monospace; font-size: var(--fs-xs); color:#64748b; background:#f1f5f9; padding:2px 6px; border-radius:4px; }
+    .org-tree .node-level { font-size: var(--fs-xs); color:#64748b; background:#f1f5f9; padding:2px 6px; border-radius:4px; }
+    .org-tree .node-inactive { opacity:.5; }
+    .org-tree ul { list-style:none; padding:0; margin:0; }
+    .org-tree ul.collapsed { display:none; }
+</style>
+
+@section Scripts {
+<script nonce="@Context.CspNonce()">
+window.OrgTree = (function() {
+    function expandAll() {
+        document.querySelectorAll('.org-tree ul.collapsed').forEach(function(ul) {
+            ul.classList.remove('collapsed');
+            var tog = document.querySelector('[data-toggle-target="' + ul.id + '"]');
+            if (tog) tog.dataset.lucide = 'chevron-down';
+        });
+        if (window.lucide) lucide.createIcons();
+    }
+    function collapseAll() {
+        document.querySelectorAll('.org-tree ul[data-subtree]').forEach(function(ul) {
+            ul.classList.add('collapsed');
+            var tog = document.querySelector('[data-toggle-target="' + ul.id + '"]');
+            if (tog) tog.dataset.lucide = 'chevron-right';
+        });
+        if (window.lucide) lucide.createIcons();
+    }
+    function toggle(id) {
+        var ul = document.getElementById(id);
+        if (!ul) return;
+        ul.classList.toggle('collapsed');
+        var tog = document.querySelector('[data-toggle-target="' + id + '"]');
+        if (tog) tog.dataset.lucide = ul.classList.contains('collapsed') ? 'chevron-right' : 'chevron-down';
+        if (window.lucide) lucide.createIcons();
+    }
+    function search(q) {
+        var qLower = (q || '').toLowerCase().trim();
+        document.querySelectorAll('.org-tree li').forEach(function(li) {
+            var text = li.querySelector('.node-row')?.innerText.toLowerCase() || '';
+            var matches = !qLower || text.indexOf(qLower) >= 0;
+            li.style.display = matches || qLower === '' ? '' : 'none';
+        });
+        // If searching, expand all so matches are visible
+        if (qLower) expandAll();
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        var inp = document.getElementById('treeSearch');
+        if (inp) inp.addEventListener('input', function() { search(this.value); });
+    });
+    return { toggle: toggle, expandAll: expandAll, collapseAll: collapseAll };
+})();
+
+// F-011: confirm + submit the shared delete form for the clicked unit.
+// Localized strings reuse the app-wide Confirm_* keys (as Categories does).
+(function() {
+    var confirmTitle  = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_AreYouSure"].Value));
+    var confirmPrefix = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_DeleteTextPrefix"].Value));
+    var confirmYes    = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_YesDelete"].Value));
+    var cancelText    = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Button_Cancel"].Value));
+
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.btn-delete-unit');
+        if (!btn) return;
+        var id = btn.dataset.id;
+        var name = btn.dataset.name || '';
+        Swal.fire({
+            title: confirmTitle, text: confirmPrefix + name, icon: 'warning',
+            showCancelButton: true, confirmButtonColor: '#dc2626', cancelButtonColor: '#6b7280',
+            confirmButtonText: confirmYes, cancelButtonText: cancelText
+        }).then(function(result) {
+            if (result.isConfirmed) {
+                document.getElementById('deleteId').value = id;
+                document.getElementById('deleteForm').submit();
+            }
+        });
+    });
+})();
+</script>
+}

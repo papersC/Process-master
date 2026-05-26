@@ -1,0 +1,44 @@
+## Build output
+**/bin/
+**/obj/
+TestResults/
+**/TestResults/
+/publish/
+/artifacts/
+# `dotnet publish -o build/` output (root-level)
+/build/
+
+## Scratch / working dirs
+# Khaled's local scratch folder for ad-hoc files / notes / sample data
+/crap/
+
+## User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## VS Code / IDE
+.vs/
+.vscode/
+
+## Claude
+.claude/
+
+## Uploads (user content)
+# Match at any depth so ESEMS.Web/wwwroot/uploads/ is ignored too
+**/wwwroot/uploads/
+
+## Temp / debug files
+cookies.txt
+debug_*.html
+test.cs
+*.bak
+*.cshtml.bak
+*.log
+run-output.log
+esems-test-run*.log
+
+## OS files
+Thumbs.db
+.DS_Store

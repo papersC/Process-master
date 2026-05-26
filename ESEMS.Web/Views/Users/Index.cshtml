@@ -1,0 +1,284 @@
+@model IEnumerable<ESEMS.Web.Models.CustomUser>
+@inject IStringLocalizer<SharedResource> Shared
+@{
+    ViewData["Title"] = Shared["Title_UserManagement"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+
+    var rolesByUserId = ViewBag.RolesByUserId as Dictionary<int, List<string>> ?? new Dictionary<int, List<string>>();
+    var users = Model?.ToList() ?? new List<ESEMS.Web.Models.CustomUser>();
+
+    var totalUsers   = users.Count;
+    var activeUsers  = users.Count(u => u.IsActive);
+    var inactiveUsers = totalUsers - activeUsers;
+    var distinctRoles = rolesByUserId.Values.SelectMany(v => v).Distinct().Count();
+
+    // Color hint by RoleGroup NameEn. After the legacy CustomRole removal,
+    // every assignment surfaces here as a Plan X group name; everything not
+    // explicitly listed lands on the neutral chip style.
+    string RoleBadgeStyle(string role) => role switch
+    {
+        "Administrator"      => "background:#fee2e2;color:#991b1b;border:1px solid #fecaca;",
+        "Editor"             => "background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;",
+        "Approver"           => "background:#dbeafe;color:#1e40af;border:1px solid #bfdbfe;",
+        "Viewer"             => "background:#f1f5f9;color:#334155;border:1px solid #e2e8f0;",
+        "Quality Officer"    => "background:#dcfce7;color:#166534;border:1px solid #bbf7d0;",
+        "Process Owner"      => "background:#fef3c7;color:#92400e;border:1px solid #fde68a;",
+        "Improvement Analyst"=> "background:#f5f3ff;color:#5b21b6;border:1px solid #ddd6fe;",
+        "Risk Manager"       => "background:#ffe4e6;color:#9f1239;border:1px solid #fecdd3;",
+        _                    => "background:#f3f4f6;color:#374151;border:1px solid #e5e7eb;"
+    };
+}
+
+@*  Compact list page mirroring Improvements/Index + EnterpriseRisks/Index.
+    Drops the heavy _ModuleBanner partial + the gradient table header so this
+    page matches the rest of the app's list-page typography.   *@
+
+<style>
+    .lt-shell { display: flex; flex-direction: column; gap: .6rem; }
+    .lt-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; gap: 1rem; flex-wrap: wrap; }
+    .lt-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .lt-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .lt-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; border: none; }
+    .lt-btn-primary { background: #005B99; color: #fff; } .lt-btn-primary:hover { background: #003d6b; color: #fff; }
+    .lt-btn-outline { background: #fff; color: #005B99; border: 1px solid #cbd5e1; } .lt-btn-outline:hover { background: #f1f5f9; }
+
+    /* KPI strip — 4 tiles. */
+    .lt-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: .55rem; }
+    @@media (max-width: 767px) { .lt-kpis { grid-template-columns: repeat(2, 1fr); } }
+    .lt-kpi { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: .55rem .7rem; display: flex; align-items: center; gap: .55rem; }
+    .lt-kpi-icon { width: 32px; height: 32px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .lt-kpi-icon i { width: 16px; height: 16px; }
+    .lt-kpi-text { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+    .lt-kpi-label { font-size: var(--fs-xs); color: #6b7280; line-height: 1.2; }
+    .lt-kpi-value { font-size: var(--fs-base); font-weight: 700; color: #111827; line-height: 1.1; }
+
+    /* Toolbar (search + filter chips). */
+    .lt-toolbar { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: .45rem .65rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .lt-search { flex: 1 1 240px; max-width: 360px; position: relative; }
+    .lt-search input { width: 100%; padding: .42rem .7rem; padding-inline-start: 2.1rem; border: 1px solid #d1d5db; border-radius: 5px; font-size: var(--fs-xs); }
+    .lt-search input:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .lt-search > i { position: absolute; top: 50%; transform: translateY(-50%); inset-inline-start: .65rem; color: #9ca3af; pointer-events: none; }
+    .lt-chip { background: #f8fafc; border: 1px solid #e2e8f0; color: #475569; font-size: var(--fs-xs); padding: .25rem .65rem; border-radius: 999px; cursor: pointer; user-select: none; }
+    .lt-chip:hover { background: #eff6ff; color: #005B99; border-color: #bfdbfe; }
+    .lt-chip.active { background: #005B99; color: #fff; border-color: #005B99; }
+
+    /* Table. */
+    .lt-table-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; }
+    .lt-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+    .lt-table thead { background: #f8fafc; border-bottom: 1px solid #e5e7eb; }
+    .lt-table th { padding: .55rem .75rem; font-size: var(--fs-xs); font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: .03em; text-align: start; white-space: nowrap; }
+    .lt-table tbody tr { border-bottom: 1px solid #f1f5f9; transition: background .12s; }
+    .lt-table tbody tr:last-child { border-bottom: none; }
+    .lt-table tbody tr:hover { background: #f8fafc; }
+    .lt-table td { padding: .55rem .75rem; color: #1f2937; vertical-align: middle; }
+    .lt-name { font-size: var(--fs-sm); font-weight: 600; color: #111827; }
+    .lt-sub  { font-size: 11px; color: #6b7280; }
+
+    .lt-status-pill { display: inline-flex; align-items: center; gap: .3rem; padding: .15rem .55rem; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .lt-status-active { background: #dcfce7; color: #166534; }
+    .lt-status-inactive { background: #fee2e2; color: #991b1b; }
+    .lt-role-pill { display: inline-flex; align-items: center; padding: .1rem .5rem; border-radius: 999px; font-size: 11px; font-weight: 600; margin-inline-end: .25rem; margin-bottom: .15rem; }
+
+    .lt-row-actions { display: flex; gap: .15rem; }
+    .lt-action { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 5px; color: #6b7280; transition: background .12s, color .12s; text-decoration: none; border: none; background: transparent; cursor: pointer; }
+    .lt-action:hover { background: #f1f5f9; color: #1f2937; }
+    .lt-action.danger:hover { background: #fee2e2; color: #b91c1c; }
+
+    .lt-empty { padding: 2rem 1rem; text-align: center; color: #94a3b8; }
+    .lt-empty i { display: block; margin: 0 auto .5rem; opacity: .4; }
+</style>
+
+<div class="lt-shell">
+    <div class="lt-header">
+        <div>
+            <h1>
+                <i data-lucide="users" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>
+                @Shared["Title_UserManagement"]
+            </h1>
+            <p>@Shared["Text_ManageUsersPermissions"]</p>
+        </div>
+        <a asp-action="Create" class="lt-btn lt-btn-primary">
+            <i data-lucide="user-plus" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            @Shared["Button_AddNewUser"]
+        </a>
+    </div>
+
+    <div class="lt-kpis">
+        <div class="lt-kpi">
+            <span class="lt-kpi-icon" style="background:rgba(0,91,153,.12);color:#005B99;"><i data-lucide="users" aria-hidden="true"></i></span>
+            <span class="lt-kpi-text"><span class="lt-kpi-label">@(isRtl ? "إجمالي المستخدمين" : "Total")</span><span class="lt-kpi-value">@totalUsers</span></span>
+        </div>
+        <div class="lt-kpi">
+            <span class="lt-kpi-icon" style="background:#dcfce7;color:#166534;"><i data-lucide="user-check" aria-hidden="true"></i></span>
+            <span class="lt-kpi-text"><span class="lt-kpi-label">@(isRtl ? "نشطون" : "Active")</span><span class="lt-kpi-value">@activeUsers</span></span>
+        </div>
+        <div class="lt-kpi">
+            <span class="lt-kpi-icon" style="background:#fee2e2;color:#991b1b;"><i data-lucide="user-x" aria-hidden="true"></i></span>
+            <span class="lt-kpi-text"><span class="lt-kpi-label">@(isRtl ? "غير نشطين" : "Inactive")</span><span class="lt-kpi-value">@inactiveUsers</span></span>
+        </div>
+        <div class="lt-kpi">
+            <span class="lt-kpi-icon" style="background:#e0e7ff;color:#3730a3;"><i data-lucide="shield" aria-hidden="true"></i></span>
+            <span class="lt-kpi-text"><span class="lt-kpi-label">@(isRtl ? "أدوار قيد الاستخدام" : "Roles in use")</span><span class="lt-kpi-value">@distinctRoles</span></span>
+        </div>
+    </div>
+
+    <div class="lt-toolbar">
+        <div class="lt-search">
+            <i data-lucide="search" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            <input type="text" id="ltSearch" placeholder="@(isRtl ? "ابحث بالاسم أو البريد..." : "Search name, email, employee number...")" autocomplete="off" />
+        </div>
+        <span class="lt-chip active" data-status="">@(isRtl ? "الكل" : "All")</span>
+        <span class="lt-chip" data-status="active">@Shared["Status_Active"]</span>
+        <span class="lt-chip" data-status="inactive">@Shared["Status_Inactive"]</span>
+    </div>
+
+    <div class="lt-table-wrap">
+        @if (!users.Any())
+        {
+            <div class="lt-empty">
+                <i data-lucide="users" class="w-10 h-10" aria-hidden="true"></i>
+                <h4 style="font-size:var(--fs-sm);font-weight:600;color:#1f2937;margin:0 0 .25rem;">@Shared["Text_NoUsersFound"]</h4>
+                <p style="margin:0 0 .85rem;font-size:var(--fs-xs);">@Shared["Text_GetStartedCreateUser"]</p>
+                <a asp-action="Create" class="lt-btn lt-btn-primary"><i data-lucide="user-plus" class="w-3.5 h-3.5"></i>@Shared["Button_AddNewUser"]</a>
+            </div>
+        }
+        else
+        {
+            <table class="lt-table" id="ltTable">
+                <thead>
+                    <tr>
+                        <th>@Shared["Column_FullName"]</th>
+                        <th>@Shared["Column_Email"]</th>
+                        <th>@Shared["Label_OrganizationUnit"]</th>
+                        <th>@Shared["Column_Roles"]</th>
+                        <th>@Shared["Column_Status"]</th>
+                        <th style="text-align:end;">@Shared["Column_Actions"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in users)
+                    {
+                        var roles = rolesByUserId.GetValueOrDefault(user.UserId, new List<string>());
+                        var searchBlob = string.Join(" ",
+                            user.DisplayName ?? "",
+                            user.Username ?? "",
+                            user.EmailAddress ?? "",
+                            user.EmployeeNumber ?? "",
+                            user.OrganizationUnit?.Name ?? "");
+                        <tr data-status="@(user.IsActive ? "active" : "inactive")" data-search="@searchBlob.ToLowerInvariant()">
+                            <td>
+                                <div class="lt-name">@user.DisplayName</div>
+                                <div class="lt-sub">@user.Username</div>
+                            </td>
+                            <td><span class="lt-sub" style="font-size:var(--fs-xs);color:#475569;">@user.EmailAddress</span></td>
+                            <td><span class="lt-sub" style="font-size:var(--fs-xs);color:#475569;">@(string.IsNullOrWhiteSpace(user.OrganizationUnit?.Name) ? "—" : user.OrganizationUnit.Name)</span></td>
+                            <td>
+                                @if (roles.Any())
+                                {
+                                    foreach (var r in roles)
+                                    {
+                                        <span class="lt-role-pill" style="@RoleBadgeStyle(r)">@r</span>
+                                    }
+                                }
+                                else
+                                {
+                                    @* Audit fix: a user with no roles can't do anything — promote
+                                       this from muted-italic ("intentional blank") to a warning chip. *@
+                                    <span class="lt-warn-chip" title="@Shared["Text_NoRoles"]">
+                                        <i data-lucide="alert-triangle" style="width:12px;height:12px;"></i>
+                                        @Shared["Text_NoRoles"]
+                                    </span>
+                                }
+                            </td>
+                            <td>
+                                <span class="lt-status-pill @(user.IsActive ? "lt-status-active" : "lt-status-inactive")">
+                                    @(user.IsActive ? Shared["Status_Active"] : Shared["Status_Inactive"])
+                                </span>
+                            </td>
+                            <td>
+                                <div class="lt-row-actions" style="justify-content:flex-end;">
+                                    <a asp-action="Details" asp-route-id="@user.UserId" class="lt-action" title="@Shared["Button_View"]" aria-label="@Shared["Button_View"]"><i data-lucide="eye" class="w-3.5 h-3.5"></i></a>
+                                    <a asp-action="Edit" asp-route-id="@user.UserId" class="lt-action" title="@Shared["Button_Edit"]" aria-label="@Shared["Button_Edit"]"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></a>
+                                    <button type="button" class="lt-action danger btn-delete-user" data-id="@user.UserId" data-name="@(user.DisplayName ?? "")" title="@(isRtl ? "إلغاء التفعيل" : "Deactivate")" aria-label="@(isRtl ? "إلغاء التفعيل" : "Deactivate")"><i data-lucide="user-x" class="w-3.5 h-3.5"></i></button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div id="ltNoMatch" class="lt-empty" style="display:none;">
+                <i data-lucide="search-x" class="w-8 h-8" aria-hidden="true"></i>
+                <p style="margin:0;font-size:var(--fs-xs);">@(isRtl ? "لا توجد نتائج مطابقة" : "No users match the current filter")</p>
+            </div>
+        }
+    </div>
+</div>
+
+<form id="deleteForm" asp-action="Delete" method="post" style="display:none;">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="id" id="deleteId" />
+</form>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+
+        // Search + status chips — pure client-side, no DataTables dependency.
+        const tbody    = document.querySelector('#ltTable tbody');
+        const rows     = tbody ? Array.from(tbody.querySelectorAll('tr[data-search]')) : [];
+        const searchEl = document.getElementById('ltSearch');
+        const noMatch  = document.getElementById('ltNoMatch');
+        const chips    = document.querySelectorAll('.lt-chip[data-status]');
+        let activeStatus = '';
+
+        function applyFilters() {
+            const q = (searchEl?.value || '').trim().toLowerCase();
+            let visible = 0;
+            rows.forEach(r => {
+                const statusOk = !activeStatus || r.dataset.status === activeStatus;
+                const searchOk = !q || (r.dataset.search || '').includes(q);
+                const show = statusOk && searchOk;
+                r.style.display = show ? '' : 'none';
+                if (show) visible++;
+            });
+            if (noMatch) noMatch.style.display = (rows.length > 0 && visible === 0) ? '' : 'none';
+        }
+        searchEl?.addEventListener('input', applyFilters);
+        chips.forEach(chip => chip.addEventListener('click', () => {
+            chips.forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            activeStatus = chip.dataset.status || '';
+            applyFilters();
+        }));
+
+        // Deactivate via SweetAlert. Server-side this is a SOFT delete
+        // (CustomUser.IsActive = false) per FUNC-006 — the row stays, its
+        // assignments/audit history stay; the user just can't sign in.
+        // Wording must match: an admin can reactivate them later via Edit.
+        document.addEventListener('click', function (e) {
+            const btn = e.target.closest('.btn-delete-user');
+            if (!btn) return;
+            const id = btn.dataset.id;
+            const name = btn.dataset.name || '';
+            const title = @Json.Serialize(isRtl ? "إلغاء تفعيل المستخدم؟" : "Deactivate user?");
+            const textTemplate = @Json.Serialize(isRtl
+                ? "سيتم إلغاء تفعيل المستخدم {name}. لن يتمكن من تسجيل الدخول، لكن سجلّه وتعييناته محفوظة. يمكن إعادة تفعيله من شاشة التعديل."
+                : "{name} will no longer be able to sign in. Their history and role-group assignments are preserved — you can reactivate them later via Edit.");
+            Swal.fire({
+                title: title,
+                text: textTemplate.replace('{name}', name || (@Json.Serialize(isRtl ? "هذا المستخدم" : "this user"))),
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
+                cancelButtonColor: '#64748b',
+                confirmButtonText: @Json.Serialize(isRtl ? "إلغاء التفعيل" : "Deactivate"),
+                cancelButtonText: '@Shared["Button_Cancel"]'
+            }).then(result => {
+                if (result.isConfirmed) {
+                    document.getElementById('deleteId').value = id;
+                    document.getElementById('deleteForm').submit();
+                }
+            });
+        });
+    </script>
+}

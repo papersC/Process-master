@@ -1,0 +1,461 @@
+@model Problem
+@{
+    ViewData["Title"] = Model.ProblemNumber;
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+    var priorityLabel = Model.Priority switch { 1 => Shared["Priority_Critical"].Value, 2 => Shared["Priority_High"].Value, 3 => Shared["Priority_Medium"].Value, _ => Shared["Priority_Low"].Value };
+    var priorityClass = Model.Priority switch { 1 => "danger", 2 => "warning", 3 => "info", _ => "secondary" };
+    var statusClass = Model.Status switch
+    {
+        ProblemStatus.New => "info",
+        ProblemStatus.InvestigationInProgress => "primary",
+        ProblemStatus.RootCauseIdentified => "warning",
+        ProblemStatus.Resolved => "success",
+        _ => "secondary"
+    };
+    var impactLabel = Model.Impact switch { 1 => "Critical", 2 => "High", 3 => "Medium", _ => "Low" };
+
+    // KPI calculations
+    var daysOpen = (int)((DateTime.UtcNow - Model.IdentifiedAt).TotalDays);
+    int? daysToRca = Model.RootCauseIdentifiedAt.HasValue
+        ? (int)((Model.RootCauseIdentifiedAt.Value - Model.IdentifiedAt).TotalDays)
+        : null;
+    var hasAnalysis = !string.IsNullOrEmpty(Model.RootCauseAnalysis)
+                   || !string.IsNullOrEmpty(Model.Workaround)
+                   || !string.IsNullOrEmpty(Model.PermanentSolution);
+    var analysisCount =
+        (string.IsNullOrEmpty(Model.RootCauseAnalysis) ? 0 : 1) +
+        (string.IsNullOrEmpty(Model.Workaround) ? 0 : 1) +
+        (string.IsNullOrEmpty(Model.PermanentSolution) ? 0 : 1);
+}
+
+<div class="esems-container">
+
+@* =====================================================================
+   Executive-tabs redesign for Problems/Details — same pattern as
+   Processes/Details and Services/Details. Sticky compact header +
+   KPI strip + 4 tabs (Overview / Analysis / Related Incidents /
+   Timeline). The only existing JS hook on this page is
+   executeAiAnalysis, which is defined in the layout and called inline.
+   ===================================================================== *@
+<style>
+    .pm-stickyhead {
+        position: sticky; top: 0; z-index: 30;
+        background: #fff;
+        border-bottom: 1px solid #e5e7eb;
+        margin: 0 -.75rem .85rem;
+        padding: .55rem .75rem .35rem;
+        box-shadow: 0 1px 0 rgba(15,23,42,.04);
+    }
+    .pm-titlerow { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+    .pm-titlemain { min-width: 0; flex: 1 1 360px; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .pm-code-pill { display: inline-block; padding: .14rem .55rem; font-size: var(--fs-xs); font-weight: 700; border-radius: .25rem; background: #eff6ff; color: #1d4ed8; font-family: ui-monospace, monospace; letter-spacing: .04em; }
+    .pm-title { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; line-height: 1.2; max-width: 540px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pm-pill { display: inline-flex; align-items: center; gap: .25rem; padding: .15rem .55rem; font-size: var(--fs-xs); font-weight: 600; border-radius: .25rem; background: #f1f5f9; color: #475569; }
+    .pm-pill-info     { background: #dbeafe; color: #1e40af; }
+    .pm-pill-primary  { background: #ddd6fe; color: #6d28d9; }
+    .pm-pill-warning  { background: #fef3c7; color: #92400e; }
+    .pm-pill-success  { background: #dcfce7; color: #166534; }
+    .pm-pill-danger   { background: #fee2e2; color: #991b1b; }
+    .pm-pill-secondary{ background: #f1f5f9; color: #475569; }
+    .pm-breadcrumb { font-size: var(--fs-xs); color: #6b7280; }
+
+    .pm-actions { display: inline-flex; gap: .35rem; flex-wrap: wrap; }
+    .pm-btn { border-radius: .375rem; padding: .35rem .7rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; text-decoration: none; border: 1px solid transparent; line-height: 1.1; }
+    .pm-btn-outline { background: #fff; color: #005B99; border-color: #cbd5e1; }
+    .pm-btn-outline:hover { background: #f1f5f9; color: #005B99; }
+    .pm-btn-ai { background: linear-gradient(135deg,#a855f7,#6366f1); color: #fff; box-shadow: 0 2px 8px rgba(99,102,241,.18); border: none; }
+    .pm-btn-ai:hover { color: #fff; opacity: .92; }
+
+    .pm-kpis { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .45rem; }
+    .pm-kpi { display: inline-flex; align-items: center; gap: .35rem; padding: .25rem .55rem; border: 1px solid #e5e7eb; border-radius: .375rem; background: #fafbfc; font-size: var(--fs-xs); color: #475569; }
+    .pm-kpi i { color: #005B99; }
+    .pm-kpi b { color: #0f172a; font-weight: 700; font-size: var(--fs-xs); }
+
+    .pm-tabnav { display: flex; gap: 0; border-bottom: 1px solid #e5e7eb; margin: 0 -.75rem .9rem; padding: 0 .25rem; overflow-x: auto; scrollbar-width: thin; }
+    .pm-tab { display: inline-flex; align-items: center; gap: .4rem; padding: .55rem .85rem; font-size: var(--fs-xs); font-weight: 600; color: #6b7280; background: transparent; border: none; border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; transition: color .15s, border-color .15s; }
+    .pm-tab:hover { color: #1d4ed8; }
+    .pm-tab.active { color: #005B99; border-bottom-color: #005B99; }
+    .pm-tab i { width: 14px; height: 14px; }
+    .pm-tab .pm-tab-badge { display: inline-block; min-width: 18px; padding: 0 .35rem; font-size: var(--fs-xs); font-weight: 700; line-height: 16px; text-align: center; background: #e2e8f0; color: #334155; border-radius: 8px; }
+    .pm-tab.active .pm-tab-badge { background: #005B99; color: #fff; }
+
+    .pm-tabpanel { animation: pmFade .18s ease-out; }
+    @@keyframes pmFade { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+
+    .pm-tabpanel .card { border: 1px solid #e5e7eb; }
+    .pm-tabpanel .card-header { background: #fff; border-bottom: 1px solid #f1f5f9; padding: .55rem .85rem; }
+    .pm-tabpanel .card-body { padding: .85rem; }
+    .pm-tabpanel .esems-label { font-size: var(--fs-xs); color: #6b7280; margin-bottom: .15rem; }
+    .pm-tabpanel .esems-body { font-size: var(--fs-sm); }
+
+    /* Narrative section cards — uniform brand-blue accent. */
+    .pm-narr { border-left: 4px solid #005B99; }
+    .pm-narr-text { font-size: var(--fs-sm); color: #374151; line-height: 1.55; white-space: pre-wrap; }
+
+    /* Lifecycle vertical timeline */
+    .pm-tl { position: relative; padding-left: 1.25rem; }
+    .pm-tl::before { content: ""; position: absolute; left: .35rem; top: .35rem; bottom: .35rem; width: 2px; background: #e5e7eb; }
+    .pm-tl-item { position: relative; display: flex; align-items: center; justify-content: space-between; padding: .35rem 0 .35rem 0; gap: .5rem; }
+    .pm-tl-dot { position: absolute; left: -1.25rem; top: 50%; transform: translateY(-50%); width: .65rem; height: .65rem; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #cbd5e1; background: #94a3b8; }
+    .pm-tl-dot.pm-tl-now    { background: #005B99; box-shadow: 0 0 0 1px #005B99; }
+    .pm-tl-dot.pm-tl-rca    { background: #f97316; box-shadow: 0 0 0 1px #f97316; }
+    .pm-tl-dot.pm-tl-resolved{ background: #22c55e; box-shadow: 0 0 0 1px #22c55e; }
+    .pm-tl-dot.pm-tl-closed { background: #475569; box-shadow: 0 0 0 1px #475569; }
+    .pm-tl-label { font-size: var(--fs-xs); color: #475569; }
+    .pm-tl-when  { font-size: var(--fs-xs); font-weight: 600; color: #0f172a; }
+
+    @@media (max-width: 768px) {
+        .pm-title { white-space: normal; max-width: none; }
+        .pm-actions { width: 100%; }
+        .pm-actions .pm-btn { flex: 1 1 auto; justify-content: center; }
+    }
+</style>
+
+<!-- ===================== STICKY HEADER ===================== -->
+<div class="pm-stickyhead">
+    <div class="pm-titlerow">
+        <div class="pm-titlemain">
+            <span class="pm-code-pill">@Model.ProblemNumber</span>
+            <h1 class="pm-title" title="@(isRtl ? Model.NameAr : Model.NameEn)">@(isRtl ? Model.NameAr : Model.NameEn)</h1>
+            <span class="pm-pill pm-pill-@statusClass">
+                <i data-lucide="circle" style="width:8px;height:8px;fill:currentColor;"></i>
+                @Shared[$"ProblemStatus_{Model.Status}"].Value
+            </span>
+            <span class="pm-pill pm-pill-@priorityClass">@priorityLabel</span>
+            @if (Model.IsKnownError)
+            {
+                <span class="pm-pill pm-pill-warning">
+                    <i data-lucide="alert-octagon" style="width:10px;height:10px;"></i>
+                    @(isRtl ? "خطأ معروف" : "Known Error")
+                </span>
+            }
+            <span class="pm-breadcrumb">
+                @Shared["Label_Category"]: @Model.Category
+            </span>
+        </div>
+        <div class="pm-actions">
+            <a asp-action="Index" class="pm-btn pm-btn-outline">
+                <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" style="width:14px;height:14px;" aria-hidden="true"></i>
+                @Shared["Button_BackToList"]
+            </a>
+            <a asp-action="Edit" asp-route-id="@Model.Id" class="pm-btn pm-btn-outline">
+                <i data-lucide="edit" style="width:14px;height:14px;" aria-hidden="true"></i>
+                @Shared["Button_Edit"]
+            </a>
+            <button type="button" class="pm-btn pm-btn-ai"
+                    onclick="executeAiAnalysis('/AI/AnalyzeProblem?problemId=@Model.Id', null, '@(isRtl ? "تحليل الذكاء الاصطناعي للمشكلة" : "AI Problem Analysis")')">
+                <i data-lucide="sparkles" style="width:14px;height:14px;" aria-hidden="true"></i>
+                @(isRtl ? "تحليل الذكاء الاصطناعي" : "AI Analysis")
+            </button>
+        </div>
+    </div>
+
+    <div class="pm-kpis">
+        <span class="pm-kpi"><i data-lucide="link" style="width:12px;height:12px;"></i> @Shared["Label_RelatedIncidents"] <b>@Model.RelatedIncidentCount</b></span>
+        <span class="pm-kpi"><i data-lucide="clock" style="width:12px;height:12px;"></i> @(isRtl ? "أيام مفتوحة" : "Days Open") <b>@daysOpen</b></span>
+        @if (daysToRca.HasValue)
+        {
+            <span class="pm-kpi"><i data-lucide="microscope" style="width:12px;height:12px;"></i> @(isRtl ? "أيام حتى السبب" : "Days to RCA") <b>@daysToRca</b></span>
+        }
+        <span class="pm-kpi"><i data-lucide="trending-up" style="width:12px;height:12px;"></i> @Shared["Label_Impact"] <b>@impactLabel</b></span>
+        @if (Model.EstimatedCostImpact.HasValue)
+        {
+            <span class="pm-kpi"><i data-lucide="banknote" style="width:12px;height:12px;"></i> @(isRtl ? "أثر التكلفة" : "Cost Impact") <b>@Model.EstimatedCostImpact.Value.ToString("N0") AED</b></span>
+        }
+    </div>
+</div>
+
+<!-- ===================== TAB NAVIGATION ===================== -->
+<div class="pm-tabnav" role="tablist">
+    <button type="button" class="pm-tab active" data-pmtab="overview" onclick="pmShowTab('overview')" role="tab">
+        <i data-lucide="file-text"></i> @(isRtl ? "نظرة عامة" : "Overview")
+    </button>
+    <button type="button" class="pm-tab" data-pmtab="analysis" onclick="pmShowTab('analysis')" role="tab">
+        <i data-lucide="microscope"></i> @(isRtl ? "التحليل" : "Analysis")
+        @if (analysisCount > 0)
+        {
+            <span class="pm-tab-badge">@analysisCount</span>
+        }
+    </button>
+    <button type="button" class="pm-tab" data-pmtab="incidents" onclick="pmShowTab('incidents')" role="tab">
+        <i data-lucide="link"></i> @Shared["Label_RelatedIncidents"]
+        <span class="pm-tab-badge">@Model.RelatedIncidentCount</span>
+    </button>
+    <button type="button" class="pm-tab" data-pmtab="timeline" onclick="pmShowTab('timeline')" role="tab">
+        <i data-lucide="history"></i> @Shared["Label_Timeline"]
+    </button>
+</div>
+
+
+<!-- ===================== TAB: OVERVIEW ===================== -->
+<section id="pm-tab-overview" class="pm-tabpanel" role="tabpanel">
+    <div class="row g-3">
+        <!-- Description (left, wide) -->
+        <div class="col-xl-8 col-lg-7">
+            <div class="card h-100">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i data-lucide="file-text" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                    <span class="esems-card-title">@Shared["Label_Description"]</span>
+                </div>
+                <div class="card-body">
+                    <p class="pm-narr-text mb-0">@(isRtl ? Model.DescriptionAr : Model.DescriptionEn)</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Details + quick timeline (right, narrow) -->
+        <div class="col-xl-4 col-lg-5">
+            <div class="card mb-3">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i data-lucide="info" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                    <span class="esems-card-title">@Shared["Label_Details"]</span>
+                </div>
+                <div class="card-body py-2">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                            <span class="esems-body-secondary">@Shared["Label_Category"]</span>
+                            <span class="esems-body fw-semibold">@Model.Category</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                            <span class="esems-body-secondary">@Shared["Label_Impact"]</span>
+                            <span class="esems-body fw-semibold">@impactLabel</span>
+                        </li>
+                        @if (Model.Service != null)
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                                <span class="esems-body-secondary">@Shared["Label_Service"]</span>
+                                <span class="esems-body fw-semibold">@(isRtl ? Model.Service.NameAr : Model.Service.NameEn)</span>
+                            </li>
+                        }
+                        @if (Model.Process != null)
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                                <span class="esems-body-secondary">@Shared["Label_Process"]</span>
+                                <span class="esems-body fw-semibold">@(isRtl ? Model.Process.NameAr : Model.Process.NameEn)</span>
+                            </li>
+                        }
+                        @if (Model.Asset != null)
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                                <span class="esems-body-secondary">@Shared["Label_Asset"]</span>
+                                <span class="esems-body fw-semibold">@(isRtl ? Model.Asset.NameAr : Model.Asset.NameEn)</span>
+                            </li>
+                        }
+                        @if (Model.Owner != null)
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                                <span class="esems-body-secondary">@Shared["Label_Owner"]</span>
+                                <span class="esems-body fw-semibold">@Model.Owner.GetLocalizedFullName()</span>
+                            </li>
+                        }
+                        @if (Model.AssignedToUnit != null)
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                                <span class="esems-body-secondary">@Shared["Label_AssignedTo"]</span>
+                                <span class="esems-body fw-semibold">@(isRtl ? Model.AssignedToUnit.NameAr : Model.AssignedToUnit.NameEn)</span>
+                            </li>
+                        }
+                        @if (Model.EstimatedCostImpact.HasValue)
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2 border-bottom-0">
+                                <span class="esems-body-secondary">@(isRtl ? "أثر التكلفة" : "Cost Impact")</span>
+                                <span class="esems-body fw-semibold">@Model.EstimatedCostImpact.Value.ToString("N0") AED</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+
+<!-- ===================== TAB: ANALYSIS ===================== -->
+<section id="pm-tab-analysis" class="pm-tabpanel d-none" role="tabpanel">
+    @if (!hasAnalysis)
+    {
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <i data-lucide="microscope" style="width:40px;height:40px;color:#cbd5e1;"></i>
+                <p class="esems-body-secondary mt-2 mb-0">@(isRtl ? "لم يتم بعد توثيق التحليل أو الحلول" : "No analysis or solutions documented yet")</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(Model.RootCauseAnalysis))
+        {
+            <div class="card mb-3 pm-narr pm-narr-rca">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i data-lucide="microscope" style="width:18px;height:18px;color:#005B99;"></i>
+                    <span class="esems-card-title">@Shared["Label_RootCauseAnalysis"]</span>
+                    @if (Model.RootCauseIdentifiedAt.HasValue)
+                    {
+                        <small class="text-muted ms-auto" style="font-size: var(--fs-xs);">
+                            <i data-lucide="calendar" style="width:11px;height:11px;"></i>
+                            @Model.RootCauseIdentifiedAt.Value.ToDubaiString("MMM dd, yyyy HH:mm")
+                        </small>
+                    }
+                </div>
+                <div class="card-body">
+                    <p class="pm-narr-text mb-0">@Model.RootCauseAnalysis</p>
+                </div>
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(Model.Workaround))
+        {
+            <div class="card mb-3 pm-narr pm-narr-workaround">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i data-lucide="wrench" style="width:18px;height:18px;color:#005B99;"></i>
+                    <span class="esems-card-title">@Shared["Label_Workaround"]</span>
+                </div>
+                <div class="card-body">
+                    <p class="pm-narr-text mb-0">@Model.Workaround</p>
+                </div>
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(Model.PermanentSolution))
+        {
+            <div class="card pm-narr pm-narr-solution">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i data-lucide="check-circle-2" style="width:18px;height:18px;color:#005B99;"></i>
+                    <span class="esems-card-title">@Shared["Label_PermanentSolution"]</span>
+                    @if (Model.ResolvedAt.HasValue)
+                    {
+                        <small class="text-muted ms-auto" style="font-size: var(--fs-xs);">
+                            <i data-lucide="calendar" style="width:11px;height:11px;"></i>
+                            @Model.ResolvedAt.Value.ToDubaiString("MMM dd, yyyy HH:mm")
+                        </small>
+                    }
+                </div>
+                <div class="card-body">
+                    <p class="pm-narr-text mb-0">@Model.PermanentSolution</p>
+                </div>
+            </div>
+        }
+    }
+</section>
+
+
+<!-- ===================== TAB: RELATED INCIDENTS ===================== -->
+<section id="pm-tab-incidents" class="pm-tabpanel d-none" role="tabpanel">
+    <div class="card">
+        <div class="card-header d-flex align-items-center justify-content-between gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <i data-lucide="link" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                <span class="esems-card-title">@Shared["Label_RelatedIncidents"]</span>
+                <span class="badge badge-secondary">@Model.RelatedIncidentCount</span>
+            </div>
+        </div>
+        <div class="card-body">
+            @if (Model.RelatedIncidents.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:140px;">@(isRtl ? "رقم البلاغ" : "Incident #")</th>
+                                <th>@(isRtl ? "الاسم" : "Name")</th>
+                                <th class="text-center" style="width:140px;">@(isRtl ? "الحالة" : "Status")</th>
+                                <th class="text-end" style="width:56px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var incident in Model.RelatedIncidents)
+                            {
+                                var statusBadge = incident.Status == IncidentStatus.Resolved ? "success" : "info";
+                                <tr>
+                                    <td><span class="badge bg-secondary">@incident.IncidentNumber</span></td>
+                                    <td class="esems-body fw-medium">@(isRtl ? incident.NameAr : incident.NameEn)</td>
+                                    <td class="text-center">
+                                        <span class="badge badge-@statusBadge">@Shared[$"IncidentStatus_{incident.Status}"].Value</span>
+                                    </td>
+                                    <td class="text-end">
+                                        <a asp-controller="Incidents" asp-action="Details" asp-route-id="@incident.Id" class="btn btn-sm btn-link text-primary p-0" title="@(isRtl ? "عرض" : "View")">
+                                            <i data-lucide="eye" style="width:16px;height:16px;"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="text-center py-4">
+                    <i data-lucide="inbox" style="width:40px;height:40px;color:#cbd5e1;"></i>
+                    <p class="text-muted mt-2 mb-0">@Shared["Text_NoRelatedIncidents"]</p>
+                </div>
+            }
+        </div>
+    </div>
+</section>
+
+
+<!-- ===================== TAB: TIMELINE ===================== -->
+<section id="pm-tab-timeline" class="pm-tabpanel d-none" role="tabpanel">
+    <div class="card">
+        <div class="card-header d-flex align-items-center gap-2">
+            <i data-lucide="history" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+            <span class="esems-card-title">@Shared["Label_Timeline"]</span>
+        </div>
+        <div class="card-body">
+            <div class="pm-tl">
+                <div class="pm-tl-item">
+                    <span class="pm-tl-dot pm-tl-now"></span>
+                    <span class="pm-tl-label">@Shared["Label_Identified"]</span>
+                    <span class="pm-tl-when">@Model.IdentifiedAt.ToDubaiString("MMM dd, yyyy HH:mm")</span>
+                </div>
+                @if (Model.RootCauseIdentifiedAt.HasValue)
+                {
+                    <div class="pm-tl-item">
+                        <span class="pm-tl-dot pm-tl-rca"></span>
+                        <span class="pm-tl-label">@(isRtl ? "تحديد السبب الجذري" : "Root cause identified")</span>
+                        <span class="pm-tl-when">@Model.RootCauseIdentifiedAt.Value.ToDubaiString("MMM dd, yyyy HH:mm")</span>
+                    </div>
+                }
+                @if (Model.ResolvedAt.HasValue)
+                {
+                    <div class="pm-tl-item">
+                        <span class="pm-tl-dot pm-tl-resolved"></span>
+                        <span class="pm-tl-label">@Shared["Label_Resolved"]</span>
+                        <span class="pm-tl-when">@Model.ResolvedAt.Value.ToDubaiString("MMM dd, yyyy HH:mm")</span>
+                    </div>
+                }
+                @if (Model.ClosedAt.HasValue)
+                {
+                    <div class="pm-tl-item">
+                        <span class="pm-tl-dot pm-tl-closed"></span>
+                        <span class="pm-tl-label">@Shared["Label_Closed"]</span>
+                        <span class="pm-tl-when">@Model.ClosedAt.Value.ToDubaiString("MMM dd, yyyy HH:mm")</span>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</section>
+
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        // ===== Tab switcher (deep-linkable via #hash) =====
+        function pmShowTab(name) {
+            document.querySelectorAll('.pm-tabpanel').forEach(p => p.classList.add('d-none'));
+            document.querySelectorAll('.pm-tab').forEach(t => t.classList.remove('active'));
+            const panel = document.getElementById('pm-tab-' + name);
+            const tab = document.querySelector('.pm-tab[data-pmtab="' + name + '"]');
+            if (panel) panel.classList.remove('d-none');
+            if (tab) tab.classList.add('active');
+            try { history.replaceState(null, '', '#' + name); } catch (e) {}
+            if (window.lucide) lucide.createIcons();
+        }
+        document.addEventListener('DOMContentLoaded', function () {
+            if (window.lucide) lucide.createIcons();
+            const h = (location.hash || '').replace('#','');
+            if (h && document.getElementById('pm-tab-' + h)) pmShowTab(h);
+        });
+    </script>
+}

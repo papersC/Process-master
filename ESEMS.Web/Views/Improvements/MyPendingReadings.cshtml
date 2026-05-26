@@ -1,0 +1,146 @@
+@using ESEMS.Web.Services.Improvements
+@model List<DueReading>
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = isRtl ? "قراءاتي المستحقة" : "My Pending Readings";
+}
+
+@* Mirror the .lt-* shell + header CSS from Improvements/Index so this page
+   matches the project's compact list-page typography (bug fix 2026-05-06:
+   the description <p> was inheriting Bootstrap's 16px body size, looking
+   visibly larger than every other lt-header page). *@
+<style>
+    .lt-shell { display: flex; flex-direction: column; gap: .6rem; }
+    .lt-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; gap: 1rem; flex-wrap: wrap; }
+    .lt-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .lt-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .lt-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; border: none; }
+    .lt-btn-primary { background: #005B99; color: #fff; } .lt-btn-primary:hover { background: #003d6b; color: #fff; }
+    .lt-btn-outline { background: #fff; color: #005B99; border: 1px solid #cbd5e1; } .lt-btn-outline:hover { background: #f1f5f9; }
+</style>
+
+<div class="lt-shell">
+    <div class="lt-header">
+        <div>
+            <h1>
+                <i data-lucide="inbox" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>
+                @(isRtl ? "قراءاتي المستحقة" : "My Pending Readings")
+            </h1>
+            <p>@(isRtl
+                ? "كل المقاييس على مبادراتك الجارية التي لم يتم تسجيل قراءة لها لهذه الفترة. أدخل القيم وانقر حفظ — سيتم حفظ السجلات غير الفارغة فقط."
+                : "Every measurement on your in-progress initiatives that has no reading for the current period. Fill in any subset of values and click Save — empty rows are skipped.")</p>
+        </div>
+        <div style="display:flex;gap:.4rem;">
+            <a asp-action="Index" class="lt-btn lt-btn-outline">
+                <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" class="w-4 h-4" aria-hidden="true"></i>
+                @(isRtl ? "العودة للمبادرات" : "Back to initiatives")
+            </a>
+        </div>
+    </div>
+
+    @if (TempData["Success"] is string okMsg)
+    {
+        <div class="alert alert-success py-2 px-3 mb-3" style="font-size:var(--fs-sm);background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:6px;">
+            <i data-lucide="check-circle-2" class="w-4 h-4 inline-block" aria-hidden="true"></i> @okMsg
+        </div>
+    }
+    @if (TempData["Error"] is string errMsg)
+    {
+        <div class="alert alert-warning py-2 px-3 mb-3" style="font-size:var(--fs-sm);background:#fef3c7;border:1px solid #fcd34d;color:#78350f;border-radius:6px;">
+            <i data-lucide="alert-triangle" class="w-4 h-4 inline-block" aria-hidden="true"></i> @errMsg
+        </div>
+    }
+
+    @if (Model.Count == 0)
+    {
+        <div class="text-center py-10 px-4 border-2 border-dashed border-gray-200 rounded-lg bg-gray-50">
+            <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-white mb-3" style="box-shadow:0 2px 8px rgba(34,197,94,.12)">
+                <i data-lucide="check-circle-2" class="w-7 h-7" style="color:#15803D"></i>
+            </div>
+            <h4 class="font-semibold text-gray-900 mb-1" style="font-size:var(--fs-base);">@(isRtl ? "كل القراءات حالية" : "You're all caught up.")</h4>
+            <p class="text-gray-600 mb-0" style="font-size:var(--fs-xs);">@(isRtl
+                ? "لا توجد مقاييس تنتظر قراءة لهذه الفترة. سنذكّرك عند استحقاق قراءات جديدة."
+                : "No measurements have a reading due this period. We'll notify you when more come due.")</p>
+        </div>
+    }
+    else
+    {
+        <form method="post" asp-action="SaveBatchReadings" id="batchReadingsForm">
+            @Html.AntiForgeryToken()
+            <div class="d-flex align-items-center gap-2 mb-2 text-xs text-gray-500" style="font-weight:600;">
+                <span class="badge" style="background:#005B99;color:#fff;border-radius:999px;padding:.15rem .55rem;">@Model.Count</span>
+                @(isRtl ? "قراءة مستحقة عبر مبادراتك" : "reading(s) due across your initiatives")
+            </div>
+
+            <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <table class="table table-hover mb-0" style="font-size:var(--fs-sm);">
+                    <thead style="background:#f8fafc;">
+                        <tr>
+                            <th style="width:30%;">@(isRtl ? "المبادرة" : "Initiative")</th>
+                            <th style="width:25%;">@(isRtl ? "المقياس" : "Measurement")</th>
+                            <th style="width:10%;text-align:center;">@(isRtl ? "الفترة" : "Period")</th>
+                            <th style="width:10%;text-align:center;">@(isRtl ? "الوحدة" : "Unit")</th>
+                            <th style="width:20%;">@(isRtl ? "القيمة الجديدة" : "New value")</th>
+                            <th style="width:5%;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var d in Model)
+                        {
+                            var initiativeName = isRtl ? (d.InitiativeTitleAr ?? d.InitiativeTitleEn) : (d.InitiativeTitleEn ?? d.InitiativeTitleAr);
+                            var measurementName = isRtl ? (d.MeasurementNameAr ?? d.MeasurementNameEn) : (d.MeasurementNameEn ?? d.MeasurementNameAr);
+                            <tr>
+                                <td>
+                                    <a asp-action="Details" asp-route-id="@d.InitiativeId" class="text-decoration-none" style="color:#005B99;font-weight:600;" title="@initiativeName">
+                                        @initiativeName
+                                    </a>
+                                </td>
+                                <td>@measurementName</td>
+                                <td class="text-center"><span class="badge" style="background:#eff6ff;color:#1e40af;font-size:var(--fs-xs);padding:.15rem .45rem;border-radius:4px;">@d.PeriodLabel</span></td>
+                                <td class="text-center text-gray-500">@d.Unit</td>
+                                <td>
+                                    <input type="hidden" name="measurementId" value="@d.MeasurementId" />
+                                    @* F-OP-001: inline unit suffix so the user can see what unit
+                                       the value should be entered in without sliding their eye
+                                       back to the Unit column. *@
+                                    <div class="d-flex align-items-center gap-1">
+                                        <input type="number" step="0.01" name="value"
+                                               class="form-control form-control-sm"
+                                               placeholder="@(isRtl ? "اتركه فارغًا للتخطي" : "leave blank to skip")"
+                                               aria-label="@measurementName value (@d.Unit)" />
+                                        @if (!string.IsNullOrWhiteSpace(d.Unit))
+                                        {
+                                            <span class="text-gray-500" style="font-size:var(--fs-xs);white-space:nowrap;" aria-hidden="true">@d.Unit</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td class="text-center">
+                                    <a asp-action="Details" asp-route-id="@d.InitiativeId" class="btn btn-sm btn-link p-0" title="@(isRtl ? "افتح التفاصيل" : "Open details")" aria-label="@(isRtl ? "افتح التفاصيل" : "Open details")">
+                                        <i data-lucide="external-link" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="d-flex align-items-center justify-content-end gap-2 mt-3">
+                <button type="reset" class="lt-btn lt-btn-outline">
+                    <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
+                    @(isRtl ? "مسح الكل" : "Clear all")
+                </button>
+                <button type="submit" class="lt-btn lt-btn-primary">
+                    <i data-lucide="save" class="w-4 h-4" aria-hidden="true"></i>
+                    @(isRtl ? "حفظ كل القراءات" : "Save all readings")
+                </button>
+            </div>
+        </form>
+    }
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+    </script>
+}

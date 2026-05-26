@@ -1,0 +1,391 @@
+@using ESEMS.Web.Models.Common
+@inject IStringLocalizer<SharedResource> Shared
+@{
+    var groups = ViewBag.RoleGroups as List<RoleGroup> ?? new List<RoleGroup>();
+    var modules = ((string Key, string LabelEn, string LabelAr, string[] ValidActions)[])ViewBag.ModuleCatalog;
+    var allActions = (string[])ViewBag.AllActions;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ar";
+}
+
+<!-- Plan X live banner — matrix-driven authorization is now active -->
+<div class="alert d-flex gap-3 mb-3" role="alert" style="border-left:4px solid #005B99;background:rgba(0,91,153,.06);">
+    <i data-lucide="shield-check" style="width:20px;height:20px;color:#005B99;" class="flex-shrink-0 mt-1"></i>
+    <div class="small">
+        <strong class="d-block mb-1" style="color:#003d6b;">
+            @(isRtl ? "التفويض القائم على المصفوفة نشط" : "Matrix-driven authorization is live")
+        </strong>
+        @(isRtl
+            ? "كل مجموعة صلاحيات تمنح أعضاءها الأذونات المحددة أدناه. قم بإسناد المجموعات للمستخدمين من صفحة «تعديل المستخدم»."
+            : "Every role group below grants its members the permissions listed in its matrix. Assign groups to users from the User Edit page.")
+    </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h5 class="fw-bold mb-0">@Shared["Heading_RoleGroupsList"]</h5>
+        <small class="text-muted">@Shared["Help_RoleGroups"]</small>
+    </div>
+    <button type="button" class="btn btn-sm text-white" style="background:#005B99;" onclick="RoleGroupsMatrix.openNew()">
+        <i data-lucide="plus" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+        @Shared["Button_AddRoleGroup"]
+    </button>
+</div>
+
+<!-- Card grid -->
+<div class="row g-3">
+    @foreach (var g in groups)
+    {
+        var perms = (g.Permissions ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        <div class="col-md-6 col-lg-4" data-rg-id="@g.Id">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-header border-0 d-flex align-items-center gap-2" style="background:#005B99;color:#fff;">
+                    <span class="d-inline-flex align-items-center justify-content-center rounded" style="width:32px;height:32px;background:rgba(255,255,255,0.2);">
+                        <i data-lucide="@g.Icon" style="width:16px;height:16px;"></i>
+                    </span>
+                    <div class="flex-grow-1">
+                        <h6 class="fw-bold mb-0">@(isRtl ? g.NameAr : g.NameEn)</h6>
+                        <small style="opacity:.85;">@(isRtl ? g.NameEn : g.NameAr)</small>
+                    </div>
+                    @if (g.IsSystemRole)
+                    {
+                        <span class="badge bg-light text-dark" title="@Shared["Badge_SystemRole"]">
+                            <i data-lucide="lock" style="width:10px;height:10px;"></i>
+                        </span>
+                    }
+                </div>
+                <div class="card-body">
+                    <p class="small text-muted mb-3">@(isRtl ? g.DescriptionAr : g.DescriptionEn)</p>
+                    <div class="d-flex gap-2 mb-3 flex-wrap">
+                        <span class="badge bg-secondary bg-opacity-10 text-secondary">
+                            <i data-lucide="@(g.ScopeLevel == "All" ? "globe" : (g.ScopeLevel == "OwningUnit" ? "building-2" : "git-branch"))" style="width:11px;height:11px;margin-inline-end:3px;"></i>
+                            @g.ScopeLevel
+                        </span>
+                        <span class="badge bg-secondary bg-opacity-10 text-secondary">
+                            <i data-lucide="shield-check" style="width:11px;height:11px;margin-inline-end:3px;"></i>
+                            @perms.Count @Shared["Text_Permissions"]
+                        </span>
+                        @if (!string.IsNullOrWhiteSpace(g.Code))
+                        {
+                            <span class="badge bg-secondary bg-opacity-10 text-secondary font-monospace" style="font-size: var(--fs-xs);">@g.Code</span>
+                        }
+                    </div>
+                    <div class="d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-primary px-2" onclick='RoleGroupsMatrix.openEdit("@g.Id")' title="@Shared["Button_Edit"]">
+                            <i data-lucide="pencil" style="width:12px;height:12px;"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary px-2" onclick='RoleGroupsMatrix.duplicate("@g.Id")' title="@Shared["Button_Duplicate"]">
+                            <i data-lucide="copy" style="width:12px;height:12px;"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger px-2" onclick='RoleGroupsMatrix.remove("@g.Id")' title="@(g.IsSystemRole ? Shared["Badge_SystemRoleLocked"].Value : Shared["Button_Delete"].Value)" @(g.IsSystemRole ? "disabled" : "")>
+                            <i data-lucide="trash-2" style="width:12px;height:12px;"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Editor Modal — includes the permission matrix -->
+<div id="rgModal" class="modal fade" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#005B99;color:#fff;">
+                <h5 class="modal-title" id="rgModalTitle">@Shared["Heading_AddRoleGroup"]</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="rgId" />
+                <input type="hidden" id="rgIsSystem" />
+
+                <!-- Identity fields -->
+                <div class="row g-3 mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">@Shared["Label_NameEn"] <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="rgNameEn" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">@Shared["Label_NameAr"]</label>
+                        <input type="text" class="form-control form-control-sm" id="rgNameAr" dir="rtl" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">@Shared["Label_Code"] <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm font-monospace" id="rgCode" placeholder="@(isRtl ? "يُنشأ تلقائياً" : "auto-generated")" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">@Shared["Label_DescriptionEn"]</label>
+                        <textarea class="form-control form-control-sm" id="rgDescEn" rows="2"></textarea>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">@Shared["Label_DescriptionAr"]</label>
+                        <textarea class="form-control form-control-sm" id="rgDescAr" rows="2" dir="rtl"></textarea>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">@Shared["Label_Scope"]</label>
+                        <select class="form-select form-select-sm" id="rgScope">
+                            <option value="All">@Shared["Scope_All"]</option>
+                            <option value="OwningUnit">@Shared["Scope_OwningUnit"]</option>
+                            <option value="Process">@Shared["Scope_Process"]</option>
+                        </select>
+                        <div class="mt-2 d-flex gap-2 align-items-center">
+                            <label class="small fw-semibold mb-0">@Shared["Label_Icon"]:</label>
+                            <select class="form-select form-select-sm" id="rgIcon" style="max-width:140px;">
+                                <option value="users">users</option>
+                                <option value="shield-check">shield-check</option>
+                                <option value="user-cog">user-cog</option>
+                                <option value="trending-up">trending-up</option>
+                                <option value="git-branch">git-branch</option>
+                                <option value="alert-triangle">alert-triangle</option>
+                                <option value="star">star</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Permission matrix -->
+                <h6 class="fw-bold mb-2" style="color:#005B99;">
+                    <i data-lucide="shield" style="width:16px;height:16px;margin-inline-end:4px;"></i>
+                    @Shared["Heading_PermissionMatrix"]
+                </h6>
+                <p class="small text-muted mb-2">@Shared["Help_PermissionMatrix"]</p>
+
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm mb-0" id="permMatrix">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:220px;">@Shared["Col_Module"]</th>
+                                @foreach (var act in allActions)
+                                {
+                                    <th class="text-center">@Shared[$"Action_{act}"]</th>
+                                }
+                                <th class="text-center" style="width:70px;">@Shared["Col_SelectAll"]</th>
+                            </tr>
+                            <tr class="table-light">
+                                <th class="text-muted small fw-normal text-end pe-2">@Shared["Col_SelectAll"] ↓</th>
+                                @foreach (var act in allActions)
+                                {
+                                    <th class="text-center">
+                                        <input type="checkbox" class="form-check-input perm-col-all" data-action="@act" />
+                                    </th>
+                                }
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var mod in modules)
+                            {
+                                <tr data-module="@mod.Key">
+                                    <td class="fw-semibold">
+                                        @(isRtl ? mod.LabelAr : mod.LabelEn)
+                                        <div class="small text-muted font-monospace" style="font-size: var(--fs-xs);">@mod.Key</div>
+                                    </td>
+                                    @foreach (var act in allActions)
+                                    {
+                                        <td class="text-center align-middle perm-cell">
+                                            @if (mod.ValidActions.Contains(act))
+                                            {
+                                                <input type="checkbox" class="form-check-input perm-check" data-module="@mod.Key" data-action="@act" />
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                        </td>
+                                    }
+                                    <td class="text-center align-middle">
+                                        <input type="checkbox" class="form-check-input perm-row-all" data-module="@mod.Key" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">@Shared["Button_Cancel"]</button>
+                <button type="button" class="btn btn-sm text-white" style="background:#005B99;" onclick="RoleGroupsMatrix.save()">
+                    <i data-lucide="save" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                    @Shared["Button_SaveChanges"]
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script nonce="@Context.CspNonce()" id="rgGroupsJson" type="application/json">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(groups))</script>
+
+<style>
+    #permMatrix .perm-cell.checked-cell { background:#e7f3ff; }
+    #permMatrix td { vertical-align: middle; }
+    #permMatrix .form-check-input { margin:0; cursor:pointer; }
+</style>
+
+<script nonce="@Context.CspNonce()">
+window.RoleGroupsMatrix = (function() {
+    var GROUPS = JSON.parse(document.getElementById('rgGroupsJson').textContent || '[]');
+    var modal;
+
+    function ensureModal() {
+        if (!modal) modal = new bootstrap.Modal(document.getElementById('rgModal'));
+        return modal;
+    }
+
+    function clearMatrix() {
+        document.querySelectorAll('#permMatrix .perm-check').forEach(function(cb) {
+            cb.checked = false;
+            cb.closest('td').classList.remove('checked-cell');
+        });
+        document.querySelectorAll('#permMatrix .perm-col-all, #permMatrix .perm-row-all').forEach(function(cb) { cb.checked = false; });
+    }
+
+    function setPermissions(csv) {
+        clearMatrix();
+        var keys = (csv || '').split(',').map(function(s){ return s.trim(); }).filter(function(s){ return s; });
+        keys.forEach(function(key) {
+            var parts = key.split('.');
+            if (parts.length !== 2) return;
+            var cb = document.querySelector('#permMatrix .perm-check[data-module="' + parts[0] + '"][data-action="' + parts[1] + '"]');
+            if (cb) { cb.checked = true; cb.closest('td').classList.add('checked-cell'); }
+        });
+    }
+
+    function collectPermissions() {
+        return Array.from(document.querySelectorAll('#permMatrix .perm-check:checked'))
+            .map(function(cb) { return cb.dataset.module + '.' + cb.dataset.action; })
+            .join(',');
+    }
+
+    function slugify(s) {
+        return (s || '').toLowerCase().trim()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/[\s]+/g, '-')
+            .replace(/-+/g, '-');
+    }
+
+    function openNew() {
+        document.getElementById('rgModalTitle').textContent = '@Html.Raw(Shared["Heading_AddRoleGroup"].Value)';
+        document.getElementById('rgId').value = '';
+        document.getElementById('rgIsSystem').value = 'false';
+        document.getElementById('rgNameEn').value = '';
+        document.getElementById('rgNameAr').value = '';
+        document.getElementById('rgCode').value = '';
+        document.getElementById('rgDescEn').value = '';
+        document.getElementById('rgDescAr').value = '';
+        document.getElementById('rgScope').value = 'All';
+        document.getElementById('rgIcon').value = 'users';
+        clearMatrix();
+        ensureModal().show();
+    }
+
+    function openEdit(id) {
+        var g = GROUPS.find(function(x){ return x.Id === id; });
+        if (!g) return;
+        document.getElementById('rgModalTitle').textContent = '@Html.Raw(Shared["Heading_EditRoleGroup"].Value)';
+        document.getElementById('rgId').value = g.Id;
+        document.getElementById('rgIsSystem').value = g.IsSystemRole ? 'true' : 'false';
+        document.getElementById('rgNameEn').value = g.NameEn || '';
+        document.getElementById('rgNameAr').value = g.NameAr || '';
+        document.getElementById('rgCode').value = g.Code || '';
+        document.getElementById('rgDescEn').value = g.DescriptionEn || '';
+        document.getElementById('rgDescAr').value = g.DescriptionAr || '';
+        document.getElementById('rgScope').value = g.ScopeLevel || 'All';
+        document.getElementById('rgIcon').value = g.Icon || 'users';
+        // Lock name + code for system roles
+        var locked = g.IsSystemRole;
+        document.getElementById('rgNameEn').readOnly = locked;
+        document.getElementById('rgNameAr').readOnly = locked;
+        document.getElementById('rgCode').readOnly = locked;
+        setPermissions(g.Permissions);
+        ensureModal().show();
+    }
+
+    async function save() {
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', ShubToken());
+        fd.append('Id', document.getElementById('rgId').value);
+        fd.append('NameEn', document.getElementById('rgNameEn').value);
+        fd.append('NameAr', document.getElementById('rgNameAr').value);
+        fd.append('Code', document.getElementById('rgCode').value);
+        fd.append('DescriptionEn', document.getElementById('rgDescEn').value);
+        fd.append('DescriptionAr', document.getElementById('rgDescAr').value);
+        fd.append('ScopeLevel', document.getElementById('rgScope').value);
+        fd.append('Permissions', collectPermissions());
+        fd.append('Icon', document.getElementById('rgIcon').value);
+        fd.append('Color', '#005B99');
+        try {
+            var r = await fetch('/RoleGroups/Save', { method: 'POST', body: fd });
+            var d = await r.json();
+            if (d.success) { ShubToast('success', '@Html.Raw(Shared["Toast_SavedSuccess"].Value)'); setTimeout(function(){ location.reload(); }, 700); }
+            else ShubToast('error', d.error || '@Html.Raw(Shared["Js_SaveFailed"].Value)');
+        } catch(e) { ShubToast('error', e.message); }
+    }
+
+    async function remove(id) {
+        const r0 = await Swal.fire({
+            icon: 'warning',
+            title: '@Html.Raw(Shared["Confirm_DeleteRoleGroup"].Value)',
+            showCancelButton: true,
+            confirmButtonText: '@Html.Raw(Shared["Label_Yes"].Value)', cancelButtonText: '@Html.Raw(Shared["Button_Cancel"].Value)',
+            confirmButtonColor: '#dc2626', cancelButtonColor: '#64748b'
+        });
+        if (!r0.isConfirmed) return;
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', ShubToken());
+        fd.append('id', id);
+        try {
+            var r = await fetch('/RoleGroups/Delete', { method: 'POST', body: fd });
+            var d = await r.json();
+            if (d.success) { ShubToast('success', '@Html.Raw(Shared["Toast_DeletedSuccess"].Value)'); setTimeout(function(){ location.reload(); }, 600); }
+            else ShubToast('error', d.error);
+        } catch(e) { ShubToast('error', e.message); }
+    }
+
+    async function duplicate(id) {
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', ShubToken());
+        fd.append('id', id);
+        try {
+            var r = await fetch('/RoleGroups/Duplicate', { method: 'POST', body: fd });
+            var d = await r.json();
+            if (d.success) { ShubToast('success', '@Html.Raw(Shared["Toast_DuplicatedSuccess"].Value)'); setTimeout(function(){ location.reload(); }, 700); }
+            else ShubToast('error', d.error);
+        } catch(e) { ShubToast('error', e.message); }
+    }
+
+    // ── Wire up matrix select-all + cell background ──
+    function initMatrix() {
+        document.querySelectorAll('#permMatrix .perm-check').forEach(function(cb) {
+            cb.addEventListener('change', function() {
+                this.closest('td').classList.toggle('checked-cell', this.checked);
+            });
+        });
+        document.querySelectorAll('#permMatrix .perm-col-all').forEach(function(cb) {
+            cb.addEventListener('change', function() {
+                var act = this.dataset.action;
+                document.querySelectorAll('#permMatrix .perm-check[data-action="' + act + '"]').forEach(function(c) {
+                    c.checked = cb.checked;
+                    c.closest('td').classList.toggle('checked-cell', c.checked);
+                });
+            });
+        });
+        document.querySelectorAll('#permMatrix .perm-row-all').forEach(function(cb) {
+            cb.addEventListener('change', function() {
+                var mod = this.dataset.module;
+                document.querySelectorAll('#permMatrix .perm-check[data-module="' + mod + '"]').forEach(function(c) {
+                    c.checked = cb.checked;
+                    c.closest('td').classList.toggle('checked-cell', c.checked);
+                });
+            });
+        });
+        // Auto-slug code from NameEn
+        var nameEl = document.getElementById('rgNameEn');
+        nameEl.addEventListener('input', function() {
+            if (document.getElementById('rgIsSystem').value === 'true') return;
+            document.getElementById('rgCode').value = slugify(this.value);
+        });
+    }
+    document.addEventListener('DOMContentLoaded', initMatrix);
+
+    return { openNew: openNew, openEdit: openEdit, save: save, remove: remove, duplicate: duplicate };
+})();
+</script>

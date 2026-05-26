@@ -1,0 +1,85 @@
+@model ESEMS.Web.Models.Services.ServiceCategory
+@{
+    ViewData["Title"] = "New Service Category";
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+}
+
+<style>
+    .pc-shell { display:flex; flex-direction:column; gap:.7rem; max-width:780px; }
+    .pc-header { display:flex; align-items:center; justify-content:space-between; padding:.25rem 0 .4rem; border-bottom:1px solid #e5e7eb; }
+    .pc-header h1 { margin:0; font-size:var(--fs-base); font-weight:600; color:#111827; display:flex; align-items:center; gap:.5rem; }
+    .pc-card { background:#fff; border:1px solid #e5e7eb; border-radius:.5rem; padding:.9rem 1rem; display:flex; flex-direction:column; gap:.7rem; }
+    .pc-row { display:flex; flex-direction:column; gap:.25rem; }
+    .pc-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:.7rem; }
+    .pc-label { font-size:var(--fs-xs); font-weight:600; color:#374151; }
+    .pc-input, .pc-select { width:100%; padding:.42rem .55rem; border:1px solid #d1d5db; border-radius:.375rem; font-size:var(--fs-sm); }
+    .pc-help { font-size:var(--fs-xs); color:#6b7280; }
+    .pc-actions { display:flex; gap:.5rem; justify-content:flex-end; }
+    .pc-btn { padding:.45rem 1rem; border-radius:.375rem; font-size:var(--fs-sm); font-weight:600; cursor:pointer; border:none; text-decoration:none; }
+    .pc-btn-primary { background:#005B99; color:#fff; }
+    .pc-btn-secondary { background:#fff; color:#374151; border:1px solid #d1d5db; }
+    .pc-err { color:#b91c1c; font-size:var(--fs-xs); }
+</style>
+
+<div class="pc-shell">
+    <div class="pc-header">
+        <h1><i data-lucide="folder-plus" class="w-5 h-5" style="color:#005B99;"></i>@(isRtl ? "فئة خدمة جديدة" : "New Service Category")</h1>
+        <a asp-action="Index" class="pc-btn pc-btn-secondary">@(isRtl ? "إلغاء" : "Cancel")</a>
+    </div>
+
+    <form asp-action="Create" method="post" class="pc-card">
+        @Html.AntiForgeryToken()
+        <div class="pc-grid-2">
+            <div class="pc-row">
+                <label asp-for="Code" class="pc-label">@(isRtl ? "الرمز" : "Code")</label>
+                <input asp-for="Code" class="pc-input" readonly />
+                <div class="pc-help">@(isRtl ? "يُولّد تلقائياً." : "Auto-generated.")</div>
+            </div>
+            <div class="pc-row">
+                <label asp-for="DisplayOrder" class="pc-label">@(isRtl ? "الترتيب" : "Display Order")</label>
+                <input asp-for="DisplayOrder" type="number" class="pc-input" />
+            </div>
+        </div>
+
+        <div class="pc-grid-2">
+            <div class="pc-row">
+                <label asp-for="NameEn" class="pc-label">@(isRtl ? "الاسم (إنجليزي)" : "Name (English)") <span style="color:#b91c1c;">*</span></label>
+                <input asp-for="NameEn" class="pc-input" placeholder="@(isRtl ? "مثال: Grant Services" : "e.g. Grant Services")" />
+                <span asp-validation-for="NameEn" class="pc-err"></span>
+            </div>
+            <div class="pc-row">
+                <label asp-for="NameAr" class="pc-label">@(isRtl ? "الاسم (عربي)" : "Name (Arabic)") <span style="color:#b91c1c;">*</span></label>
+                <input asp-for="NameAr" dir="rtl" class="pc-input" placeholder="@(isRtl ? "مثل: خدمات المنح" : "e.g. خدمات المنح")" />
+                <span asp-validation-for="NameAr" class="pc-err"></span>
+            </div>
+        </div>
+
+        <div class="pc-grid-2">
+            <div class="pc-row">
+                <label asp-for="DescriptionEn" class="pc-label">@(isRtl ? "الوصف (إنجليزي)" : "Description (English)")</label>
+                <textarea asp-for="DescriptionEn" class="pc-input" rows="2"></textarea>
+            </div>
+            <div class="pc-row">
+                <label asp-for="DescriptionAr" class="pc-label">@(isRtl ? "الوصف (عربي)" : "Description (Arabic)")</label>
+                <textarea asp-for="DescriptionAr" dir="rtl" class="pc-input" rows="2"></textarea>
+            </div>
+        </div>
+
+        <div class="pc-row">
+            <label class="pc-label">
+                <input asp-for="IsActive" type="checkbox" />
+                @(isRtl ? "نشطة (قابلة للاختيار)" : "Active (selectable in dropdowns)")
+            </label>
+        </div>
+
+        <div class="pc-actions">
+            <a asp-action="Index" class="pc-btn pc-btn-secondary">@(isRtl ? "إلغاء" : "Cancel")</a>
+            <button type="submit" class="pc-btn pc-btn-primary">@(isRtl ? "حفظ" : "Save")</button>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

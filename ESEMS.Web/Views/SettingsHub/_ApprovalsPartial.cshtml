@@ -1,0 +1,38 @@
+@using ESEMS.Web.Models.Workflow
+@inject IStringLocalizer<SharedResource> Shared
+@{
+    var entities = ((string Key, string LabelEn, string LabelAr, string Icon, string Color)[])ViewBag.Entities;
+    var configs = (List<ApprovalConfiguration>)ViewBag.Configs;
+}
+
+<!-- Help strip -->
+<div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 mb-4 flex items-start gap-3">
+    <i data-lucide="info" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"></i>
+    <div class="text-sm text-blue-900">
+        <strong>@Shared["Label_HowApprovalsWork"]:</strong>
+        @Shared["Text_HowMultiRuleApprovals"]
+    </div>
+</div>
+
+<!-- Recipe examples -->
+<div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 mb-4">
+    <div class="flex items-start gap-3">
+        <i data-lucide="lightbulb" class="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5"></i>
+        <div class="text-xs text-amber-900">
+            <strong class="block mb-1">@Shared["Label_ExampleRecipes"]</strong>
+            <ul class="space-y-0.5 list-disc ps-5 mb-0">
+                <li>@Shared["Recipe_QuickWin"]</li>
+                <li>@Shared["Recipe_Standard"]</li>
+                <li>@Shared["Recipe_Strategic"]</li>
+                <li>@Shared["Recipe_Transformative"]</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- One card per entity type with its rules table -->
+@foreach (var entity in entities)
+{
+    var entityRules = configs.Where(c => c.EntityType == entity.Key).OrderBy(c => c.Priority).ThenBy(c => c.CreatedAt).ToList();
+    @await Html.PartialAsync("_ApprovalCard", (entity, entityRules))
+}

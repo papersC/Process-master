@@ -1,0 +1,57 @@
+name: tests
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  schedule:
+    - cron: "0 2 * * *"
+
+jobs:
+  unit-and-integration:
+    name: unit + integration
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - run: dotnet build ESEMS.sln -c Release --nologo
+      - run: dotnet test ESEMS.Tests/ESEMS.Tests.csproj --no-build -c Release --nologo --collect:"XPlat Code Coverage"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: '**/coverage.cobertura.xml'
+
+  security:
+    name: security (supply-chain)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - run: dotnet restore ESEMS.sln
+      - run: dotnet test ESEMS.SecurityTests/ESEMS.SecurityTests.csproj --nologo
+
+  e2e:
+    name: e2e (playwright)
+    runs-on: windows-latest
+    needs: unit-and-integration
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - run: dotnet build ESEMS.sln -c Release --nologo
+      - run: pwsh ESEMS.E2E/bin/Release/net9.0/playwright.ps1 install --with-deps chromium
+      - name: Start ESEMS
+        run: |
+          Start-Process dotnet -ArgumentList 'run','--project','ESEMS.Web','-c','Release','--no-build'
+          Start-Sleep -Seconds 15
+      - env:
+          ESEMS_E2E_BASE_URL: http://localhost:5297
+        run: dotnet test ESEMS.E2E/ESEMS.E2E.csproj --no-build -c Release --nologo

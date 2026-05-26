@@ -1,0 +1,113 @@
+@model ESEMS.Web.Models.ViewModels.AiAnalysisPanelVM
+@{
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    var pid = $"aiPanel_{Model.PanelId}";
+}
+
+@*  Reusable inline AI analysis card. Posts to Model.Endpoint, renders the
+    `analysis` (or `suggestions` / `summary`) field of the JSON response with
+    marked.js. Persistent on the page — no modal — so the analysis stays
+    visible while the user reads it alongside the entity's other detail
+    sections. *@
+
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6" id="@pid">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div class="flex items-center gap-2">
+            <i data-lucide="sparkles" class="w-5 h-5" style="color:#6d28d9;"></i>
+            <h3 class="text-lg font-semibold text-gray-900 mb-0">@Model.Title</h3>
+        </div>
+        <div class="flex items-center gap-2">
+            <span id="@(pid)_status" class="text-xs text-gray-400"></span>
+            <button type="button" id="@(pid)_btn"
+                    class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border-0 text-white"
+                    style="background:linear-gradient(90deg,#7c3aed 0%,#4f46e5 100%);">
+                <i data-lucide="play" style="width:14px;height:14px;"></i>
+                <span id="@(pid)_btnLabel">@(isRtl ? "تشغيل التحليل" : "Run Analysis")</span>
+            </button>
+        </div>
+    </div>
+    @if (!string.IsNullOrWhiteSpace(Model.Subtitle))
+    {
+        <p class="text-sm text-gray-500 mb-3">@Model.Subtitle</p>
+    }
+    <div id="@(pid)_empty" class="text-sm text-gray-400 italic">
+        @(isRtl ? "اضغط 'تشغيل التحليل' لإنشاء تقييم ذكي." : "Click 'Run Analysis' to generate an AI evaluation.")
+    </div>
+    <div id="@(pid)_loading" style="display:none;" class="text-center py-4">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="text-muted mt-2 mb-0 text-sm">@(isRtl ? "جاري التحليل الذكي..." : "AI is analyzing...")</p>
+    </div>
+    <div id="@(pid)_result" style="display:none;direction:@(isRtl ? "rtl" : "ltr");text-align:@(isRtl ? "right" : "left");" class="prose prose-sm max-w-none text-gray-800"></div>
+    <div id="@(pid)_error" style="display:none;" class="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3"></div>
+</div>
+
+@*  Local script — scoped via the unique panel id so multiple panels on one
+    page don't clash. Reuses the global marked loader from _Layout. *@
+<script nonce="@Context.CspNonce()">
+(function () {
+    var pid = '@pid';
+    var endpoint = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Endpoint));
+    var bodyJson = @Html.Raw(string.IsNullOrEmpty(Model.BodyJson) ? "null" : Model.BodyJson);
+
+    var btn     = document.getElementById(pid + '_btn');
+    var label   = document.getElementById(pid + '_btnLabel');
+    var status  = document.getElementById(pid + '_status');
+    var empty   = document.getElementById(pid + '_empty');
+    var loading = document.getElementById(pid + '_loading');
+    var result  = document.getElementById(pid + '_result');
+    var error   = document.getElementById(pid + '_error');
+
+    async function ensureMarked() {
+        if (typeof marked !== 'undefined') return;
+        await new Promise(function (r) {
+            var s = document.createElement('script');
+            s.src = (window.SP_PATHBASE || '') + '/lib/marked/marked.min.js';
+            s.onload = r;
+            document.head.appendChild(s);
+        });
+    }
+
+    btn.addEventListener('click', async function () {
+        empty.style.display = 'none';
+        error.style.display = 'none';
+        result.style.display = 'none';
+        loading.style.display = '';
+        btn.disabled = true;
+
+        var token = (document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]') || {}).value;
+        var opts = { method: 'POST', headers: { 'RequestVerificationToken': token || '' } };
+        if (bodyJson) {
+            opts.headers['Content-Type'] = 'application/json';
+            opts.body = JSON.stringify(bodyJson);
+        }
+
+        var startedAt = Date.now();
+        try {
+            await ensureMarked();
+            var res = await fetch(endpoint, opts);
+            var data = await res.json();
+            loading.style.display = 'none';
+            btn.disabled = false;
+            if (data && data.success && (data.analysis || data.suggestions || data.summary)) {
+                var elapsed = Math.round((Date.now() - startedAt) / 100) / 10;
+                if (data.cached) {
+                    status.textContent = '@(isRtl ? "من ذاكرة التخزين المؤقت" : "cached") · ' + elapsed + 's';
+                } else {
+                    status.textContent = elapsed + 's';
+                }
+                result.innerHTML = marked.parse(data.analysis || data.suggestions || data.summary);
+                result.style.display = '';
+                label.textContent = '@(isRtl ? "إعادة التشغيل" : "Refresh")';
+            } else {
+                error.textContent = (data && data.error) || '@(isRtl ? "فشل التحليل" : "Analysis failed")';
+                error.style.display = '';
+            }
+        } catch (e) {
+            loading.style.display = 'none';
+            btn.disabled = false;
+            error.textContent = e.message || '@(isRtl ? "خطأ في الشبكة" : "Network error")';
+            error.style.display = '';
+        }
+    });
+})();
+</script>

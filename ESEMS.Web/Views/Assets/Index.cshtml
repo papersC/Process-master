@@ -1,0 +1,196 @@
+@model IEnumerable<Asset>
+@{
+    ViewData["Title"] = Shared["Title_Assets"].Value;
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+
+    var operational = Model.Count(a => a.Status == AssetStatus.Operational);
+    var underMaint = Model.Count(a => a.Status == AssetStatus.UnderMaintenance);
+    var warrantyExp = Model.Count(a => a.WarrantyExpiryDate.HasValue && a.WarrantyExpiryDate.Value <= DateTime.UtcNow.AddDays(30) && a.WarrantyExpiryDate.Value > DateTime.UtcNow);
+    var maintDue = Model.Count(a => a.IsMaintenanceDueSoon(30));
+
+    var perms = new HashSet<string>(User.FindAll("Permission").Select(c => c.Value));
+    bool canDelete = perms.Contains("*.*") || perms.Contains("Asset.*") || perms.Contains("Asset.Delete");
+}
+
+<style>
+    .lt-shell { display: flex; flex-direction: column; gap: .6rem; }
+    .lt-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; }
+    .lt-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .lt-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .lt-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; border: none; }
+    .lt-btn-primary { background: #005B99; color: #fff; } .lt-btn-primary:hover { background: #003d6b; color: #fff; }
+    .lt-kpi-strip { display: flex; align-items: stretch; gap: .5rem; padding: .55rem .65rem; background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; flex-wrap: wrap; }
+    .lt-kpi { display: flex; align-items: center; gap: .55rem; padding: .25rem .65rem; flex: 1 1 180px; min-width: 180px; border-inline-end: 1px dashed #e5e7eb; }
+    .lt-kpi:last-child { border-inline-end: none; }
+    .lt-kpi-icon { width: 34px; height: 34px; border-radius: .375rem; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .lt-kpi-icon.kpi-green  { background: #ecfdf5; color: #047857; }
+    .lt-kpi-icon.kpi-orange { background: #fff7ed; color: #c2410c; }
+    .lt-kpi-icon.kpi-yellow { background: #fefce8; color: #a16207; }
+    .lt-kpi-icon.kpi-red    { background: #fef2f2; color: #dc2626; }
+    .lt-kpi-num { font-size: var(--fs-base); font-weight: 700; color: #111827; line-height: 1; }
+    .lt-kpi-label { font-size: var(--fs-xs); color: #6b7280; margin-top: .15rem; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+    @@media (max-width: 768px) { .lt-kpi { flex: 1 1 45%; border-inline-end: none; } }
+
+    .lt-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; display: flex; flex-direction: column; overflow: hidden; }
+    .lt-table-wrap { overflow: auto; }
+    .lt-table-wrap table { width: 100%; font-size: var(--fs-sm); border-collapse: collapse; }
+    .lt-table-wrap thead { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
+    .lt-table-wrap th { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; padding: .55rem .75rem; text-align: start; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+    .lt-table-wrap td { padding: .5rem .75rem; border-bottom: 1px solid #f3f4f6; color: #374151; vertical-align: middle; }
+    .lt-table-wrap tbody tr:hover td { background: #f9fafb; }
+    .lt-pill { display: inline-block; padding: .15rem .5rem; font-size: var(--fs-xs); font-weight: 600; border-radius: .25rem; white-space: nowrap; }
+    .lt-pill-st-Operational      { background: #ecfdf5; color: #047857; }
+    .lt-pill-st-UnderMaintenance { background: #fff7ed; color: #c2410c; }
+    .lt-pill-st-Retired          { background: #f1f5f9; color: #475569; }
+    .lt-pill-st-Disposed         { background: #fef2f2; color: #b91c1c; }
+    .lt-pill-st-default          { background: #eff6ff; color: #1d4ed8; }
+    .lt-pill-cri-1 { background: #fef2f2; color: #b91c1c; }
+    .lt-pill-cri-2 { background: #fff7ed; color: #c2410c; }
+    .lt-pill-cri-3 { background: #fefce8; color: #a16207; }
+    .lt-pill-cri-4 { background: #f1f5f9; color: #475569; }
+    .lt-link { color: #005B99; font-weight: 600; text-decoration: none; }
+    .lt-link:hover { text-decoration: underline; color: #003d6b; }
+    .lt-actions { display: inline-flex; gap: .35rem; align-items: center; }
+    .lt-actions a, .lt-actions button { color: #005B99; padding: .2rem; border-radius: .25rem; transition: background .15s; background: transparent; border: none; cursor: pointer; }
+    .lt-actions a:hover, .lt-actions button:hover { background: #eff6ff; }
+    .lt-actions .lt-action-danger { color: #dc2626; }
+    .lt-actions .lt-action-danger:hover { background: #fef2f2; }
+</style>
+
+<div class="lt-shell">
+    <div class="lt-header">
+        <div>
+            <h1><i data-lucide="package" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>@Shared["Title_Assets"]</h1>
+            <p>@Shared["Text_ManageAssets"]</p>
+        </div>
+        <a asp-action="Create" class="lt-btn lt-btn-primary">
+            <i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>@Shared["Button_AddAsset"]
+        </a>
+    </div>
+
+    <div class="lt-kpi-strip">
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-green"><i data-lucide="check-circle" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@operational</div><div class="lt-kpi-label">@Shared["Label_Operational"]</div></div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-orange"><i data-lucide="wrench" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@underMaint</div><div class="lt-kpi-label">@Shared["Label_UnderMaintenance"]</div></div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-yellow"><i data-lucide="shield-alert" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@warrantyExp</div><div class="lt-kpi-label">@Shared["Label_WarrantyExpiring"]</div></div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-red"><i data-lucide="calendar-clock" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@maintDue</div><div class="lt-kpi-label">@Shared["Label_MaintenanceDue"]</div></div>
+        </div>
+    </div>
+
+    <div class="lt-card">
+        <div class="lt-table-wrap">
+            <table class="esems-datatable" id="assetsTable">
+                <thead>
+                    <tr>
+                        <th>@Shared["Column_AssetTag"]</th>
+                        <th>@Shared["Column_Name"]</th>
+                        <th>@Shared["Column_Category"]</th>
+                        <th>@Shared["Column_Status"]</th>
+                        <th>@Shared["Column_Criticality"]</th>
+                        <th>@Shared["Column_Location"]</th>
+                        <th>@Shared["Column_Warranty"]</th>
+                        <th style="text-align:end;">@Shared["Column_Actions"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var asset in Model)
+                    {
+                        var statusCls = (asset.Status == AssetStatus.Operational || asset.Status == AssetStatus.UnderMaintenance || asset.Status == AssetStatus.Retired || asset.Status == AssetStatus.Disposed) ? $"lt-pill-st-{asset.Status}" : "lt-pill-st-default";
+                        var criLabel = asset.Criticality switch { 1 => Shared["Criticality_Critical"].Value, 2 => Shared["Criticality_High"].Value, 3 => Shared["Criticality_Medium"].Value, _ => Shared["Criticality_Low"].Value };
+                        var criCls = asset.Criticality switch { 1 => "lt-pill-cri-1", 2 => "lt-pill-cri-2", 3 => "lt-pill-cri-3", _ => "lt-pill-cri-4" };
+                        <tr>
+                            <td><a asp-action="Details" asp-route-id="@asset.Id" class="lt-link">@asset.AssetTag</a></td>
+                            <td>
+                                <div style="font-weight:600;color:#111827;">@(isRtl ? asset.NameAr : asset.NameEn)</div>
+                                <div style="font-size: var(--fs-xs);color:#6b7280;">@asset.Manufacturer @asset.Model</div>
+                            </td>
+                            <td style="color:#6b7280;">@(asset.Category != null ? (isRtl ? asset.Category.NameAr : asset.Category.NameEn) : "—")</td>
+                            <td><span class="lt-pill @statusCls">@Shared[$"AssetStatus_{asset.Status}"]</span></td>
+                            <td><span class="lt-pill @criCls">@criLabel</span></td>
+                            <td style="color:#6b7280;">@(asset.Location ?? "—")</td>
+                            <td>
+                                @if (asset.WarrantyExpiryDate.HasValue)
+                                {
+                                    var cls = asset.IsWarrantyValid() ? "color:#047857;" : "color:#b91c1c;";
+                                    <span style="font-size: var(--fs-xs);@cls">@asset.WarrantyExpiryDate.Value.ToDubaiString("MMM dd, yyyy")</span>
+                                }
+                                else { <span style="color:#94a3b8;">—</span> }
+                            </td>
+                            <td style="text-align:end;">
+                                <span class="lt-actions">
+                                    <a asp-action="Details" asp-route-id="@asset.Id" title="@Shared["Tooltip_ViewDetails"]" aria-label="@Shared["Tooltip_ViewDetails"]"><i data-lucide="eye" class="w-4 h-4" aria-hidden="true"></i></a>
+                                    <a asp-action="Edit" asp-route-id="@asset.Id" title="@Shared["Tooltip_EditRecord"]" aria-label="@Shared["Tooltip_EditRecord"]"><i data-lucide="edit" class="w-4 h-4" aria-hidden="true"></i></a>
+                                    @if (canDelete)
+                                    {
+                                        <button type="button" class="btn-delete-asset lt-action-danger" data-id="@asset.Id" data-name="@asset.Name" title="@Shared["Tooltip_DeleteRecord"]" aria-label="@Shared["Tooltip_DeleteRecord"]">
+                                            <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
+                                        </button>
+                                    }
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                    @if (!Model.Any())
+                    {
+                        <tr><td colspan="8" style="padding:3rem 1rem;text-align:center;color:#94a3b8;">
+                            <i data-lucide="inbox" class="w-10 h-10" aria-hidden="true" style="margin:0 auto .5rem;display:block;color:#cbd5e1;"></i>
+                            <div style="font-weight:500;">@(isRtl ? "لا توجد أصول بعد" : "No assets yet")</div>
+                        </td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@if (canDelete)
+{
+    <form id="deleteForm" asp-action="Delete" method="post" style="display:none;">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="id" id="deleteId" />
+    </form>
+}
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+
+        @if (canDelete)
+        {
+            <text>
+            const confirmTitle = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_AreYouSure"].Value));
+            const confirmDeletePrefix = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_DeleteTextPrefix"].Value));
+            const confirmYesDelete = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_YesDelete"].Value));
+            const buttonCancel = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Button_Cancel"].Value));
+
+            document.addEventListener('click', function (e) {
+                const btn = e.target.closest('.btn-delete-asset');
+                if (!btn) return;
+                const id = btn.dataset.id;
+                const name = btn.dataset.name || '';
+                Swal.fire({
+                    title: confirmTitle, text: confirmDeletePrefix + name, icon: 'warning',
+                    showCancelButton: true, confirmButtonColor: '#005B99', cancelButtonColor: '#6b7280',
+                    confirmButtonText: confirmYesDelete, cancelButtonText: buttonCancel
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        document.getElementById('deleteId').value = id;
+                        document.getElementById('deleteForm').submit();
+                    }
+                });
+            });
+            </text>
+        }
+    </script>
+}

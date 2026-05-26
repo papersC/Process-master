@@ -1,0 +1,540 @@
+@model Process
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = Shared["Action_EditProcess"].Value;
+    var hasBpmn = !string.IsNullOrWhiteSpace(Model.BpmnDiagram);
+}
+
+@*  Two-column form: left = Identity / Linking / Operational cards;
+    right = sticky sidebar with the existing process code (read-only),
+    live linked-services count, BPMN diagram status link, and Save/
+    Cancel action bar. Same .pc-* tokens as Processes/Create. All
+    asp-for bindings preserved including hidden audit fields and the
+    SelectedServiceIds multi-select submit handler. *@
+
+<style>
+    .pc-shell { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: .75rem; align-items: start; }
+    @@media (max-width: 992px) { .pc-shell { grid-template-columns: 1fr; } }
+    .pc-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; margin-bottom: .6rem; }
+    .pc-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .pc-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .pc-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; border: none; }
+    .pc-btn-primary { background: #005B99; color: #fff; } .pc-btn-primary:hover { background: #003d6b; color: #fff; }
+    .pc-btn-outline { background: #fff; color: #005B99; border: 1px solid #cbd5e1; } .pc-btn-outline:hover { background: #f1f5f9; }
+    .pc-btn-ghost { background: transparent; color: #374151; border: 1px solid #d1d5db; } .pc-btn-ghost:hover { background: #f9fafb; }
+    .pc-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; padding: .9rem 1rem; margin-bottom: .6rem; }
+    .pc-card-h { display: flex; align-items: center; gap: .5rem; padding-bottom: .55rem; margin-bottom: .75rem; border-bottom: 1px solid #f1f5f9; }
+    .pc-card-h h2 { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .45rem; }
+    .pc-card-h .pc-card-sub { font-size: var(--fs-xs); color: #6b7280; margin-inline-start: auto; }
+    .pc-label { display: block; font-size: var(--fs-xs); font-weight: 600; color: #374151; margin-bottom: .25rem; }
+    .pc-label .req { color: #dc2626; }
+    .pc-input, .pc-select, .pc-textarea { width: 100%; padding: .42rem .65rem; border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-sm); background: #fff; color: #111827; }
+    .pc-input:focus, .pc-select:focus, .pc-textarea:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .pc-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+    .pc-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .65rem; }
+    .pc-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: .65rem; }
+    @@media (max-width: 768px) { .pc-grid-2, .pc-grid-3, .pc-grid-4 { grid-template-columns: 1fr; } }
+    .pc-row { margin-bottom: .65rem; }
+    .pc-help { font-size: var(--fs-xs); color: #6b7280; margin-top: .2rem; }
+    .pc-err { font-size: var(--fs-xs); color: #dc2626; margin-top: .2rem; display: block; }
+    .pc-side { position: sticky; top: 1rem; display: flex; flex-direction: column; gap: .55rem; }
+    .pc-summary-row { display: flex; align-items: center; justify-content: space-between; padding: .35rem 0; font-size: var(--fs-xs); color: #374151; border-bottom: 1px dashed #f1f5f9; gap: .5rem; }
+    .pc-summary-row:last-child { border-bottom: none; }
+    .pc-pill { display: inline-block; padding: .12rem .45rem; font-size: var(--fs-xs); font-weight: 700; border-radius: .25rem; background: #eff6ff; color: #1d4ed8; min-width: 1.5rem; text-align: center; }
+    .pc-pill-on { background: #d1fae5; color: #065f46; }
+    .pc-pill-off { background: #f1f5f9; color: #6b7280; }
+    .pc-side-actions { display: flex; flex-direction: column; gap: .35rem; padding-top: .25rem; }
+    .pc-side-actions .pc-btn { justify-content: center; padding: .55rem .85rem; }
+    .pc-checkbox-row { display: inline-flex; align-items: center; gap: .45rem; cursor: pointer; }
+    .pc-checkbox-row input { width: 1rem; height: 1rem; accent-color: #005B99; }
+    .pc-multi-select { min-height: 120px; }
+</style>
+
+<div class="pc-header">
+    <div>
+        <h1><i data-lucide="edit" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>@Shared["Action_EditProcess"]</h1>
+        <p>@Shared["Label_ProcessInformation"]</p>
+    </div>
+    <a asp-action="Details" asp-route-id="@Model.Id" class="pc-btn pc-btn-outline">
+        <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "رجوع" : "Back")
+    </a>
+</div>
+
+<form asp-action="Edit" method="post" id="editForm" data-guard-unsaved>
+    <input type="hidden" asp-for="Id" />
+    <input type="hidden" asp-for="CreatedAt" />
+    <input type="hidden" asp-for="CreatedById" />
+    <input type="hidden" asp-for="UpdatedAt" />
+    <input type="hidden" asp-for="UpdatedById" />
+    <input type="hidden" asp-for="Version" />
+    <div asp-validation-summary="ModelOnly" style="margin-bottom:.6rem;padding:.6rem .8rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.375rem;color:#b91c1c;font-size: var(--fs-xs);"></div>
+
+    <div class="pc-shell">
+        <!-- ============ MAIN COLUMN ============ -->
+        <div>
+            <!-- Identity -->
+            <div class="pc-card">
+                <div class="pc-card-h">
+                    <h2><i data-lucide="file-text" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@(isRtl ? "الهوية" : "Identity")</h2>
+                    <span class="pc-card-sub">@(isRtl ? "الكود والاسم والتصنيف" : "Code, name, classification")</span>
+                </div>
+
+                @* Code is auto-generated under the parent ProcessGroup
+                   ({PG.Code}.{Z}) and is NOT editable. DisplayOrder is now
+                   driven by SortKey from the hierarchical code; we hide
+                   the input and just persist whatever the row already has. *@
+                <input type="hidden" asp-for="Code" id="CodeInp" />
+                <input type="hidden" asp-for="DisplayOrder" />
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label class="pc-label">@Shared["Column_Code"]</label>
+                        <div class="pc-input" style="background:#f1f5f9;color:#005B99;font-family:ui-monospace,monospace;font-weight:700;letter-spacing:.04em;cursor:not-allowed;display:flex;align-items:center;justify-content:space-between;">
+                            <span>@Model.Code</span>
+                            @if (!string.IsNullOrEmpty(Model.LegacyCode))
+                            {
+                                <small style="color:#64748b;font-weight:500;font-family:inherit;">@(isRtl ? "السابق" : "was"): @Model.LegacyCode</small>
+                            }
+                        </div>
+                        <div class="pc-help">@(isRtl ? "يُولَّد تلقائيًا تحت مجموعة العمليات" : "Auto-generated under the parent Process Group")</div>
+                    </div>
+                    <div>
+                        <label asp-for="ProcessGroupId" class="pc-label">@Shared["Column_ProcessGroup"] <span class="req">*</span></label>
+                        <select asp-for="ProcessGroupId" asp-items="ViewBag.ProcessGroups" class="pc-select"></select>
+                        <span asp-validation-for="ProcessGroupId" class="pc-err"></span>
+                        <div class="pc-help">@(isRtl ? "تغيير المجموعة لا يُعيد توليد الكود تلقائيًا" : "Changing the group does not auto-renumber the code")</div>
+                    </div>
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="NameEn" class="pc-label">@Shared["Label_NameEn"] <span class="req">*</span></label>
+                        <input asp-for="NameEn" class="pc-input" id="NameEnInp" />
+                        <span asp-validation-for="NameEn" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NameAr" class="pc-label">@Shared["Label_NameAr"] <span class="req">*</span></label>
+                        <input asp-for="NameAr" dir="rtl" class="pc-input" />
+                        <span asp-validation-for="NameAr" class="pc-err"></span>
+                    </div>
+                </div>
+
+                <div class="pc-grid-3">
+                    <div>
+                        <label asp-for="ProcessType" class="pc-label">@Shared["Column_Type"]</label>
+                        <select asp-for="ProcessType" asp-items="@(new SelectList((IEnumerable<dynamic>)ViewBag.ProcessTypes, "Value", "DisplayName"))" class="pc-select"></select>
+                    </div>
+                    <div>
+                        <label asp-for="Status" class="pc-label">@Shared["Column_Status"]</label>
+                        <select asp-for="Status" asp-items="@(new SelectList((IEnumerable<dynamic>)ViewBag.ProcessStatuses, "Value", "DisplayName"))" class="pc-select" id="StatusSel"></select>
+                    </div>
+                    <div>
+                        <label asp-for="OwningUnitId" class="pc-label">@Shared["Column_OwningUnit"]</label>
+                        @{ var canReassignUnit = ViewBag.CanReassignUnit == null || (bool)ViewBag.CanReassignUnit; }
+                        <select asp-for="OwningUnitId" asp-items="ViewBag.OrganizationUnits" class="pc-select" disabled="@(!canReassignUnit)">
+                            <option value="">-- @Shared["Option_Optional"] --</option>
+                        </select>
+                        @if (!canReassignUnit)
+                        {
+                            <small style="color:#6b7280;display:block;margin-top:4px;">@Shared["Hint_OwningUnitLocked"]</small>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Linking -->
+            <div class="pc-card">
+                <div class="pc-card-h">
+                    <h2><i data-lucide="link" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@(isRtl ? "الروابط" : "Linking")</h2>
+                    <span class="pc-card-sub">@(isRtl ? "الخدمات والأهداف والأصول والمخاطر" : "Services, objectives, assets, risks")</span>
+                </div>
+
+                @{
+                    var existingServiceIds = (List<string>)(ViewBag.ExistingServiceIds ?? new List<string>());
+                    var existingObjectiveIds = (List<string>)(ViewBag.ExistingObjectiveIds ?? new List<string>());
+                    var existingAssetIds = (List<string>)(ViewBag.ExistingAssetIds ?? new List<string>());
+                    var existingRiskIds = (List<string>)(ViewBag.ExistingRiskIds ?? new List<string>());
+                }
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label class="pc-label"><i data-lucide="briefcase" class="w-3.5 h-3.5 inline-block" style="color:#005B99;" aria-hidden="true"></i> @Shared["Label_LinkedServices"]</label>
+                        <div class="cs-wrap relative" id="csWrap_services">
+                            <div class="cs-trigger flex flex-wrap items-center gap-1 px-2 py-1.5 border border-gray-300 rounded-md min-h-[36px] bg-white cursor-pointer" onclick="csToggle('services')">
+                                <span id="csChips_services" class="flex flex-wrap gap-1"></span>
+                                <span id="csPh_services" class="text-xs text-gray-400 truncate">@(isRtl ? "اختر الخدمات..." : "Select services...")</span>
+                                <svg class="w-4 h-4 text-gray-400 ml-auto shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </div>
+                            <div id="csDrop_services" class="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg hidden">
+                                <div class="p-2 border-b border-gray-100"><input type="text" placeholder="@(isRtl ? "بحث..." : "Search...")" class="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none" oninput="csFilter('services',this.value)"></div>
+                                <div class="overflow-y-auto" style="max-height:180px;">
+                                    @if (ViewBag.Services != null) { foreach (var item in ViewBag.Services as SelectList) {
+                                        <label class="cs-opt flex items-center gap-2 px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs">
+                                            <input type="checkbox" value="@item.Value" class="rounded text-blue-600 cs-chk" data-csid="services" data-label="@item.Text" onchange="csUpdate('services')" @(existingServiceIds.Contains(item.Value) ? "checked" : "")>
+                                            <span class="truncate">@item.Text</span>
+                                        </label>
+                                    } }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="pc-label"><i data-lucide="target" class="w-3.5 h-3.5 inline-block" style="color:#005B99;" aria-hidden="true"></i> @Shared["Label_StrategicObjective"]</label>
+                        <div class="cs-wrap relative" id="csWrap_objectives">
+                            <div class="cs-trigger flex flex-wrap items-center gap-1 px-2 py-1.5 border border-gray-300 rounded-md min-h-[36px] bg-white cursor-pointer" onclick="csToggle('objectives')">
+                                <span id="csChips_objectives" class="flex flex-wrap gap-1"></span>
+                                <span id="csPh_objectives" class="text-xs text-gray-400 truncate">@(isRtl ? "اختر الأهداف..." : "Select objectives...")</span>
+                                <svg class="w-4 h-4 text-gray-400 ml-auto shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </div>
+                            <div id="csDrop_objectives" class="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg hidden">
+                                <div class="p-2 border-b border-gray-100"><input type="text" placeholder="@(isRtl ? "بحث..." : "Search...")" class="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none" oninput="csFilter('objectives',this.value)"></div>
+                                <div class="overflow-y-auto" style="max-height:180px;">
+                                    @if (ViewBag.StrategicObjectives != null) { foreach (var item in ViewBag.StrategicObjectives as SelectList) {
+                                        <label class="cs-opt flex items-center gap-2 px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs">
+                                            <input type="checkbox" value="@item.Value" class="rounded text-blue-600 cs-chk" data-csid="objectives" data-label="@item.Text" onchange="csUpdate('objectives')" @(existingObjectiveIds.Contains(item.Value) ? "checked" : "")>
+                                            <span class="truncate">@item.Text</span>
+                                        </label>
+                                    } }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="pc-label"><i data-lucide="package" class="w-3.5 h-3.5 inline-block" style="color:#005B99;" aria-hidden="true"></i> @(isRtl ? "الأصول المرتبطة" : "Linked Assets")</label>
+                        <div class="cs-wrap relative" id="csWrap_assets">
+                            <div class="cs-trigger flex flex-wrap items-center gap-1 px-2 py-1.5 border border-gray-300 rounded-md min-h-[36px] bg-white cursor-pointer" onclick="csToggle('assets')">
+                                <span id="csChips_assets" class="flex flex-wrap gap-1"></span>
+                                <span id="csPh_assets" class="text-xs text-gray-400 truncate">@(isRtl ? "اختر الأصول..." : "Select assets...")</span>
+                                <svg class="w-4 h-4 text-gray-400 ml-auto shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </div>
+                            <div id="csDrop_assets" class="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg hidden">
+                                <div class="p-2 border-b border-gray-100"><input type="text" placeholder="@(isRtl ? "بحث..." : "Search...")" class="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none" oninput="csFilter('assets',this.value)"></div>
+                                <div class="overflow-y-auto" style="max-height:180px;">
+                                    @if (ViewBag.Assets != null) { foreach (var item in ViewBag.Assets as SelectList) {
+                                        <label class="cs-opt flex items-center gap-2 px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs">
+                                            <input type="checkbox" value="@item.Value" class="rounded text-blue-600 cs-chk" data-csid="assets" data-label="@item.Text" onchange="csUpdate('assets')" @(existingAssetIds.Contains(item.Value) ? "checked" : "")>
+                                            <span class="truncate">@item.Text</span>
+                                        </label>
+                                    } }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="pc-label"><i data-lucide="alert-triangle" class="w-3.5 h-3.5 inline-block" style="color:#005B99;" aria-hidden="true"></i> @(isRtl ? "المخاطر المرتبطة" : "Linked Risks")</label>
+                        <div class="cs-wrap relative" id="csWrap_risks">
+                            <div class="cs-trigger flex flex-wrap items-center gap-1 px-2 py-1.5 border border-gray-300 rounded-md min-h-[36px] bg-white cursor-pointer" onclick="csToggle('risks')">
+                                <span id="csChips_risks" class="flex flex-wrap gap-1"></span>
+                                <span id="csPh_risks" class="text-xs text-gray-400 truncate">@(isRtl ? "اختر المخاطر..." : "Select risks...")</span>
+                                <svg class="w-4 h-4 text-gray-400 ml-auto shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </div>
+                            <div id="csDrop_risks" class="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg hidden">
+                                <div class="p-2 border-b border-gray-100"><input type="text" placeholder="@(isRtl ? "بحث..." : "Search...")" class="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none" oninput="csFilter('risks',this.value)"></div>
+                                <div class="overflow-y-auto" style="max-height:180px;">
+                                    @if (ViewBag.Risks != null) { foreach (var item in ViewBag.Risks as SelectList) {
+                                        <label class="cs-opt flex items-center gap-2 px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs">
+                                            <input type="checkbox" value="@item.Value" class="rounded text-blue-600 cs-chk" data-csid="risks" data-label="@item.Text" onchange="csUpdate('risks')" @(existingRiskIds.Contains(item.Value) ? "checked" : "")>
+                                            <span class="truncate">@item.Text</span>
+                                        </label>
+                                    } }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pc-row">
+                    <label class="pc-label">
+                        <i data-lucide="clipboard-check" class="w-3.5 h-3.5 inline-block" style="color:#005B99;" aria-hidden="true"></i>
+                        @(isRtl ? "المسؤوليات المُلباة" : "Fulfills responsibilities")
+                    </label>
+                    <partial name="_ResponsibilityPicker" model="@(ViewBag.ResponsibilityPicker as ESEMS.Web.Models.ViewModels.ResponsibilityPickerVM)" />
+                    <div class="pc-help">
+                        @(isRtl
+                            ? "اربط هذه العملية بالمسؤوليات المعتمدة للوحدة التنظيمية (ISO 9001 §4.4)."
+                            : "Link this process to the chartered mandates it fulfills (ISO 9001 §4.4).")
+                    </div>
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="SystemId" class="pc-label">@Shared["Label_System"]</label>
+                        <select asp-for="SystemId" asp-items="ViewBag.Systems" class="pc-select">
+                            <option value="">-- @Shared["Option_Optional"] --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="pc-label"><i data-lucide="tag" class="w-3.5 h-3.5 inline-block" style="color:#005B99;" aria-hidden="true"></i> @Shared["Column_Tags"]</label>
+                        <input type="hidden" id="tagListHidden" name="TagList" />
+                        <div id="tagContainer" class="flex flex-wrap gap-1 px-2 py-1.5 border border-gray-300 rounded-md min-h-[36px] bg-white cursor-text" onclick="document.getElementById('tagInput').focus()">
+                            <input id="tagInput" type="text" placeholder="@(isRtl ? "اكتب واضغط Enter" : "Type and press Enter")" class="flex-1 min-w-[120px] outline-none text-xs border-none p-0 m-0 bg-transparent" />
+                        </div>
+                        <div class="pc-help">@(isRtl ? "اكتب كل وسم ثم اضغط Enter لإضافته" : "Type each tag then press Enter")</div>
+                        @* Suppress the model-bound Tags input — TagList chip UI replaces it. *@
+                        <input type="hidden" asp-for="Tags" id="TagsBound" />
+                    </div>
+                </div>
+
+                <div>
+                    <partial name="_ProcessDocumentLinking" />
+                </div>
+            </div>
+
+            <!-- Operational -->
+            <div class="pc-card">
+                <div class="pc-card-h">
+                    <h2><i data-lucide="settings" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@(isRtl ? "تشغيلي" : "Operational")</h2>
+                    <span class="pc-card-sub">@(isRtl ? "المدة والتكلفة والأتمتة" : "Duration, cost, automation")</span>
+                </div>
+
+                <div class="pc-grid-4 pc-row">
+                    <div>
+                        <label asp-for="EstimatedDuration" class="pc-label">@Shared["Label_EstimatedDuration"]</label>
+                        <input asp-for="EstimatedDuration" type="number" step="0.01" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="DurationUnit" class="pc-label">@Shared["Label_TimeUnit"]</label>
+                        <select asp-for="DurationUnit" asp-items="@(new SelectList(Enum.GetValues<TimeUnit>().Select(t => new { Value = t.ToString(), Display = Shared[$"TimeUnit_{t}"].Value }), "Value", "Display"))" class="pc-select">
+                            <option value="">-- @Shared["Option_Optional"] --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label asp-for="EstimatedCost" class="pc-label">@Shared["Label_EstimatedCost"]</label>
+                        <input asp-for="EstimatedCost" type="number" step="0.01" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="AutomationStatus" class="pc-label">@(isRtl ? "حالة الأتمتة" : "Automation")</label>
+                        <select asp-for="AutomationStatus" asp-items="@(new SelectList((IEnumerable<dynamic>)ViewBag.AutomationStatuses, "Value", "DisplayName"))" class="pc-select"></select>
+                    </div>
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="DescriptionEn" class="pc-label">@Shared["Label_DescriptionEn"]</label>
+                        <textarea asp-for="DescriptionEn" rows="3" class="pc-textarea"></textarea>
+                    </div>
+                    <div>
+                        <label asp-for="DescriptionAr" class="pc-label">@Shared["Label_DescriptionAr"]</label>
+                        <textarea asp-for="DescriptionAr" dir="rtl" rows="3" class="pc-textarea"></textarea>
+                    </div>
+                </div>
+
+                <label class="pc-checkbox-row">
+                    <input asp-for="HasDetailedBreakdown" id="HasDetailedBreakdown" />
+                    <span style="font-size: var(--fs-xs);color:#374151;">@Shared["Label_HasDetailedBreakdown"]</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- ============ STICKY SIDEBAR ============ -->
+        <aside class="pc-side">
+            @* Process Code card removed: same treatment as ProcessGroups —
+               code is auto-generated server-side, kept in a hidden input. *@
+
+            <div class="pc-card" style="margin-bottom:0;">
+                <div class="pc-card-h">
+                    <h2><i data-lucide="link-2" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@(isRtl ? "ملخص" : "Summary")</h2>
+                </div>
+                <div class="pc-summary-row">
+                    <span><i data-lucide="briefcase" class="w-3.5 h-3.5 inline-block" style="color:#6b7280;" aria-hidden="true"></i> @Shared["Label_LinkedServices"]</span>
+                    <span class="pc-pill" id="sumServices">0</span>
+                </div>
+                <div class="pc-summary-row">
+                    <span><i data-lucide="target" class="w-3.5 h-3.5 inline-block" style="color:#6b7280;" aria-hidden="true"></i> @(isRtl ? "الأهداف" : "Objectives")</span>
+                    <span class="pc-pill" id="sumObjectives">0</span>
+                </div>
+                <div class="pc-summary-row">
+                    <span><i data-lucide="package" class="w-3.5 h-3.5 inline-block" style="color:#6b7280;" aria-hidden="true"></i> @(isRtl ? "الأصول" : "Assets")</span>
+                    <span class="pc-pill" id="sumAssets">0</span>
+                </div>
+                <div class="pc-summary-row">
+                    <span><i data-lucide="alert-triangle" class="w-3.5 h-3.5 inline-block" style="color:#6b7280;" aria-hidden="true"></i> @(isRtl ? "المخاطر" : "Risks")</span>
+                    <span class="pc-pill" id="sumRisks">0</span>
+                </div>
+                <div class="pc-summary-row">
+                    <span><i data-lucide="clipboard-check" class="w-3.5 h-3.5 inline-block" style="color:#6b7280;" aria-hidden="true"></i> @Shared["Column_Status"]</span>
+                    <span class="pc-pill" id="sumStatus">—</span>
+                </div>
+                <div class="pc-summary-row">
+                    <span><i data-lucide="layers" class="w-3.5 h-3.5 inline-block" style="color:#6b7280;" aria-hidden="true"></i> @Shared["Label_HasDetailedBreakdown"]</span>
+                    <span class="pc-pill pc-pill-off" id="sumBreakdown">@(isRtl ? "لا" : "No")</span>
+                </div>
+            </div>
+
+            <div class="pc-card" style="margin-bottom:0;">
+                <div class="pc-card-h">
+                    <h2><i data-lucide="git-branch" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@(isRtl ? "مخطط BPMN" : "BPMN Diagram")</h2>
+                </div>
+                @if (hasBpmn)
+                {
+                    <div style="display:flex;align-items:center;gap:.45rem;padding:.45rem .6rem;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:.375rem;font-size: var(--fs-xs);color:#065f46;margin-bottom:.5rem;">
+                        <i data-lucide="check-circle-2" class="w-4 h-4" aria-hidden="true"></i>
+                        <span>@(isRtl ? "موجود ومرتبط" : "Attached")</span>
+                    </div>
+                    <a href="~/AI/Diagrams?processId=@Model.Id" class="pc-btn pc-btn-outline" style="width:100%;justify-content:center;">
+                        <i data-lucide="edit" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "تعديل المخطط" : "Edit Diagram")
+                    </a>
+                }
+                else
+                {
+                    <div style="display:flex;align-items:center;gap:.45rem;padding:.45rem .6rem;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:.375rem;font-size: var(--fs-xs);color:#64748b;margin-bottom:.5rem;">
+                        <i data-lucide="alert-circle" class="w-4 h-4" aria-hidden="true"></i>
+                        <span>@(isRtl ? "لا يوجد مخطط بعد" : "No diagram yet")</span>
+                    </div>
+                    <a href="~/AI/Diagrams?processId=@Model.Id" class="pc-btn pc-btn-primary" style="width:100%;justify-content:center;">
+                        <i data-lucide="pen-tool" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "ارسم المخطط" : "Draw Diagram")
+                    </a>
+                }
+            </div>
+
+            <div class="pc-side-actions">
+                <button type="submit" class="pc-btn pc-btn-primary">
+                    <i data-lucide="save" class="w-4 h-4" aria-hidden="true"></i>@Shared["Button_SaveChanges"]
+                </button>
+                <a asp-action="Details" asp-route-id="@Model.Id" class="pc-btn pc-btn-ghost">
+                    <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>@Shared["Button_Cancel"]
+                </a>
+            </div>
+        </aside>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+        const isRtl = @Html.Raw(isRtl ? "true" : "false");
+
+        // ========== Chip-Select component (services / objectives / assets / risks) ==========
+        let openCS = null;
+        function csToggle(id) {
+            const drop = document.getElementById('csDrop_' + id);
+            if (openCS && openCS !== id) document.getElementById('csDrop_' + openCS).classList.add('hidden');
+            drop.classList.toggle('hidden');
+            openCS = drop.classList.contains('hidden') ? null : id;
+            if (!drop.classList.contains('hidden')) drop.querySelector('input[type="text"]').focus();
+        }
+        document.addEventListener('click', function(e) {
+            if (openCS && !e.target.closest('.cs-wrap')) {
+                document.getElementById('csDrop_' + openCS).classList.add('hidden');
+                openCS = null;
+            }
+        });
+        function csFilter(id, query) {
+            const q = (query || '').toLowerCase();
+            document.querySelectorAll('#csDrop_' + id + ' .cs-opt').forEach(lbl => {
+                lbl.style.display = lbl.textContent.toLowerCase().includes(q) ? '' : 'none';
+            });
+        }
+        function csUpdate(id) {
+            const chips = document.getElementById('csChips_' + id);
+            const ph = document.getElementById('csPh_' + id);
+            const checks = document.querySelectorAll('.cs-chk[data-csid="' + id + '"]:checked');
+            chips.innerHTML = '';
+            checks.forEach(chk => {
+                const label = chk.dataset.label || '';
+                const short = label.length > 22 ? label.substring(0, 20) + '…' : label;
+                chips.innerHTML += `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium" style="background:#dbeafe;color:#1e40af;">${short}<button type="button" class="ml-0.5 hover:text-red-600 font-bold" onclick="event.stopPropagation();csRemove('${id}','${chk.value}')">&times;</button></span>`;
+            });
+            ph.style.display = checks.length > 0 ? 'none' : '';
+            refreshSidebar();
+        }
+        function csRemove(id, val) {
+            const chk = document.querySelector('.cs-chk[data-csid="' + id + '"][value="' + val + '"]');
+            if (chk) { chk.checked = false; csUpdate(id); }
+        }
+        function csGetValues(id) {
+            return Array.from(document.querySelectorAll('.cs-chk[data-csid="' + id + '"]:checked')).map(c => c.value);
+        }
+
+        const statusSel = document.getElementById('StatusSel');
+        const breakdown = document.getElementById('HasDetailedBreakdown');
+        const code = document.getElementById('CodeInp');
+        const codePreview = document.getElementById('codePreview');
+
+        function refreshSidebar() {
+            const set = (el, n) => { const e = document.getElementById(el); if (e) e.textContent = n; };
+            set('sumServices', csGetValues('services').length);
+            set('sumObjectives', csGetValues('objectives').length);
+            set('sumAssets', csGetValues('assets').length);
+            set('sumRisks', csGetValues('risks').length);
+
+            const sumStatus = document.getElementById('sumStatus');
+            if (sumStatus && statusSel?.value && statusSel.options[statusSel.selectedIndex]) {
+                sumStatus.textContent = statusSel.options[statusSel.selectedIndex].textContent.trim();
+            } else if (sumStatus) {
+                sumStatus.textContent = '—';
+            }
+
+            const on = !!(breakdown?.checked);
+            const sb = document.getElementById('sumBreakdown');
+            if (sb) {
+                sb.textContent = on ? (isRtl ? 'نعم' : 'Yes') : (isRtl ? 'لا' : 'No');
+                sb.classList.toggle('pc-pill-on', on);
+                sb.classList.toggle('pc-pill-off', !on);
+            }
+
+            if (code && codePreview) codePreview.textContent = (code.value || '').trim() || '—';
+        }
+        statusSel?.addEventListener('change', refreshSidebar);
+        breakdown?.addEventListener('change', refreshSidebar);
+        code?.addEventListener('input', refreshSidebar);
+
+        // Initialize chip displays from server-rendered checked state
+        ['services','objectives','assets','risks'].forEach(id => csUpdate(id));
+
+        // ========== Tag input — seed from existing Tags, then chip UI ==========
+        const tagsBoundInput = document.getElementById('TagsBound');
+        const initialTags = (tagsBoundInput?.value || '')
+            .split(',').map(t => t.trim()).filter(Boolean);
+        const tags = [...initialTags];
+        const tagInput = document.getElementById('tagInput');
+        const tagContainer = document.getElementById('tagContainer');
+        const tagListHidden = document.getElementById('tagListHidden');
+        tagInput.addEventListener('keydown', function(e) {
+            if ((e.key === 'Enter' || e.key === ',') && this.value.trim()) {
+                e.preventDefault();
+                const tag = this.value.trim().replace(/,/g, '');
+                if (tag && !tags.includes(tag)) { tags.push(tag); renderTags(); }
+                this.value = '';
+            }
+            if (e.key === 'Backspace' && !this.value && tags.length > 0) { tags.pop(); renderTags(); }
+        });
+        function renderTags() {
+            tagContainer.querySelectorAll('.tag-badge').forEach(t => t.remove());
+            tags.forEach((tag, i) => {
+                const b = document.createElement('span');
+                b.className = 'tag-badge inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium';
+                b.style.cssText = 'background:#dbeafe;color:#1e40af;';
+                b.innerHTML = `${tag} <button type="button" class="ml-1 hover:text-red-600" onclick="removeTag(${i})">&times;</button>`;
+                tagContainer.insertBefore(b, tagInput);
+            });
+            tagListHidden.value = tags.join(',');
+        }
+        window.removeTag = function(i) { tags.splice(i, 1); renderTags(); };
+        renderTags();
+
+        // ========== Form submit — inject chip-select selections as hidden inputs ==========
+        document.getElementById('editForm').addEventListener('submit', function () {
+            const form = this;
+            function addCSHidden(csId, inputName) {
+                form.querySelectorAll(`input[type="hidden"][name="${inputName}"]`).forEach(el => el.remove());
+                csGetValues(csId).forEach(val => {
+                    const inp = document.createElement('input');
+                    inp.type = 'hidden'; inp.name = inputName; inp.value = val;
+                    form.appendChild(inp);
+                });
+            }
+            addCSHidden('services', 'SelectedServiceIds');
+            addCSHidden('objectives', 'SelectedObjectiveIds');
+            addCSHidden('assets', 'SelectedAssetIds');
+            addCSHidden('risks', 'SelectedRiskIds');
+            // TagList hidden input is updated live in renderTags(); nothing more to do.
+        });
+
+        refreshSidebar();
+    </script>
+}

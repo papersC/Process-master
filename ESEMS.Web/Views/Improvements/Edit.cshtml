@@ -1,0 +1,497 @@
+@model ImprovementInitiative
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = Shared["Action_EditImprovement"].Value;
+
+    var statusOptions = Enum.GetNames<ImprovementStatus>();
+
+    // Status pill colours — matched to Improvements/Details for visual continuity.
+    var statusLabel = Shared[$"ChangeRequestStatus_{Model.Status}"].Value ?? Model.Status.ToString();
+    var statusBg = Model.Status switch {
+        ImprovementStatus.Proposed => "#e0f2fe",
+        ImprovementStatus.UnderReview => "#fef3c7",
+        ImprovementStatus.Approved => "#dcfce7",
+        ImprovementStatus.InProgress => "#dbeafe",
+        ImprovementStatus.OnHold => "#f3f4f6",
+        ImprovementStatus.Completed => "#d1fae5",
+        ImprovementStatus.Closed => "#e5e7eb",
+        ImprovementStatus.Rejected => "#fee2e2",
+        ImprovementStatus.Cancelled => "#fecaca",
+        _             => "#e5e7eb"
+    };
+    var statusFg = Model.Status switch {
+        ImprovementStatus.Proposed => "#075985",
+        ImprovementStatus.UnderReview => "#92400e",
+        ImprovementStatus.Approved => "#166534",
+        ImprovementStatus.InProgress => "#1e40af",
+        ImprovementStatus.OnHold => "#4b5563",
+        ImprovementStatus.Completed => "#047857",
+        ImprovementStatus.Closed => "#374151",
+        ImprovementStatus.Rejected => "#991b1b",
+        ImprovementStatus.Cancelled => "#b91c1c",
+        _             => "#374151"
+    };
+}
+
+<div class="ie-shell">
+    <form asp-action="Edit" method="post" id="impr-form" x-data="{ activeTab: 'basics' }" data-guard-unsaved>
+        <!-- Hidden — preserved on POST. Code is auto-generated and never user-editable. -->
+        <input type="hidden" asp-for="Id" />
+        <input type="hidden" asp-for="Code" />
+        <input type="hidden" asp-for="CreatedAt" />
+        <input type="hidden" asp-for="CreatedById" />
+        <input type="hidden" asp-for="UpdatedAt" />
+        <input type="hidden" asp-for="UpdatedById" />
+        <input type="hidden" asp-for="Version" />
+
+        <!-- Sticky compact header — code badge (read-only), title, status pill, Save/Cancel -->
+        <div class="ie-header">
+            <div class="ie-header-row">
+                <div class="ie-header-title">
+                    <span class="ie-icon"><i data-lucide="edit-3" class="w-4 h-4" style="color:#005B99" aria-hidden="true"></i></span>
+                    <span class="ie-code-badge" title="@(isRtl ? "كود تلقائي — للقراءة فقط" : "Auto-generated — read-only")">
+                        <i data-lucide="lock" class="w-3 h-3" aria-hidden="true"></i>
+                        @Model.Code
+                    </span>
+                    <h1 class="ie-title">@ViewData["Title"]</h1>
+                    <span class="ie-status-pill" style="background:@statusBg;color:@statusFg">@statusLabel</span>
+                </div>
+                <div class="ie-header-actions">
+                    <a asp-action="Details" asp-route-id="@Model.Id" class="ie-btn ie-btn-ghost">
+                        <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
+                        @Shared["Button_Cancel"]
+                    </a>
+                    <button type="submit" class="ie-btn ie-btn-primary">
+                        <i data-lucide="save" class="w-4 h-4" aria-hidden="true"></i>
+                        @Shared["Button_SaveChanges"]
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab nav — non-sequential, jump anywhere; one form, one Save -->
+            <nav class="ie-tabnav" role="tablist">
+                <button type="button" @@click="activeTab = 'basics'" :class="activeTab === 'basics' ? 'ie-tab-active' : ''" class="ie-tab" role="tab">
+                    <i data-lucide="file-text" class="w-4 h-4" aria-hidden="true"></i>
+                    @(isRtl ? "المعلومات الأساسية" : "Basic Information")
+                </button>
+                <button type="button" @@click="activeTab = 'rels'" :class="activeTab === 'rels' ? 'ie-tab-active' : ''" class="ie-tab" role="tab">
+                    <i data-lucide="link" class="w-4 h-4" aria-hidden="true"></i>
+                    @(isRtl ? "الربط والتقييم" : "Relationships & Scoring")
+                </button>
+                <button type="button" @@click="activeTab = 'tracking'" :class="activeTab === 'tracking' ? 'ie-tab-active' : ''" class="ie-tab" role="tab">
+                    <i data-lucide="bar-chart-2" class="w-4 h-4" aria-hidden="true"></i>
+                    @(isRtl ? "التتبع والقياس" : "Tracking & Measurement")
+                </button>
+            </nav>
+        </div>
+
+        <!-- Validation summary -->
+        <div asp-validation-summary="ModelOnly" class="ie-validation-summary"></div>
+
+        <!-- ── Tab: Basic Information ─────────────────────────── -->
+        <div class="ie-card" x-show="activeTab === 'basics'" x-cloak>
+            <!-- Row 1: Priority, Status, Source (Code is in the sticky header) -->
+            <div class="ie-grid ie-grid-3">
+                <div>
+                    <label asp-for="Priority" class="ie-label">@Shared["Column_Priority"]</label>
+                    <input asp-for="Priority" type="number" min="1" max="5" class="ie-input" />
+                </div>
+                <div>
+                    <label asp-for="Status" class="ie-label">@Shared["Column_Status"]</label>
+                    <select asp-for="Status" class="ie-input">
+                        @foreach (var s in statusOptions)
+                        {
+                            <option value="@s">@Shared[$"Status_{s}"]</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label asp-for="Source" class="ie-label">@Shared["Label_Source"]</label>
+                    <select asp-for="Source" asp-items="@(new SelectList(Enum.GetValues<ChangeRequestSource>().Select(v => new { Value = v.ToString(), Display = Shared[$"ChangeRequestSource_{v}"].Value }), "Value", "Display"))" class="ie-input"></select>
+                </div>
+            </div>
+
+            <!-- Row 2: Titles -->
+            <div class="ie-grid ie-grid-2">
+                <div>
+                    <label asp-for="TitleEn" class="ie-label">@Shared["Label_TitleEn"] <span class="ie-required">*</span></label>
+                    <input asp-for="TitleEn" class="ie-input" />
+                    <span asp-validation-for="TitleEn" class="ie-error"></span>
+                </div>
+                <div>
+                    <label asp-for="TitleAr" class="ie-label">@Shared["Label_TitleAr"] <span class="ie-required">*</span></label>
+                    <input asp-for="TitleAr" dir="rtl" class="ie-input" />
+                    <span asp-validation-for="TitleAr" class="ie-error"></span>
+                </div>
+            </div>
+
+            <!-- Row 3: Internal Names -->
+            <div class="ie-grid ie-grid-2">
+                <div>
+                    <label asp-for="NameEn" class="ie-label">@Shared["Label_NameEn"]</label>
+                    <input asp-for="NameEn" class="ie-input" />
+                </div>
+                <div>
+                    <label asp-for="NameAr" class="ie-label">@Shared["Label_NameAr"]</label>
+                    <input asp-for="NameAr" dir="rtl" class="ie-input" />
+                </div>
+            </div>
+
+            <!-- Row 4: Descriptions -->
+            <div class="ie-grid ie-grid-2">
+                <div>
+                    <label asp-for="DescriptionEn" class="ie-label">@Shared["Label_DescriptionEn"]</label>
+                    <textarea asp-for="DescriptionEn" rows="3" class="ie-input"></textarea>
+                </div>
+                <div>
+                    <label asp-for="DescriptionAr" class="ie-label">@Shared["Label_DescriptionAr"]</label>
+                    <textarea asp-for="DescriptionAr" dir="rtl" rows="3" class="ie-input"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Tab: Relationships & Scoring ───────────────────── -->
+        <div class="ie-card" x-show="activeTab === 'rels'" x-cloak>
+            <!-- Row 1: Process, Service, Unit, Owner -->
+            <div class="ie-grid ie-grid-4">
+                <div>
+                    <label asp-for="ProcessId" class="ie-label">@Shared["Column_Process"]</label>
+                    <select asp-for="ProcessId" asp-items="ViewBag.Processes" class="ie-input">
+                        <option value="">@Shared["Option_Optional"]</option>
+                    </select>
+                </div>
+                <div>
+                    <label asp-for="ServiceId" class="ie-label">@Shared["Column_Service"]</label>
+                    <select asp-for="ServiceId" asp-items="ViewBag.Services" class="ie-input">
+                        <option value="">@Shared["Option_Optional"]</option>
+                    </select>
+                </div>
+                <div>
+                    <label asp-for="OwningUnitId" class="ie-label">@Shared["Label_Unit"]</label>
+                    <select asp-for="OwningUnitId" asp-items="ViewBag.OrganizationUnits" class="ie-input">
+                        <option value="">@Shared["Option_Optional"]</option>
+                    </select>
+                </div>
+                <div>
+                    <label asp-for="OwnerId" class="ie-label">@Shared["Label_Owner"]</label>
+                    <select asp-for="OwnerId" asp-items="ViewBag.Users" class="ie-input">
+                        <option value="">@Shared["Option_Optional"]</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Row 2: Impact, Effort, Progress, ExternalRef -->
+            <div class="ie-grid ie-grid-4">
+                <div>
+                    <label asp-for="ImpactScore" class="ie-label">@Shared["Label_Impact"]</label>
+                    <input asp-for="ImpactScore" type="number" min="1" max="10" class="ie-input" />
+                </div>
+                <div>
+                    <label asp-for="EffortScore" class="ie-label">@Shared["Label_Effort"]</label>
+                    <input asp-for="EffortScore" type="number" min="1" max="10" class="ie-input" />
+                </div>
+                <div>
+                    <label asp-for="ProgressPercentage" class="ie-label">@Shared["Column_Progress"]</label>
+                    <input asp-for="ProgressPercentage" type="number" min="0" max="100" class="ie-input" />
+                </div>
+                <div>
+                    <label asp-for="ExternalReferenceId" class="ie-label">@Shared["Label_ExternalRef"]</label>
+                    <input asp-for="ExternalReferenceId" class="ie-input" />
+                </div>
+            </div>
+
+            <!-- Row 3: Innovation Type, Horizon -->
+            <div class="ie-grid ie-grid-2">
+                <div>
+                    <label asp-for="InnovationType" class="ie-label">@Shared["Label_InnovationType"]</label>
+                    <select asp-for="InnovationType" asp-items="@(new SelectList(Enum.GetValues<InnovationType>().Select(v => new { Value = v.ToString(), Display = Shared[$"InnovationType_{v}"].Value }), "Value", "Display"))" class="ie-input">
+                        <option value="">@Shared["Option_Optional"]</option>
+                    </select>
+                </div>
+                <div>
+                    <label asp-for="Horizon" class="ie-label">@Shared["Label_Horizon"]</label>
+                    <select asp-for="Horizon" asp-items="@(new SelectList(Enum.GetValues<ImprovementHorizon>().Select(v => new { Value = v.ToString(), Display = Shared[$"ImprovementHorizon_{v}"].Value }), "Value", "Display"))" class="ie-input">
+                        <option value="">@Shared["Option_Optional"]</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Tab: Tracking & Measurement ────────────────────── -->
+        <div class="ie-card" x-show="activeTab === 'tracking'" x-cloak>
+            <!-- Row 1: Cost Savings, Time Savings -->
+            <div class="ie-grid ie-grid-2">
+                <div>
+                    <label asp-for="EstimatedCostSavings" class="ie-label">@Shared["Label_EstimatedCost"]</label>
+                    <input asp-for="EstimatedCostSavings" type="number" step="0.01" class="ie-input" />
+                </div>
+                <div>
+                    <label asp-for="EstimatedTimeSavings" class="ie-label">@Shared["Label_EstimatedTime"]</label>
+                    <input asp-for="EstimatedTimeSavings" type="number" step="0.01" class="ie-input" />
+                </div>
+            </div>
+
+            <!-- Row 2: Target Date, Completed Date -->
+            <div class="ie-grid ie-grid-2">
+                <div>
+                    <label asp-for="TargetDate" class="ie-label">@Shared["Label_TargetDate"]</label>
+                    <input asp-for="TargetDate" type="date" class="ie-input" />
+                </div>
+                <div>
+                    <label asp-for="CompletedDate" class="ie-label">@Shared["Label_CompletedDate"]</label>
+                    <input asp-for="CompletedDate" type="date" class="ie-input" />
+                </div>
+            </div>
+        </div>
+
+        <!-- Sticky bottom action bar — Cancel + Save Changes always one click away -->
+        <div class="ie-actionbar">
+            <a asp-action="Details" asp-route-id="@Model.Id" class="ie-btn ie-btn-ghost">
+                <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
+                @Shared["Button_Cancel"]
+            </a>
+            <div class="ie-actionbar-spacer"></div>
+            <button type="submit" class="ie-btn ie-btn-primary">
+                <i data-lucide="save" class="w-4 h-4" aria-hidden="true"></i>
+                @Shared["Button_SaveChanges"]
+            </button>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script nonce="@Context.CspNonce()">
+        lucide.createIcons();
+        // Unsaved-changes guard — wired by SP_GUARD_UNSAVED in site.js
+        // because the form carries data-guard-unsaved.
+    </script>
+}
+
+<style>
+    /* ── Outer shell ──────────────────────────────────────── */
+    .ie-shell {
+        min-height: calc(100vh - 60px);
+        padding: 1rem;
+        padding-bottom: 80px;
+        background: #f3f5f8;
+    }
+
+    /* ── Sticky compact header ─────────────────────────── */
+    .ie-header {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 0.6rem 1rem 0;
+        margin-bottom: 1rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .ie-header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+        padding-bottom: 0.55rem;
+    }
+    .ie-header-title {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        min-width: 0;
+        flex: 1;
+    }
+    .ie-icon { flex-shrink: 0; display: flex; }
+    .ie-code-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: var(--fs-xs);
+        font-weight: 600;
+        background: #f3f4f6;
+        color: #6b7280;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        flex-shrink: 0;
+        border: 1px solid #e5e7eb;
+        cursor: not-allowed;
+    }
+    .ie-code-badge i { opacity: 0.6; }
+    .ie-title {
+        font-size: var(--fs-base);
+        font-weight: 600;
+        color: #1f2937;
+        margin: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+        flex: 1;
+    }
+    .ie-status-pill {
+        font-size: var(--fs-xs);
+        font-weight: 700;
+        padding: 0.2rem 0.65rem;
+        border-radius: 999px;
+        white-space: nowrap;
+        flex-shrink: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+    .ie-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        flex-shrink: 0;
+    }
+
+    /* ── Buttons ──────────────────────────────────────── */
+    .ie-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: var(--fs-sm);
+        font-weight: 500;
+        padding: 0.4rem 0.85rem;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        cursor: pointer;
+        text-decoration: none;
+        transition: opacity 0.15s, background 0.15s;
+        white-space: nowrap;
+    }
+    .ie-btn:hover { text-decoration: none; opacity: 0.92; }
+    .ie-btn-ghost {
+        background: transparent;
+        border-color: #d1d5db;
+        color: #4b5563;
+    }
+    .ie-btn-ghost:hover { background: #f3f5f8; color: #1f2937; }
+    .ie-btn-primary {
+        background: #005B99;
+        color: #fff;
+        border-color: #005B99;
+    }
+    .ie-btn-primary:hover { background: #004580; color: #fff; }
+
+    /* ── Tabs ─────────────────────────────────────────── */
+    .ie-tabnav {
+        display: flex;
+        gap: 0.25rem;
+        border-top: 1px solid #f3f4f6;
+        padding-top: 0.4rem;
+    }
+    .ie-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: transparent;
+        border: none;
+        font-size: var(--fs-sm);
+        font-weight: 500;
+        color: #6b7280;
+        padding: 0.55rem 0.85rem;
+        border-radius: 6px 6px 0 0;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+    }
+    .ie-tab:hover { background: #f3f5f8; color: #1f2937; }
+    .ie-tab-active {
+        color: #005B99 !important;
+        border-bottom-color: #005B99 !important;
+        font-weight: 600;
+    }
+
+    /* ── Validation summary ───────────────────────────── */
+    .ie-validation-summary {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #991b1b;
+        padding: 0.6rem 0.85rem;
+        border-radius: 6px;
+        font-size: var(--fs-sm);
+        margin-bottom: 1rem;
+    }
+    .ie-validation-summary:empty { display: none; }
+    .ie-validation-summary ul { margin: 0; padding-inline-start: 1.25rem; }
+
+    /* ── Form card / panel ────────────────────────────── */
+    .ie-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    .ie-grid {
+        display: grid;
+        gap: 0.75rem;
+        margin-bottom: 0.85rem;
+    }
+    .ie-grid:last-child { margin-bottom: 0; }
+    .ie-grid-2 { grid-template-columns: 1fr 1fr; }
+    .ie-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .ie-grid-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+    @@media (max-width: 991px) {
+        .ie-grid-3, .ie-grid-4 { grid-template-columns: 1fr 1fr; }
+    }
+    @@media (max-width: 575px) {
+        .ie-grid-2, .ie-grid-3, .ie-grid-4 { grid-template-columns: 1fr; }
+    }
+
+    .ie-label {
+        display: block;
+        font-size: var(--fs-xs);
+        font-weight: 600;
+        color: #4b5563;
+        margin-bottom: 0.3rem;
+    }
+    .ie-required { color: #dc2626; }
+    .ie-input {
+        width: 100%;
+        padding: 0.45rem 0.65rem;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: var(--fs-sm);
+        background: #fff;
+        color: #1f2937;
+        transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .ie-input:focus {
+        outline: none;
+        border-color: #005B99;
+        box-shadow: 0 0 0 3px rgba(0, 91, 153, 0.12);
+    }
+    textarea.ie-input { resize: vertical; min-height: 70px; }
+    .ie-error {
+        display: block;
+        font-size: var(--fs-xs);
+        color: #dc2626;
+        margin-top: 0.2rem;
+    }
+    .ie-error:empty { display: none; }
+
+    /* ── Sticky bottom action bar ─────────────────────── */
+    .ie-actionbar {
+        position: sticky;
+        bottom: 0;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.04);
+        padding: 0.6rem 0.85rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 1rem;
+        z-index: 10;
+    }
+    .ie-actionbar-spacer { flex: 1; }
+
+    [x-cloak] { display: none !important; }
+</style>

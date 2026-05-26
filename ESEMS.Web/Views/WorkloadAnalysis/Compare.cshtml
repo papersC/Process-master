@@ -1,0 +1,301 @@
+@using ESEMS.Web.Models.WorkloadAnalysis
+@using ESEMS.Web.Models.Enums
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = isRtl ? "مقارنة السيناريوهات" : "Compare Scenarios";
+
+    var left  = ViewBag.LeftScenario  as WorkloadScenario;
+    var right = ViewBag.RightScenario as WorkloadScenario;
+    var others = ViewBag.OtherScenarios as List<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>
+        ?? new List<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>();
+
+    var leftItems  = left?.LineItems?.ToList()  ?? new List<WorkloadLineItem>();
+    var rightItems = right?.LineItems?.ToList() ?? new List<WorkloadLineItem>();
+    var allNames = leftItems.Select(li => li.Name).Concat(rightItems.Select(li => li.Name)).Distinct().ToList();
+
+    string StatusLabel(WorkloadScenarioStatus s) => s switch
+    {
+        WorkloadScenarioStatus.Draft => isRtl ? "مسودة" : "Draft",
+        WorkloadScenarioStatus.InReview => isRtl ? "قيد المراجعة" : "In Review",
+        WorkloadScenarioStatus.Approved => isRtl ? "معتمد" : "Approved",
+        WorkloadScenarioStatus.Archived => isRtl ? "مؤرشف" : "Archived",
+        _ => s.ToString()
+    };
+
+    // Δ helper — returns a styled span. Higher = red (worse for FTE/gap),
+    // lower = green. The convention matches the staffing-shortage perspective.
+    string Delta(decimal a, decimal b, string fmt = "N2")
+    {
+        var d = b - a;
+        var sign = d > 0 ? "+" : "";
+        var color = d > 0 ? "#b91c1c" : (d < 0 ? "#15803d" : "#94a3b8");
+        return $"<span style=\"color:{color};font-weight:600;font-size: var(--fs-xs);margin-inline-start:.35rem;\">({sign}{d.ToString(fmt)})</span>";
+    }
+
+    var arrowBack = isRtl ? "arrow-right" : "arrow-left";
+}
+
+<partial name="_WaStyles" />
+
+<div class="wa-page">
+    <div class="wa-pageheader">
+        <div>
+            <h1 class="wa-pagetitle"><i data-lucide="git-compare" aria-hidden="true"></i>@(isRtl ? "مقارنة السيناريوهات" : "Compare Scenarios")</h1>
+            <p class="wa-pagesub">@(isRtl ? "مقارنة جنباً إلى جنب بين سيناريوهين مع حساب الفروقات تلقائياً" : "Side-by-side comparison with automatic delta calculation")</p>
+        </div>
+        <div class="wa-actions">
+            @if (left != null)
+            {
+                <a asp-action="Details" asp-route-id="@left.Id" class="wa-btn wa-btn-outline"><i data-lucide="@arrowBack" class="w-3.5 h-3.5"></i>@(isRtl ? "العودة للسيناريو" : "Back to scenario")</a>
+            }
+            else
+            {
+                <a asp-action="Index" class="wa-btn wa-btn-outline"><i data-lucide="@arrowBack" class="w-3.5 h-3.5"></i>@(isRtl ? "كل السيناريوهات" : "All scenarios")</a>
+            }
+        </div>
+    </div>
+
+    @if (left == null)
+    {
+        <div class="wa-card">
+            <div class="wa-card-body">
+                <div class="wa-empty">
+                    <div class="wa-empty-icon"><i data-lucide="git-compare" class="w-10 h-10"></i></div>
+                    <div class="wa-empty-title">@(isRtl ? "لم يتم اختيار سيناريو للمقارنة" : "No scenario picked for comparison")</div>
+                    <div class="wa-empty-msg">@(isRtl ? "افتح أي سيناريو واضغط زر \"مقارنة\" لبدء المقارنة." : "Open any scenario and click the Compare button to start.")</div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        @* Picker — left scenario name on left, dropdown for right on right. *@
+        <form method="get" class="wa-toolbar" style="align-items:center;">
+            <input type="hidden" name="left" value="@left.Id" />
+            <span style="display:inline-flex;align-items:center;gap:.4rem;font-size: var(--fs-xs);color:#374151;font-weight:600;">
+                <span class="wa-code-pill">@left.Code</span>
+                <span style="color:#111827;">@left.Name</span>
+            </span>
+            <span style="color:#94a3b8;font-size: var(--fs-xs);">vs</span>
+            <select name="right" id="rightPicker" class="wa-filter" style="min-width:240px;flex:1;">
+                <option value="">@(isRtl ? "— اختر سيناريو —" : "— Select a scenario —")</option>
+                @foreach (var o in others)
+                {
+                    <option value="@o.Value" selected="@o.Selected">@o.Text</option>
+                }
+            </select>
+            <button type="submit" class="wa-btn wa-btn-primary wa-btn-sm"><i data-lucide="git-compare" class="w-3.5 h-3.5"></i>@(isRtl ? "قارن" : "Compare")</button>
+        </form>
+
+        if (right == null)
+        {
+            <div class="wa-card">
+                <div class="wa-card-body">
+                    <div style="display:flex;align-items:center;gap:.55rem;padding:.75rem 1rem;background:#fffbeb;border:1px solid #fde68a;border-radius:.375rem;color:#92400e;font-size: var(--fs-sm);">
+                        <i data-lucide="info" class="w-4 h-4"></i>
+                        <span>@(isRtl ? "اختر سيناريو آخر من القائمة أعلاه لبدء المقارنة." : "Pick another scenario from the dropdown above to start comparing.")</span>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            @* DELTA TOTALS STRIP — at-a-glance differences for the four key metrics. *@
+            var dHours = right.TotalWorkloadHours - left.TotalWorkloadHours;
+            var dBaseFTE = right.TotalRequiredFTE - left.TotalRequiredFTE;
+            var dTotalFTE = right.TotalFTE - left.TotalFTE;
+            var dGap = right.FTEGap - left.FTEGap;
+
+            string DeltaCls(decimal d) => d > 0 ? "wa-kpi-bad" : (d < 0 ? "wa-kpi-good" : "");
+            string DeltaBg(decimal d) => d > 0 ? "#fef2f2" : (d < 0 ? "#f0fdf4" : "#f1f5f9");
+            string DeltaFg(decimal d) => d > 0 ? "#b91c1c" : (d < 0 ? "#15803d" : "#475569");
+            string DeltaIcon(decimal d) => d > 0 ? "trending-up" : (d < 0 ? "trending-down" : "minus");
+
+            <div class="wa-kpis">
+                <div class="wa-kpi @DeltaCls(dHours)">
+                    <div class="wa-kpi-icon" style="background:@DeltaBg(dHours);color:@DeltaFg(dHours);"><i data-lucide="@DeltaIcon(dHours)" class="w-4 h-4"></i></div>
+                    <div class="wa-kpi-text">
+                        <div class="wa-kpi-label">Δ @(isRtl ? "ساعات العمل" : "Workload Hours")</div>
+                        <div class="wa-kpi-value">@(dHours > 0 ? "+" : "")@dHours.ToString("N0")</div>
+                        <div class="wa-kpi-sub">@right.Code @(isRtl ? "مقابل" : "vs") @left.Code</div>
+                    </div>
+                </div>
+                <div class="wa-kpi @DeltaCls(dBaseFTE)">
+                    <div class="wa-kpi-icon" style="background:@DeltaBg(dBaseFTE);color:@DeltaFg(dBaseFTE);"><i data-lucide="@DeltaIcon(dBaseFTE)" class="w-4 h-4"></i></div>
+                    <div class="wa-kpi-text">
+                        <div class="wa-kpi-label">Δ @(isRtl ? "الموظفون الأساسيون" : "Base FTE")</div>
+                        <div class="wa-kpi-value">@(dBaseFTE > 0 ? "+" : "")@dBaseFTE.ToString("N2")</div>
+                        <div class="wa-kpi-sub">@(isRtl ? "قبل النمو والإشراف" : "before growth + supervision")</div>
+                    </div>
+                </div>
+                <div class="wa-kpi @DeltaCls(dTotalFTE)">
+                    <div class="wa-kpi-icon" style="background:@DeltaBg(dTotalFTE);color:@DeltaFg(dTotalFTE);"><i data-lucide="@DeltaIcon(dTotalFTE)" class="w-4 h-4"></i></div>
+                    <div class="wa-kpi-text">
+                        <div class="wa-kpi-label">Δ @(isRtl ? "إجمالي الموظفين" : "Total FTE")</div>
+                        <div class="wa-kpi-value">@(dTotalFTE > 0 ? "+" : "")@dTotalFTE.ToString("N0")</div>
+                        <div class="wa-kpi-sub">@(isRtl ? "بعد النمو والإشراف" : "after growth + supervision")</div>
+                    </div>
+                </div>
+                <div class="wa-kpi @DeltaCls(dGap)">
+                    <div class="wa-kpi-icon" style="background:@DeltaBg(dGap);color:@DeltaFg(dGap);"><i data-lucide="@DeltaIcon(dGap)" class="w-4 h-4"></i></div>
+                    <div class="wa-kpi-text">
+                        <div class="wa-kpi-label">Δ @(isRtl ? "الفجوة" : "FTE Gap")</div>
+                        <div class="wa-kpi-value">@(dGap > 0 ? "+" : "")@dGap.ToString("N0")</div>
+                        <div class="wa-kpi-sub">
+                            @if (dGap > 0) { <span>@(isRtl ? "زيادة في النقص" : "more shortage")</span> }
+                            else if (dGap < 0) { <span>@(isRtl ? "تحسّن في الفجوة" : "gap improved")</span> }
+                            else { <span>@(isRtl ? "بدون تغيير" : "no change")</span> }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* Metric-by-metric comparison table with Δ column. *@
+            <div class="wa-card">
+                <div class="wa-card-head">
+                    <div class="wa-card-title"><i data-lucide="columns-2" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "مقارنة المقاييس" : "Metric Comparison")</div>
+                </div>
+                <div class="wa-card-body" style="padding:0;">
+                    <div class="wa-table-wrap">
+                        <table class="wa-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:28%;">@(isRtl ? "المعيار" : "Metric")</th>
+                                    <th style="width:28%;">
+                                        <div style="display:flex;flex-direction:column;gap:.1rem;"><span class="wa-code-pill" style="align-self:flex-start;">@left.Code</span><span style="font-size: var(--fs-xs);color:#6b7280;font-weight:500;">@left.Name</span></div>
+                                    </th>
+                                    <th style="width:28%;">
+                                        <div style="display:flex;flex-direction:column;gap:.1rem;"><span class="wa-code-pill" style="align-self:flex-start;background:#f5f3ff;color:#6d28d9;">@right.Code</span><span style="font-size: var(--fs-xs);color:#6b7280;font-weight:500;">@right.Name</span></div>
+                                    </th>
+                                    <th style="width:16%;">Δ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="color:#6b7280;">@(isRtl ? "السنة المالية" : "Fiscal Year")</td>
+                                    <td style="font-weight:600;">@left.FiscalYear</td>
+                                    <td style="font-weight:600;">@right.FiscalYear</td>
+                                    <td style="color:#94a3b8;">—</td>
+                                </tr>
+                                <tr>
+                                    <td style="color:#6b7280;">@(isRtl ? "الحالة" : "Status")</td>
+                                    <td><span class="wa-status-pill wa-status-@left.Status">@StatusLabel(left.Status)</span></td>
+                                    <td><span class="wa-status-pill wa-status-@right.Status">@StatusLabel(right.Status)</span></td>
+                                    <td style="color:#94a3b8;">—</td>
+                                </tr>
+                                <tr>
+                                    <td style="color:#6b7280;">@(isRtl ? "الوحدة" : "Unit")</td>
+                                    <td>@(left.OwningUnit?.Name ?? "—")</td>
+                                    <td>@(right.OwningUnit?.Name ?? "—")</td>
+                                    <td style="color:#94a3b8;">—</td>
+                                </tr>
+                                <tr>
+                                    <td style="color:#6b7280;">@(isRtl ? "الإعدادات" : "Config")</td>
+                                    <td>@(left.Config?.NameEn ?? "—")</td>
+                                    <td>@(right.Config?.NameEn ?? "—")</td>
+                                    <td style="color:#94a3b8;">—</td>
+                                </tr>
+                                <tr>
+                                    <td style="color:#6b7280;">@(isRtl ? "معدل النمو ٪" : "Growth Rate %")</td>
+                                    <td class="wa-mono">@(left.GrowthRatePercent?.ToString("N1") ?? "—")</td>
+                                    <td class="wa-mono">@(right.GrowthRatePercent?.ToString("N1") ?? "—")</td>
+                                    <td class="wa-mono" style="color:#94a3b8;">—</td>
+                                </tr>
+                                <tr>
+                                    <td style="color:#6b7280;">@(isRtl ? "سنوات الإسقاط" : "Projection Years")</td>
+                                    <td class="wa-mono">@left.ProjectionYears</td>
+                                    <td class="wa-mono">@right.ProjectionYears</td>
+                                    <td class="wa-mono" style="color:#94a3b8;">—</td>
+                                </tr>
+                                <tr>
+                                    <td style="color:#6b7280;">@(isRtl ? "العدد الحالي" : "Current Headcount")</td>
+                                    <td class="wa-mono">@(left.CurrentHeadcount?.ToString() ?? "—")</td>
+                                    <td class="wa-mono">@(right.CurrentHeadcount?.ToString() ?? "—")</td>
+                                    <td class="wa-mono" style="color:#94a3b8;">—</td>
+                                </tr>
+                                <tr style="background:#eff6ff;">
+                                    <td style="color:#1e3a8a;font-weight:700;">@(isRtl ? "إجمالي الساعات" : "Total Workload Hours")</td>
+                                    <td class="wa-mono" style="font-weight:700;">@left.TotalWorkloadHours.ToString("N0")</td>
+                                    <td class="wa-mono" style="font-weight:700;">@right.TotalWorkloadHours.ToString("N0")</td>
+                                    <td class="wa-mono">@Html.Raw(Delta(left.TotalWorkloadHours, right.TotalWorkloadHours, "N0"))</td>
+                                </tr>
+                                <tr style="background:#eff6ff;">
+                                    <td style="color:#1e3a8a;font-weight:700;">@(isRtl ? "الموظفون الأساسيون" : "Base FTE")</td>
+                                    <td class="wa-mono" style="font-weight:700;">@left.TotalRequiredFTE.ToString("N2")</td>
+                                    <td class="wa-mono" style="font-weight:700;">@right.TotalRequiredFTE.ToString("N2")</td>
+                                    <td class="wa-mono">@Html.Raw(Delta(left.TotalRequiredFTE, right.TotalRequiredFTE))</td>
+                                </tr>
+                                <tr style="background:#eff6ff;">
+                                    <td style="color:#1e3a8a;font-weight:700;">@(isRtl ? "إجمالي الموظفين" : "Total FTE")</td>
+                                    <td class="wa-mono" style="font-weight:700;color:#005B99;">@left.TotalFTE.ToString("N0")</td>
+                                    <td class="wa-mono" style="font-weight:700;color:#005B99;">@right.TotalFTE.ToString("N0")</td>
+                                    <td class="wa-mono">@Html.Raw(Delta(left.TotalFTE, right.TotalFTE, "N0"))</td>
+                                </tr>
+                                <tr style="background:#eff6ff;">
+                                    <td style="color:#1e3a8a;font-weight:700;">@(isRtl ? "الفجوة" : "FTE Gap")</td>
+                                    <td class="wa-mono" style="font-weight:700;color:@(left.FTEGap > 0 ? "#b91c1c" : "#15803d");">@(left.FTEGap > 0 ? "+" : "")@left.FTEGap.ToString("N0")</td>
+                                    <td class="wa-mono" style="font-weight:700;color:@(right.FTEGap > 0 ? "#b91c1c" : "#15803d");">@(right.FTEGap > 0 ? "+" : "")@right.FTEGap.ToString("N0")</td>
+                                    <td class="wa-mono">@Html.Raw(Delta(left.FTEGap, right.FTEGap, "N0"))</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            @* Line items aligned by name with hour delta. *@
+            if (allNames.Any())
+            {
+                <div class="wa-card">
+                    <div class="wa-card-head">
+                        <div class="wa-card-title"><i data-lucide="list" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "بنود حجم العمل" : "Line Items") <span class="wa-card-count">@allNames.Count</span></div>
+                    </div>
+                    <div class="wa-card-body" style="padding:0;">
+                        <div class="wa-table-wrap">
+                            <table class="wa-table">
+                                <thead>
+                                    <tr>
+                                        <th>@(isRtl ? "البند" : "Name")</th>
+                                        <th class="wa-num">@left.Code @(isRtl ? "الحجم" : "Vol")</th>
+                                        <th class="wa-num">@left.Code @(isRtl ? "ساعات" : "Hrs")</th>
+                                        <th class="wa-num">@right.Code @(isRtl ? "الحجم" : "Vol")</th>
+                                        <th class="wa-num">@right.Code @(isRtl ? "ساعات" : "Hrs")</th>
+                                        <th class="wa-num">Δ @(isRtl ? "ساعات" : "Hrs")</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var name in allNames)
+                                    {
+                                        var l = leftItems.FirstOrDefault(x => x.Name == name);
+                                        var r = rightItems.FirstOrDefault(x => x.Name == name);
+                                        var dh = (r?.WorkloadHours ?? 0m) - (l?.WorkloadHours ?? 0m);
+                                        var dhSign = dh > 0 ? "+" : "";
+                                        var dhColor = dh > 0 ? "#b91c1c" : (dh < 0 ? "#15803d" : "#94a3b8");
+                                        <tr>
+                                            <td style="font-weight:600;color:#111827;">@name</td>
+                                            <td class="wa-num wa-mono">@(l?.AnnualVolume.ToString("N0") ?? "—")</td>
+                                            <td class="wa-num wa-mono">@(l?.WorkloadHours.ToString("N1") ?? "—")</td>
+                                            <td class="wa-num wa-mono">@(r?.AnnualVolume.ToString("N0") ?? "—")</td>
+                                            <td class="wa-num wa-mono">@(r?.WorkloadHours.ToString("N1") ?? "—")</td>
+                                            <td class="wa-num wa-mono" style="font-weight:700;color:@dhColor;">@dhSign@dh.ToString("N1")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    }
+</div>
+
+@section Scripts {
+<script nonce="@Context.CspNonce()">
+if (window.lucide) lucide.createIcons();
+// Auto-submit when picking a different right scenario.
+document.getElementById('rightPicker')?.addEventListener('change', function() {
+    if (this.value) this.form.submit();
+});
+</script>
+}

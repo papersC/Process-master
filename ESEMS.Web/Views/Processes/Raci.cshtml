@@ -1,0 +1,586 @@
+@model ESEMS.Web.Models.APQC.Process
+@using System.Globalization
+@inject IStringLocalizer<SharedResource> Shared
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = isRtl ? "مصفوفة RACI" : "RACI Matrix";
+    var processName = isRtl ? (Model.NameAr ?? Model.NameEn) : (Model.NameEn ?? Model.NameAr);
+
+    var allOrgUnits = ViewBag.AllOrgUnits as List<ESEMS.Web.Models.APQC.OrganizationUnit>
+        ?? new List<ESEMS.Web.Models.APQC.OrganizationUnit>();
+    var allJobPositions = ViewBag.AllJobPositions as List<ESEMS.Web.Models.Common.JobPosition>
+        ?? new List<ESEMS.Web.Models.Common.JobPosition>();
+    var canEdit = ViewBag.CanEdit as bool? ?? false;
+
+    string UnitName(ESEMS.Web.Models.APQC.OrganizationUnit u) =>
+        isRtl ? (u.NameAr ?? u.NameEn ?? "") : (u.NameEn ?? u.NameAr ?? "");
+
+    string GetRaciLetter(IEnumerable<ESEMS.Web.Models.APQC.RaciBase> entries, int ouId) {
+        var entry = entries.FirstOrDefault(e => e.OrganizationUnitId == ouId);
+        if (entry == null) return "";
+        return entry.Role switch {
+            ESEMS.Web.Models.Enums.RACIRole.Responsible => "R",
+            ESEMS.Web.Models.Enums.RACIRole.Accountable => "A",
+            ESEMS.Web.Models.Enums.RACIRole.Consulted => "C",
+            ESEMS.Web.Models.Enums.RACIRole.Informed => "I",
+            _ => ""
+        };
+    }
+    string GetRaciBg(string letter) => letter switch {
+        "R" => "#005B99",
+        "A" => "#34C38F",
+        "C" => "#F1B44C",
+        "I" => "#50A5F1",
+        _ => "transparent"
+    };
+    string RoleLabel(string letter) => letter switch {
+        "R" => isRtl ? "مسؤول"  : "Responsible",
+        "A" => isRtl ? "مُساءَل" : "Accountable",
+        "C" => isRtl ? "مُستشار" : "Consulted",
+        "I" => isRtl ? "مُطَّلع" : "Informed",
+        _ => ""
+    };
+}
+
+<partial name="_ModuleBanner" model="@(new { Title = (isRtl ? "مصفوفة RACI" : "RACI Matrix"), Subtitle = (isRtl ? $"مصفوفة المسؤوليات للعملية: {processName}" : $"Responsibility matrix for process: {processName}"), Icon = "users" })" />
+
+@Html.AntiForgeryToken()
+
+@{
+    // Back button: prefer the Referer when it's same-origin and not the Raci page
+    // itself (so a reload doesn't loop). Falls back to Process Details when there's
+    // no usable Referer (direct URL hit, bookmark, opened in a new tab from a link
+    // that didn't pass a referrer policy that includes the path).
+    var raciBackFallback = Url.Action("Details", "Processes", new { id = Model.Id }) ?? "/";
+    string raciBackUrl = raciBackFallback;
+    var referer = Context.Request.Headers["Referer"].ToString();
+    if (!string.IsNullOrWhiteSpace(referer) && Uri.TryCreate(referer, UriKind.Absolute, out var refererUri))
+    {
+        var sameHost = string.Equals(refererUri.Host, Context.Request.Host.Host, StringComparison.OrdinalIgnoreCase);
+        var sameAsCurrentPath = string.Equals(refererUri.AbsolutePath, Context.Request.Path.Value, StringComparison.OrdinalIgnoreCase);
+        if (sameHost && !sameAsCurrentPath)
+        {
+            raciBackUrl = referer;
+        }
+    }
+}
+<div class="d-flex align-items-center gap-2 mt-3 mb-3 flex-wrap">
+    <div class="d-flex align-items-center gap-2 fw-semibold" style="color:#005B99;">
+        <i data-lucide="grid-3x3" style="width:18px;height:18px;"></i>
+        <span>@Model.Code — @processName</span>
+    </div>
+    <a href="@raciBackUrl" class="btn btn-sm btn-outline-secondary ms-auto">
+        <i data-lucide="arrow-@(isRtl ? "right" : "left")" style="width:14px;height:14px;"></i>
+        @Shared["Button_Back_Short"]
+    </a>
+</div>
+
+@if (!allOrgUnits.Any())
+{
+    <div class="card text-center py-5 text-muted">
+        <i data-lucide="building" style="width:48px;height:48px;opacity:0.3;margin:0 auto 12px;"></i>
+        <p class="mb-1">@(isRtl ? "لا توجد وحدات تنظيمية مُعرَّفة" : "No organization units configured")</p>
+        <p class="small">
+            <a asp-controller="OrganizationUnits" asp-action="Index">@(isRtl ? "أضف الوحدات أولاً من إدارة الوحدات التنظيمية" : "Add organization units first from the Organization Units admin page")</a>
+        </p>
+    </div>
+}
+else
+{
+    <!-- ═══════════ CARDS / EDITOR VIEW (default) ═══════════ -->
+    <div id="cardsView">
+        @{
+            void RenderEntityCard(string level, string code, string name, string badgeClass, IEnumerable<ESEMS.Web.Models.APQC.RaciBase> raci, string entityId, int? owningUnitId, string? owningUnitName)
+            {
+                var assigned = raci.ToList();
+                // L5 (Task) RACI is hidden by default — most orgs stop at L3/L4.
+                // The "Show task-level RACI" toggle reveals them. Tagging via
+                // a class so a single CSS rule + one JS line handle the toggle.
+                var hiddenClass = level == "Task" ? " raci-l5 d-none" : "";
+                <div class="card mb-3 shadow-sm raci-entity@(hiddenClass)"
+                     data-level="@level" data-entity-id="@entityId"
+                     data-owning-unit-id="@(owningUnitId?.ToString() ?? "")"
+                     data-owning-unit-name="@(owningUnitName ?? "")">
+                    <div class="card-body py-3">
+                        <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+                            <span class="badge @badgeClass">@(level == "Process" ? "L3" : level == "Activity" ? "L4" : "L5")</span>
+                            <span class="text-muted small font-monospace">@code</span>
+                            <span class="fw-semibold">@name</span>
+                            @if (canEdit)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-primary ms-auto raci-add"
+                                        data-entity-id="@entityId" data-level="@level" data-entity-name="@name">
+                                    <i data-lucide="user-plus" style="width:14px;height:14px;"></i>
+                                    @(isRtl ? "إضافة تعيين" : "Add assignment")
+                                </button>
+                            }
+                        </div>
+                        <div class="raci-pills d-flex gap-2 flex-wrap" data-entity-id="@entityId">
+                            @if (!assigned.Any())
+                            {
+                                <span class="text-muted small fst-italic">@(isRtl ? "لا توجد تعيينات بعد" : "No assignments yet")</span>
+                            }
+                            else
+                            {
+                                foreach (var a in assigned)
+                                {
+                                    var letter = a.Role switch {
+                                        ESEMS.Web.Models.Enums.RACIRole.Responsible => "R",
+                                        ESEMS.Web.Models.Enums.RACIRole.Accountable => "A",
+                                        ESEMS.Web.Models.Enums.RACIRole.Consulted => "C",
+                                        ESEMS.Web.Models.Enums.RACIRole.Informed => "I",
+                                        _ => ""
+                                    };
+                                    var unitNm = a.OrganizationUnit != null
+                                        ? (isRtl ? (a.OrganizationUnit.NameAr ?? a.OrganizationUnit.NameEn) : (a.OrganizationUnit.NameEn ?? a.OrganizationUnit.NameAr))
+                                        : "—";
+                                    var roleNm = a.JobPosition != null
+                                        ? (isRtl ? (a.JobPosition.NameAr ?? a.JobPosition.NameEn) : (a.JobPosition.NameEn ?? a.JobPosition.NameAr))
+                                        : null;
+                                    <span class="raci-pill d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill"
+                                          style="background: rgba(0,91,153,0.05); border: 1px solid rgba(0,91,153,0.15); font-size: var(--fs-xs);"
+                                          data-unit-id="@a.OrganizationUnitId"
+                                          data-role-id="@(a.JobPositionId ?? "")"
+                                          data-role="@letter">
+                                        <span class="badge rounded-pill" style="background: @GetRaciBg(letter); color: white; width: 24px; font-size: var(--fs-xs);" title="@RoleLabel(letter)">@letter</span>
+                                        <span class="fw-medium text-dark">@unitNm</span>
+                                        @if (!string.IsNullOrWhiteSpace(roleNm))
+                                        {
+                                            <span class="text-muted" style="font-size: var(--fs-xs);">· @roleNm</span>
+                                        }
+                                        @if (canEdit)
+                                        {
+                                            <button type="button" class="btn btn-sm p-0 ms-1 raci-remove"
+                                                    data-entity-id="@entityId" data-level="@level"
+                                                    data-unit-id="@a.OrganizationUnitId"
+                                                    data-role-id="@(a.JobPositionId ?? "")"
+                                                    style="line-height: 1; color: #dc2626;"
+                                                    aria-label="@(isRtl ? "إزالة" : "Remove")">
+                                                <i data-lucide="x" style="width:14px;height:14px;"></i>
+                                            </button>
+                                        }
+                                    </span>
+                                }
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+
+        @{
+            var procOwnerName = Model.OwningUnit != null
+                ? (isRtl ? (Model.OwningUnit.NameAr ?? Model.OwningUnit.NameEn) : (Model.OwningUnit.NameEn ?? Model.OwningUnit.NameAr))
+                : null;
+            RenderEntityCard("Process", Model.Code, processName, "bg-primary", Model.RaciMatrix, Model.Id, Model.OwningUnitId, procOwnerName);
+        }
+
+        @foreach (var activity in Model.Activities.OrderBy(a => a.Code))
+        {
+            var actName = isRtl ? (activity.NameAr ?? activity.NameEn) : (activity.NameEn ?? activity.NameAr);
+            // Activity owner falls back to Process owner if not separately set —
+            // ensures the role picker always has a scope to filter against.
+            var actOwnerId = activity.OwningUnitId ?? Model.OwningUnitId;
+            var actOwnerName = (activity.OwningUnit ?? Model.OwningUnit) is { } u
+                ? (isRtl ? (u.NameAr ?? u.NameEn) : (u.NameEn ?? u.NameAr))
+                : null;
+            RenderEntityCard("Activity", activity.Code, actName ?? "", "bg-success", activity.RaciMatrix, activity.Id, actOwnerId, actOwnerName);
+
+            foreach (var task in activity.Tasks.OrderBy(t => t.Code))
+            {
+                var taskName = isRtl ? (task.NameAr ?? task.NameEn) : (task.NameEn ?? task.NameAr);
+                var taskOwnerId = task.OwningUnitId ?? activity.OwningUnitId ?? Model.OwningUnitId;
+                var taskOwnerName = (task.OwningUnit ?? activity.OwningUnit ?? Model.OwningUnit) is { } tu
+                    ? (isRtl ? (tu.NameAr ?? tu.NameEn) : (tu.NameEn ?? tu.NameAr))
+                    : null;
+                RenderEntityCard("Task", task.Code, taskName ?? "", "bg-secondary", task.RaciMatrix, task.Id, taskOwnerId, taskOwnerName);
+            }
+        }
+
+        @if (!Model.Activities.Any())
+        {
+            <div class="alert alert-info small d-flex align-items-start gap-2 mt-3">
+                <i data-lucide="info" style="width:16px;height:16px;flex-shrink:0;margin-up:2px;"></i>
+                <div>
+                    <strong>@(isRtl ? "هذه العملية لا تحتوي على أنشطة تفصيلية." : "This process has no detailed activities.")</strong>
+                    @(isRtl
+                        ? " يمكنك تعيين المسؤوليات على مستوى العملية أعلاه، أو إضافة أنشطة من صفحة تفاصيل العملية لتعيين RACI لكل خطوة."
+                        : " You can assign RACI at the process level above, or add activities from the Process Details page to define RACI per step.")
+                </div>
+            </div>
+        }
+
+        @{
+            // L5 task count — sum across all activities. Only render the
+            // toggle when there's at least one task; otherwise the button
+            // does nothing.
+            var taskCount = Model.Activities.SelectMany(a => a.Tasks.Where(t => !t.IsDeleted)).Count();
+            var taskCountLabel = isRtl
+                ? $"يوجد {taskCount} مهمة بمستوى L5 (متقدّم — اختياري)"
+                : $"{taskCount} task-level (L5) item{(taskCount == 1 ? "" : "s")} — advanced, optional";
+        }
+        @if (taskCount > 0)
+        {
+            <div class="d-flex align-items-center gap-2 my-3 p-2 rounded" style="background:#f8fafc;border:1px dashed #cbd5e1;">
+                <i data-lucide="layers" style="width:16px;height:16px;color:#64748b;"></i>
+                <span class="small text-muted">@taskCountLabel</span>
+                <button type="button" id="toggleL5" class="btn btn-sm btn-outline-secondary ms-auto"
+                        data-shown="false"
+                        aria-pressed="false">
+                    <i data-lucide="chevron-down" id="toggleL5Icon" style="width:14px;height:14px;"></i>
+                    <span id="toggleL5Label">@(isRtl ? "إظهار RACI على مستوى المهام" : "Show task-level RACI")</span>
+                </button>
+            </div>
+        }
+
+        <!-- Legend -->
+        <div class="card mt-3">
+            <div class="card-body py-2 d-flex flex-wrap gap-3 align-items-center" style="font-size: var(--fs-xs);">
+                <span class="fw-semibold text-muted">@(isRtl ? "الأدوار:" : "Roles:")</span>
+                <span class="d-flex align-items-center gap-1"><span class="badge rounded-pill" style="background:#005B99;width:24px;">R</span>@(isRtl ? "مسؤول — ينفّذ العمل" : "Responsible — does the work")</span>
+                <span class="d-flex align-items-center gap-1"><span class="badge rounded-pill" style="background:#34C38F;width:24px;">A</span>@(isRtl ? "مُساءَل — يعتمد (واحد فقط)" : "Accountable — approves (one only)")</span>
+                <span class="d-flex align-items-center gap-1"><span class="badge rounded-pill" style="background:#F1B44C;width:24px;">C</span>@(isRtl ? "مُستشار — يُستشار قبل التنفيذ" : "Consulted — asked before doing")</span>
+                <span class="d-flex align-items-center gap-1"><span class="badge rounded-pill" style="background:#50A5F1;width:24px;">I</span>@(isRtl ? "مُطَّلع — يُبلَّغ بالنتيجة" : "Informed — told after")</span>
+                @if (canEdit)
+                {
+                    <span class="ms-auto text-muted small" id="raciSaveIndicator" style="display:none;">
+                        <i data-lucide="check-circle" style="width:14px;height:14px;color:#34C38F;"></i>
+                        <span id="raciSaveMsg">@(isRtl ? "تم الحفظ" : "Saved")</span>
+                    </span>
+                }
+            </div>
+        </div>
+    </div>
+
+}
+
+@section Scripts {
+<script nonce="@Context.CspNonce()">
+lucide.createIcons();
+
+(function() {
+    const isRtl = @(isRtl ? "true" : "false");
+    const csrf = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+
+    // L5 (task) RACI toggle — hidden by default, revealed by "Show task-level
+    // RACI" button. State persists per-process in localStorage so a user
+    // working their way through tasks doesn't have to re-toggle on every
+    // page refresh.
+    (function () {
+        const btn = document.getElementById('toggleL5');
+        if (!btn) return;
+        const icon = document.getElementById('toggleL5Icon');
+        const label = document.getElementById('toggleL5Label');
+        const SHOWN_TXT = isRtl ? 'إخفاء RACI على مستوى المهام' : 'Hide task-level RACI';
+        const HIDDEN_TXT = isRtl ? 'إظهار RACI على مستوى المهام' : 'Show task-level RACI';
+        const STORAGE_KEY = 'esems.raci.l5.shown.@(Model.Id)';
+        function apply(shown) {
+            document.querySelectorAll('.raci-entity.raci-l5').forEach(el => {
+                el.classList.toggle('d-none', !shown);
+            });
+            btn.dataset.shown = shown ? 'true' : 'false';
+            btn.setAttribute('aria-pressed', shown ? 'true' : 'false');
+            if (label) label.textContent = shown ? SHOWN_TXT : HIDDEN_TXT;
+            if (icon) {
+                icon.setAttribute('data-lucide', shown ? 'chevron-up' : 'chevron-down');
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+        // Restore prior state for this specific process.
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored === '1') apply(true);
+        btn.addEventListener('click', () => {
+            const next = btn.dataset.shown !== 'true';
+            apply(next);
+            try { localStorage.setItem(STORAGE_KEY, next ? '1' : '0'); } catch (_) { /* private mode — ignore */ }
+        });
+    })();
+
+    const CAN_EDIT = @(canEdit ? "true" : "false");
+    if (CAN_EDIT) {
+    // --- Save status toast ---
+    const indicator = document.getElementById('raciSaveIndicator');
+    const msgEl = document.getElementById('raciSaveMsg');
+    function flash(text, ok) {
+        if (!indicator) return;
+        msgEl.textContent = text;
+        indicator.querySelector('i')?.setAttribute('data-lucide', ok ? 'check-circle' : 'alert-circle');
+        indicator.style.display = '';
+        if (window.lucide) lucide.createIcons();
+        clearTimeout(flash._t);
+        flash._t = setTimeout(() => indicator.style.display = 'none', 2200);
+    }
+
+    async function postAssign(level, entityId, unitId, role, jobRoleId) {
+        const fd = new FormData();
+        fd.append('level', level);
+        fd.append('entityId', entityId);
+        fd.append('unitId', unitId);
+        fd.append('role', role || '');
+        fd.append('jobRoleId', jobRoleId || '');
+        const res = await fetch('@Url.Action("AssignRaci", "Processes")', {
+            method: 'POST', body: fd,
+            headers: { 'RequestVerificationToken': csrf }
+        });
+        return res.json();
+    }
+
+    // Units available on the page (rendered by server as JSON).
+    const UNITS = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        allOrgUnits.Select(u => new {
+            id = u.Id,
+            name = isRtl ? (u.NameAr ?? u.NameEn) : (u.NameEn ?? u.NameAr)
+        })
+    ));
+
+    // JobPosition catalog for the role-level picker. unitId=null means the role
+    // is global (available to all units); otherwise the role is scoped to a
+    // specific unit and only shows when the card's owner unit matches.
+    const JOB_ROLES = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        allJobPositions.Select(j => new {
+            id = j.Id,
+            name = isRtl ? (j.NameAr ?? j.NameEn) : (j.NameEn ?? j.NameAr),
+            isLeadership = j.IsLeadership,
+            unitId = j.OrganizationUnitId
+        })
+    ));
+
+    const COLORS = { R: '#005B99', A: '#34C38F', C: '#F1B44C', I: '#50A5F1' };
+    const ROLES = [
+        { k: 'R', labelEn: 'Responsible (does the work)', labelAr: 'مسؤول (ينفّذ العمل)' },
+        { k: 'A', labelEn: 'Accountable (approves — one per row)', labelAr: 'مُساءَل (يعتمد — واحد فقط)' },
+        { k: 'C', labelEn: 'Consulted (asked before doing)', labelAr: 'مُستشار (يُستشار قبل التنفيذ)' },
+        { k: 'I', labelEn: 'Informed (told after)',  labelAr: 'مُطَّلع (يُبلَّغ بالنتيجة)' }
+    ];
+
+    // F-027: full HTML-entity escape (was `<`-only). Escape `&` first so the
+    // other replacements don't double-encode, then the remaining metacharacters
+    // — same coverage as _Layout's escaper — since these strings are dropped
+    // into innerHTML via the template literal below.
+    function escHtml(s) {
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function pillHtml(unitId, unitName, role, jobRoleId, jobRoleName) {
+        const safeUnit = escHtml(unitName);
+        const safeRole = jobRoleName ? escHtml(jobRoleName) : '';
+        const roleFragment = safeRole
+            ? `<span class="text-muted" style="font-size: var(--fs-xs);">· ${safeRole}</span>`
+            : '';
+        return `
+            <span class="raci-pill d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill"
+                  style="background: rgba(0,91,153,0.05); border: 1px solid rgba(0,91,153,0.15); font-size: var(--fs-xs);"
+                  data-unit-id="${unitId}" data-role-id="${jobRoleId || ''}" data-role="${role}">
+                <span class="badge rounded-pill" style="background:${COLORS[role]};color:white;width:24px;font-size: var(--fs-xs);">${role}</span>
+                <span class="fw-medium text-dark">${safeUnit}</span>
+                ${roleFragment}
+                <button type="button" class="btn btn-sm p-0 ms-1 raci-remove"
+                        data-unit-id="${unitId}" data-role-id="${jobRoleId || ''}"
+                        style="line-height:1;color:#dc2626;" aria-label="Remove">
+                    <i data-lucide="x" style="width:14px;height:14px;"></i>
+                </button>
+            </span>`;
+    }
+
+    // --- Add assignment Swal ---
+    document.querySelectorAll('.raci-add').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const entityId = btn.dataset.entityId;
+            const level = btn.dataset.level;
+            const entityName = btn.dataset.entityName || '';
+            const card = btn.closest('.raci-entity');
+            const pillsEl = card.querySelector('.raci-pills');
+
+            // Owner unit defaults to the entity's OwningUnitId — that's the
+            // typical case for R (Responsible) and A (Accountable). But C
+            // (Consulted) and I (Informed) routinely cross unit boundaries
+            // — Legal is Consulted on contracts, PMO is Informed of major
+            // changes, etc. So we KEEP a unit picker (defaulting to owner)
+            // and refresh the role list whenever the user switches unit.
+            const ownerUnitId = card.dataset.owningUnitId || '';
+            const ownerUnitName = card.dataset.owningUnitName || '';
+            if (!ownerUnitId) {
+                await Swal.fire({
+                    icon: 'warning',
+                    title: isRtl ? 'لا توجد وحدة مالكة' : 'No owner unit',
+                    text: isRtl
+                        ? 'حدد وحدة مالكة لهذا العنصر أولاً (من صفحة التفاصيل) قبل تعيين RACI.'
+                        : 'Set an owner unit on this item first (from its Details page) before assigning RACI.',
+                    confirmButtonColor: '#005B99'
+                });
+                return;
+            }
+
+            // Filter helper — returns role <option>s scoped to a unit id.
+            // Unit-specific roles surface above globals.
+            function rolesForUnit(unitId) {
+                const eligible = JOB_ROLES
+                    .filter(j => !j.unitId || j.unitId === unitId)
+                    .sort((a, b) => {
+                        const aScoped = a.unitId === unitId ? 0 : 1;
+                        const bScoped = b.unitId === unitId ? 0 : 1;
+                        if (aScoped !== bScoped) return aScoped - bScoped;
+                        return (a.name || '').localeCompare(b.name || '');
+                    });
+                if (eligible.length === 0) {
+                    return `<option value="">${isRtl ? '— لا توجد أدوار متاحة —' : '— No roles available —'}</option>`;
+                }
+                return `<option value="">${isRtl ? '— اختر دوراً —' : '— pick a role —'}</option>`
+                    + eligible.map(j => `<option value="${j.id}">${j.name}${j.isLeadership ? ' ★' : ''}</option>`).join('');
+            }
+
+            // Owner-unit goes first in the unit dropdown so it's always the
+            // default. Followed by every other active unit. Used for cross-
+            // unit C / I picks.
+            const otherUnitOptions = UNITS
+                .filter(u => u.id !== ownerUnitId)
+                .map(u => `<option value="${u.id}">${u.name}</option>`)
+                .join('');
+            const unitOptions =
+                `<option value="${ownerUnitId}" selected>${ownerUnitName.replace(/</g,'&lt;')} ${isRtl ? '(الوحدة المالكة)' : '(owner unit)'}</option>`
+                + otherUnitOptions;
+
+            const roleOptions = ROLES.map(r => `
+                <label class="d-flex align-items-center gap-2 p-2 rounded border border-light hover-bg"
+                       style="cursor:pointer; background:rgba(0,0,0,0.02);">
+                    <input type="radio" name="raciRole" value="${r.k}" />
+                    <span class="badge rounded-pill" style="background:${COLORS[r.k]};color:white;width:24px;font-size: var(--fs-xs);">${r.k}</span>
+                    <span class="small">${isRtl ? r.labelAr : r.labelEn}</span>
+                </label>`).join('');
+
+            const { value: form } = await Swal.fire({
+                title: isRtl ? 'إضافة تعيين RACI' : 'Add RACI assignment',
+                html: `
+                    <div class="text-${isRtl ? 'end' : 'start'} small text-muted mb-3">
+                        ${isRtl ? 'على' : 'For'}: <strong>${entityName.replace(/</g,'&lt;')}</strong>
+                    </div>
+                    <div class="text-${isRtl ? 'end' : 'start'}">
+                        <label class="form-label fw-semibold small">${isRtl ? 'الوحدة التنظيمية' : 'Organization unit'} <span style="color:#dc2626;">*</span></label>
+                        <select id="swalRaciUnit" class="form-select mb-1">${unitOptions}</select>
+                        <div class="text-muted small mb-3" style="font-size: var(--fs-xs);">
+                            ${isRtl
+                                ? 'الافتراضي هو الوحدة المالكة (R/A). غيّر الوحدة لتعيين C/I من وحدات أخرى.'
+                                : 'Defaults to the owner unit (typical for R/A). Switch units to assign C/I from other units.'}
+                        </div>
+                        <label class="form-label fw-semibold small">${isRtl ? 'الدور الوظيفي' : 'Job role'} <span style="color:#dc2626;">*</span></label>
+                        <select id="swalRaciJobPosition" class="form-select mb-3">
+                            ${rolesForUnit(ownerUnitId)}
+                        </select>
+                        <label class="form-label fw-semibold small">${isRtl ? 'حرف RACI' : 'RACI letter'} <span style="color:#dc2626;">*</span></label>
+                        <div class="d-flex flex-column gap-1">${roleOptions}</div>
+                    </div>`,
+                showCancelButton: true,
+                confirmButtonText: isRtl ? 'حفظ' : 'Save',
+                cancelButtonText:  isRtl ? 'إلغاء' : 'Cancel',
+                confirmButtonColor: '#005B99',
+                cancelButtonColor: '#64748b',
+                width: 520,
+                didOpen: () => {
+                    // Re-filter the role picker whenever the unit changes —
+                    // unit-specific roles for the new unit + globals.
+                    const unitSel = document.getElementById('swalRaciUnit');
+                    const roleSel = document.getElementById('swalRaciJobPosition');
+                    unitSel.addEventListener('change', () => {
+                        roleSel.innerHTML = rolesForUnit(unitSel.value);
+                    });
+                },
+                preConfirm: () => {
+                    const u = document.getElementById('swalRaciUnit').value;
+                    const j = document.getElementById('swalRaciJobPosition').value;
+                    const r = document.querySelector('input[name=raciRole]:checked')?.value;
+                    if (!u) { Swal.showValidationMessage(isRtl ? 'اختر وحدة' : 'Please pick a unit'); return false; }
+                    if (!j) { Swal.showValidationMessage(isRtl ? 'اختر دوراً وظيفياً' : 'Please pick a job role'); return false; }
+                    if (!r) { Swal.showValidationMessage(isRtl ? 'اختر حرف RACI' : 'Please pick a RACI letter'); return false; }
+                    return { unitId: u, jobRoleId: j, role: r };
+                }
+            });
+            if (!form) return;
+
+            // Client-side guard: one Accountable per entity. The "row" in
+            // RACI methodology is the entity, regardless of unit/role split.
+            // Pick the conflicting pill by data-role="A" — but exempt the
+            // exact cell the user is editing (same unit + same role).
+            if (form.role === 'A') {
+                const existingA = Array.from(pillsEl.querySelectorAll('.raci-pill[data-role="A"]'))
+                    .find(p => !(p.dataset.unitId === form.unitId
+                              && (p.dataset.roleId || '') === (form.jobRoleId || '')));
+                if (existingA) {
+                    const confirm = await Swal.fire({
+                        icon: 'warning',
+                        title: isRtl ? 'مُساءَل واحد فقط' : 'One Accountable per row',
+                        text: isRtl
+                            ? 'هناك تعيين آخر مُحدد كـ "A". سيتم إزالته أولاً.'
+                            : 'Another assignment is already "A". It will be cleared first.',
+                        showCancelButton: true,
+                        confirmButtonText: isRtl ? 'متابعة' : 'Continue',
+                        cancelButtonText:  isRtl ? 'إلغاء' : 'Cancel',
+                        confirmButtonColor: '#005B99'
+                    });
+                    if (!confirm.isConfirmed) return;
+                    await postAssign(level, entityId, existingA.dataset.unitId, '', existingA.dataset.roleId || '');
+                    existingA.remove();
+                }
+            }
+
+            const res = await postAssign(level, entityId, form.unitId, form.role, form.jobRoleId);
+            if (!res.success) {
+                Swal.fire({ icon:'error', title:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_Error"].Value)), text: res.error || @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_SaveFailed"].Value)), confirmButtonColor:'#005B99' });
+                return;
+            }
+
+            // Remove any existing pill for the SAME (unit, role) cell — that
+            // means we're updating the letter on an existing assignment, not
+            // adding a new one. Different role on same unit = different cell,
+            // leave it alone.
+            const existingPill = Array.from(pillsEl.querySelectorAll('.raci-pill'))
+                .find(p => p.dataset.unitId === form.unitId
+                        && (p.dataset.roleId || '') === (form.jobRoleId || ''));
+            if (existingPill) existingPill.remove();
+
+            // Kill the "no assignments yet" placeholder if present.
+            const placeholder = pillsEl.querySelector('.text-muted.fst-italic');
+            if (placeholder) placeholder.remove();
+
+            const unitName = UNITS.find(u => u.id === form.unitId)?.name || '(unknown)';
+            const jobRole = form.jobRoleId ? JOB_ROLES.find(j => j.id === form.jobRoleId) : null;
+            pillsEl.insertAdjacentHTML('beforeend', pillHtml(form.unitId, unitName, form.role, form.jobRoleId, jobRole?.name));
+            if (window.lucide) lucide.createIcons();
+            flash(isRtl ? 'تم الحفظ' : 'Saved', true);
+        });
+    });
+
+    // --- Remove assignment (click × on pill) ---
+    document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.raci-remove');
+        if (!btn) return;
+        const pill = btn.closest('.raci-pill');
+        const card = btn.closest('.raci-entity');
+        const level = card.dataset.level;
+        const entityId = card.dataset.entityId;
+        const unitId = btn.dataset.unitId;
+        const jobRoleId = btn.dataset.roleId || '';
+
+        const res = await postAssign(level, entityId, unitId, '', jobRoleId);
+        if (!res.success) {
+            Swal.fire({ icon:'error', title:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_Error"].Value)), text: res.error || @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_RemoveFailed"].Value)), confirmButtonColor:'#005B99' });
+            return;
+        }
+        pill.remove();
+        flash(isRtl ? 'تم الحذف' : 'Removed', true);
+
+        // Re-add placeholder if empty.
+        const pillsEl = card.querySelector('.raci-pills');
+        if (!pillsEl.querySelector('.raci-pill')) {
+            pillsEl.insertAdjacentHTML('beforeend',
+                `<span class="text-muted small fst-italic">${isRtl ? 'لا توجد تعيينات بعد' : 'No assignments yet'}</span>`);
+        }
+    });
+    } // end if CAN_EDIT
+})();
+</script>
+}

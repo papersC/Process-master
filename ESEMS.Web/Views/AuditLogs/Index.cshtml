@@ -1,0 +1,181 @@
+@using System.Globalization
+@model IEnumerable<ESEMS.Web.Models.Common.AuditLog>
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = Shared["Title_AuditLogs"].Value;
+    ViewBag.BannerIcon = "scroll-text";
+    ViewBag.BannerTitle = Shared["Title_AuditLogs"].Value;
+    ViewBag.BannerSubtitle = Shared["Audit_HelpText"].Value;
+
+    string ActionBadge(ESEMS.Web.Models.Enums.AuditAction action) => action switch
+    {
+        ESEMS.Web.Models.Enums.AuditAction.Create => "bg-green-100 text-green-700",
+        ESEMS.Web.Models.Enums.AuditAction.Update => "bg-blue-100 text-blue-700",
+        ESEMS.Web.Models.Enums.AuditAction.Delete => "bg-red-100 text-red-700",
+        _ => "bg-gray-100 text-gray-700"
+    };
+}
+
+@*  Module banner replaced with compact header. *@
+<div class="d-flex align-items-center justify-content-between mb-3 pb-2" style="border-bottom: 1px solid #e5e7eb;">
+    <div>
+        <h1 style="margin:0;font-size: var(--fs-base);font-weight:600;color:#111827;display:flex;align-items:center;gap:.5rem;">
+            <i data-lucide="scroll-text" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>
+            @Shared["Title_AuditLogs"]
+        </h1>
+        <p style="margin:0;font-size: var(--fs-xs);color:#6b7280;">@Shared["Audit_HelpText"]</p>
+    </div>
+</div>
+
+<!-- AI Summarize action -->
+<div class="flex flex-wrap items-center justify-end gap-4 mb-6">
+    <button type="button" onclick="summarizeLogs()" class="inline-flex items-center gap-2 px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors shadow-sm" style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+        <i data-lucide="sparkles" class="w-4 h-4"></i>
+        @Shared["Button_AiSummarize"]
+    </button>
+</div>
+
+<!-- Filter Panel (Collapsible) -->
+<div class="bg-white rounded-lg shadow-sm mb-6">
+    <button onclick="toggleFilter()" class="w-full px-4 py-3 flex items-center justify-between text-start border-b border-gray-200">
+        <span class="text-sm font-medium text-gray-700 flex items-center gap-2">
+            <i data-lucide="filter" class="w-4 h-4 text-primary-500"></i>
+            @Shared["Label_FilterOptions"]
+        </span>
+        <i data-lucide="chevron-down" id="filterIcon" class="w-4 h-4 text-gray-400 transition-transform"></i>
+    </button>
+    <div id="filterPanel" class="p-6 hidden">
+        <form method="get" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">@Shared["Column_Action"]</label>
+                <select name="action" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                    <option value="">@Shared["Option_All"]</option>
+                    <option value="Create">@Shared["AuditAction_Create"]</option>
+                    <option value="Update">@Shared["AuditAction_Update"]</option>
+                    <option value="Delete">@Shared["AuditAction_Delete"]</option>
+                    <option value="Login">@Shared["AuditAction_Login"]</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">@Shared["Column_Entity"]</label>
+                <input type="text" name="entity" placeholder="@Shared["Placeholder_EntityType"]" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">@Shared["Column_User"]</label>
+                <input type="text" name="user" placeholder="@Shared["Placeholder_Username"]" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
+            </div>
+            <div class="flex items-end gap-2">
+                <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-lg hover:bg-primary-600 transition-colors">
+                    <i data-lucide="filter" class="w-4 h-4"></i>
+                    @Shared["Button_Filter"]
+                </button>
+                <a asp-action="Index" class="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                    @Shared["Button_Clear"]
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Data Table -->
+<div class="bg-white rounded-lg shadow-sm overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full esems-datatable">
+            <thead style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+                <tr>
+                    <th class="px-4 py-3 text-start text-xs font-semibold text-white uppercase tracking-wider">@Shared["Column_Time"]</th>
+                    <th class="px-4 py-3 text-start text-xs font-semibold text-white uppercase tracking-wider">@Shared["Column_User"]</th>
+                    <th class="px-4 py-3 text-start text-xs font-semibold text-white uppercase tracking-wider">@Shared["Column_Action"]</th>
+                    <th class="px-4 py-3 text-start text-xs font-semibold text-white uppercase tracking-wider">@Shared["Column_Entity"]</th>
+                    <th class="px-4 py-3 text-start text-xs font-semibold text-white uppercase tracking-wider">@Shared["Column_EntityId"]</th>
+                    <th class="px-4 py-3 text-start text-xs font-semibold text-white uppercase tracking-wider">@(isRtl ? "العنوان" : "IP")</th>
+                    <th class="px-4 py-3 text-start text-xs font-semibold text-white uppercase tracking-wider">@(isRtl ? "المتصفح" : "User Agent")</th>
+                    <th class="px-4 py-3 text-start text-xs font-semibold text-white uppercase tracking-wider">@Shared["Column_Notes"]</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+                @foreach (var a in Model)
+                {
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-4 py-3">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="clock" class="w-4 h-4 text-gray-400"></i>
+                                <span class="text-sm text-gray-600">@a.Timestamp.ToLocalTime().ToDubaiString("yyyy-MM-dd HH:mm")</span>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3">
+                            <div class="flex items-center gap-2">
+                                <div class="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
+                                    <i data-lucide="user" class="w-4 h-4 text-primary-600"></i>
+                                </div>
+                                <span class="text-sm font-medium text-gray-900">@(a.UserName ?? Shared["Value_System"].Value)</span>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium @ActionBadge(a.Action)">@a.Action</span>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-900">@(Shared[$"EntityType_{a.EntityType}"].ResourceNotFound ? a.EntityType : Shared[$"EntityType_{a.EntityType}"].Value)</td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-mono bg-gray-100 text-gray-700">@a.EntityId</span>
+                        </td>
+                        @* IpAddress + UserAgent come from the AuditSaveChangesInterceptor
+                           via HttpContext.Connection.RemoteIpAddress and the User-Agent
+                           header. Loopback shows up as ::1; the UA string is long, so
+                           truncate visually with a hover-title for the full value. *@
+                        <td class="px-4 py-3 text-xs font-mono text-gray-600">
+                            @(string.IsNullOrEmpty(a.IpAddress) ? "—" : a.IpAddress)
+                        </td>
+                        <td class="px-4 py-3 text-xs text-gray-500 max-w-[12rem] truncate" title="@a.UserAgent">
+                            @(string.IsNullOrEmpty(a.UserAgent) ? "—" : a.UserAgent)
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600 max-w-xs truncate" title="@a.Notes">@a.Notes</td>
+                    </tr>
+                }
+                @if (!Model.Any())
+                {
+                    <tr>
+                        <td colspan="8" class="text-center py-12">
+                            <div class="flex flex-col items-center">
+                                <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                                    <i data-lucide="scroll-text" class="w-8 h-8 text-gray-400"></i>
+                                </div>
+                                <p class="text-gray-500 font-medium">@Shared["Text_NoAuditLogsFound"]</p>
+                                <p class="text-gray-400 text-sm mt-1">@Shared["Text_SystemActivityAppears"]</p>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        lucide.createIcons();
+
+        function toggleFilter() {
+            const panel = document.getElementById('filterPanel');
+            const icon = document.getElementById('filterIcon');
+            panel.classList.toggle('hidden');
+            icon.classList.toggle('rotate-180');
+        }
+
+        function summarizeLogs() {
+            const rows = document.querySelectorAll('.esems-datatable tbody tr');
+            const logs = [];
+            rows.forEach(r => {
+                const cols = r.querySelectorAll('td');
+                if (cols.length >= 6) {
+                    logs.push(`Time: ${cols[0].textContent.trim()}, User: ${cols[1].textContent.trim()}, Action: ${cols[2].textContent.trim()}, Entity: ${cols[3].textContent.trim()}, ID: ${cols[4].textContent.trim()}, Notes: ${cols[5].textContent.trim()}`);
+                }
+            });
+            if (logs.length === 0) {
+                Swal.fire('@(isRtl ? "تنبيه" : "Warning")', '@(isRtl ? "لا توجد سجلات لتلخيصها." : "No logs found to summarize.")', 'warning');
+                return;
+            }
+            executeAiAnalysis('/AI/SummarizeAuditLogs', logs, '@(isRtl ? "ملخص سجلات التدقيق" : "Audit Logs Summary")');
+        }
+    </script>
+}

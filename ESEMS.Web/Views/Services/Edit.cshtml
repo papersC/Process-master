@@ -1,0 +1,783 @@
+@model Service
+@{
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = Shared["Title_EditService"]?.Value ?? (isRtl ? "تعديل الخدمة" : "Edit Service");
+
+    var step1 = isRtl ? "الهوية" : "Identity";
+    var step2 = isRtl ? "الروابط والوسوم" : "Linking & Tags";
+    var step3 = isRtl ? "اتفاقية الخدمة والرسوم" : "SLA & Pricing";
+
+    var existingProcessIds   = (List<string>)(ViewBag.ExistingProcessIds   ?? new List<string>());
+    var existingAssetIds     = (List<string>)(ViewBag.ExistingAssetIds     ?? new List<string>());
+    var existingRiskIds      = (List<string>)(ViewBag.ExistingRiskIds      ?? new List<string>());
+    var existingObjectiveIds = (List<string>)(ViewBag.ExistingObjectiveIds ?? new List<string>());
+}
+
+<partial name="_WizardStyles" />
+
+<style>
+    /* Chip-select component (mirrors Create wizard) */
+    .cs-wrap { position: relative; }
+    .cs-trigger { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; padding: .35rem .5rem; border: 1px solid #d1d5db; border-radius: .375rem; min-height: 36px; background: #fff; cursor: pointer; }
+    .cs-trigger:focus-within, .cs-trigger.cs-open { border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .cs-chips { display: flex; flex-wrap: wrap; gap: .25rem; flex: 1; min-width: 0; }
+    .cs-ph { font-size: var(--fs-xs); color: #94a3b8; }
+    .cs-caret { width: 14px; height: 14px; color: #94a3b8; flex-shrink: 0; }
+    .cs-drop { position: absolute; z-index: 50; margin-top: .25rem; width: 100%; background: #fff; border: 1px solid #e5e7eb; border-radius: .375rem; box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+    .cs-drop.is-hidden { display: none; }
+    .cs-search { padding: .45rem .55rem; border-bottom: 1px solid #f1f5f9; }
+    .cs-search input { width: 100%; padding: .3rem .45rem; font-size: var(--fs-xs); border: 1px solid #e5e7eb; border-radius: .25rem; outline: none; }
+    .cs-list { max-height: 200px; overflow-y: auto; padding: .2rem 0; }
+    .cs-opt { display: flex; align-items: center; gap: .45rem; padding: .35rem .65rem; cursor: pointer; font-size: var(--fs-xs); }
+    .cs-opt:hover { background: #f1f5f9; }
+    .cs-chip { display: inline-flex; align-items: center; gap: .2rem; padding: .1rem .4rem; border-radius: .25rem; font-size: var(--fs-xs); font-weight: 600; background: #dbeafe; color: #1e40af; }
+    .cs-chip-x { background: transparent; border: none; cursor: pointer; color: #1d4ed8; font-weight: 700; padding: 0 0 0 .15rem; }
+    .cs-chip-x:hover { color: #b91c1c; }
+
+    /* Tag input */
+    .wiz-tag-container { display: flex; flex-wrap: wrap; gap: .25rem; padding: .35rem .5rem; border: 1px solid #d1d5db; border-radius: .375rem; min-height: 36px; background: #fff; cursor: text; align-items: center; }
+    .wiz-tag-container:focus-within { border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .wiz-tag-container input { flex: 1; min-width: 120px; outline: none; border: none; background: transparent; font-size: var(--fs-xs); padding: 0; }
+    .wiz-tag-badge { display: inline-flex; align-items: center; gap: .2rem; padding: .1rem .4rem; border-radius: .25rem; font-size: var(--fs-xs); font-weight: 600; background: #dbeafe; color: #1e40af; }
+    .wiz-tag-badge button { background: transparent; border: none; cursor: pointer; color: #1d4ed8; font-weight: 700; padding: 0 0 0 .15rem; }
+    .wiz-tag-badge button:hover { color: #b91c1c; }
+
+    .wiz-checkbox-row { display: inline-flex; align-items: center; gap: .4rem; padding-top: .25rem; }
+</style>
+
+<div class="wiz-pageheader">
+    <h1 class="wiz-pagetitle"><i data-lucide="edit" style="width:20px;height:20px;color:#005B99;"></i>@ViewData["Title"]</h1>
+    <div style="display:inline-flex;align-items:center;gap:.85rem;">
+        <span class="wiz-stepcount">@(isRtl ? "الخطوة" : "Step") <b id="stepCounter">1</b> @(isRtl ? "من" : "of") 3</span>
+        <a asp-action="Details" asp-route-id="@Model.Id" class="wiz-cancellink"><i data-lucide="x" style="width:14px;height:14px;"></i> @Shared["Action_Back"]</a>
+    </div>
+</div>
+
+<form asp-action="Edit" method="post" id="wizardForm" novalidate data-guard-unsaved>
+    <input type="hidden" asp-for="Id" />
+    <input type="hidden" asp-for="Code" />
+    <input type="hidden" asp-for="DisplayOrder" />
+    <input type="hidden" asp-for="CreatedAt" />
+    <input type="hidden" asp-for="CreatedById" />
+    <input type="hidden" asp-for="UpdatedAt" />
+    <input type="hidden" asp-for="UpdatedById" />
+    <input type="hidden" asp-for="Version" />
+    <input type="hidden" id="tagListHidden" name="TagList" />
+    @* TagsBound seeds the chip list from existing Tags; TagList overrides on POST. *@
+    <input type="hidden" asp-for="Tags" id="TagsBound" />
+
+    <div asp-validation-summary="ModelOnly" style="margin-bottom:.6rem;padding:.6rem .8rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.375rem;color:#b91c1c;font-size: var(--fs-xs);"></div>
+
+    <div class="wiz-grid">
+        <aside class="wiz-rail">
+            <ul class="wiz-steps" id="wizardSteps">
+                <li class="wiz-step active" data-step="1" data-wiz-goto="1">
+                    <span class="wiz-stepnum">1</span>
+                    <span class="wiz-steptext"><span class="wiz-steptitle">@step1</span><span class="wiz-stepsub">@(isRtl ? "الاسم، النوع، القناة، المالك" : "Name, type, channel, owner")</span></span>
+                </li>
+                <li class="wiz-step" data-step="2" data-wiz-goto="2">
+                    <span class="wiz-stepnum">2</span>
+                    <span class="wiz-steptext"><span class="wiz-steptitle">@step2</span><span class="wiz-stepsub">@(isRtl ? "العمليات، الأهداف، الأصول، المخاطر" : "Processes, objectives, assets, risks")</span></span>
+                </li>
+                <li class="wiz-step" data-step="3" data-wiz-goto="3">
+                    <span class="wiz-stepnum">3</span>
+                    <span class="wiz-steptext"><span class="wiz-steptitle">@step3</span><span class="wiz-stepsub">@(isRtl ? "أهداف SLA والرسوم" : "SLA targets and pricing")</span></span>
+                </li>
+            </ul>
+        </aside>
+
+        <section class="wiz-main">
+            <div class="wiz-checklist" data-state="missing"
+                 data-required-checklist
+                 data-required-fields='NameEn:@(isRtl ? "الاسم بالإنجليزية" : "English name")|NameAr:@(isRtl ? "الاسم بالعربية" : "Arabic name")'
+                 data-text-prefix='@(isRtl ? "ما زال يلزم: " : "Still need: ")'
+                 data-text-ok='@(isRtl ? "جاهز للحفظ." : "Ready to save.")'
+                 data-text-sep=' · '>
+                <i data-lucide="circle-dashed" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                <span class="wiz-checklist-text"></span>
+            </div>
+
+            <!-- Step 1 -->
+            <div class="wiz-step-content active" data-step="1">
+                <div class="wiz-stephdr"><i data-lucide="file-text" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 1: @step1</h2></div>
+
+                <div class="pc-row">
+                    <label class="wiz-checkbox-row">
+                        <input asp-for="IsActive" id="IsActiveInp" />
+                        <span style="font-size: var(--fs-xs);color:#374151;">@Shared["Label_IsActive"]</span>
+                    </label>
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="NameEn" class="pc-label">@Shared["Label_NameEn"] <span class="req">*</span></label>
+                        <input asp-for="NameEn" id="NameEn" class="pc-input" />
+                        <span asp-validation-for="NameEn" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NameAr" class="pc-label">@Shared["Label_NameAr"] <span class="req">*</span></label>
+                        <input asp-for="NameAr" id="NameAr" dir="rtl" class="pc-input" />
+                        <span asp-validation-for="NameAr" class="pc-err"></span>
+                    </div>
+                </div>
+
+                <div class="pc-grid-3 pc-row">
+                    <div>
+                        <label asp-for="ServiceType" class="pc-label">@Shared["Label_ServiceType"]</label>
+                        <select asp-for="ServiceType" id="ServiceTypeSel" class="pc-select">
+                            @foreach (var t in Enum.GetValues<ESEMS.Web.Models.Enums.ServiceType>()) { <option value="@t">@Shared[$"ServiceType_{t}"]</option> }
+                        </select>
+                    </div>
+                    <div>
+                        <label asp-for="Channel" class="pc-label">@Shared["Label_Channel"]</label>
+                        <select asp-for="Channel" id="ChannelSel" class="pc-select">
+                            @foreach (var c in Enum.GetValues<ESEMS.Web.Models.Enums.ChannelType>()) { <option value="@c">@Shared[$"ChannelType_{c}"]</option> }
+                        </select>
+                    </div>
+                    <div>
+                        <label asp-for="OwningUnitId" class="pc-label">@Shared["Column_OwningUnit"]</label>
+                        @{ var canReassignUnit = ViewBag.CanReassignUnit == null || (bool)ViewBag.CanReassignUnit; }
+                        <select asp-for="OwningUnitId" id="OwningUnitSel" asp-items="ViewBag.OrganizationUnits" class="pc-select" disabled="@(!canReassignUnit)">
+                            <option value="">@Shared["Option_Optional"]</option>
+                        </select>
+                        @if (!canReassignUnit)
+                        {
+                            <small style="color:#6b7280;display:block;margin-top:4px;">@Shared["Hint_OwningUnitLocked"]</small>
+                        }
+                    </div>
+                </div>
+
+                <div class="pc-row">
+                    <label asp-for="ServiceCategoryId" class="pc-label">@(isRtl ? "فئة الخدمة" : "Service Category")</label>
+                    <select asp-for="ServiceCategoryId" asp-items="@(ViewBag.ServiceCategories as Microsoft.AspNetCore.Mvc.Rendering.SelectList)" class="pc-select">
+                        <option value="">@(isRtl ? "— اختر فئة —" : "— Select a category —")</option>
+                    </select>
+                    <div class="pc-help">
+                        @(isRtl
+                            ? "اختر من القائمة المعتمدة. تُدار الفئات من «الإعدادات ← فئات الخدمات»."
+                            : "Pick from the approved list. Manage values in Settings → Service Categories.")
+                    </div>
+                </div>
+
+                <div class="pc-grid-2">
+                    <div>
+                        <label asp-for="DescriptionEn" class="pc-label">@Shared["Label_DescriptionEn"]</label>
+                        <textarea asp-for="DescriptionEn" rows="3" class="pc-textarea"></textarea>
+                    </div>
+                    <div>
+                        <label asp-for="DescriptionAr" class="pc-label">@Shared["Label_DescriptionAr"]</label>
+                        <textarea asp-for="DescriptionAr" dir="rtl" rows="3" class="pc-textarea"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="wiz-step-content" data-step="2">
+                <div class="wiz-stephdr"><i data-lucide="link-2" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 2: @step2</h2></div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label class="pc-label"><i data-lucide="git-branch" style="width:14px;height:14px;color:#005B99;vertical-align:-2px;"></i> @Shared["Section_LinkedProcesses"]</label>
+                        <div class="cs-wrap" data-cs-id="processes">
+                            <div class="cs-trigger" data-cs-toggle>
+                                <div class="cs-chips" data-cs-chips></div>
+                                <span class="cs-ph" data-cs-ph>@(isRtl ? "اختر العمليات..." : "Select processes...")</span>
+                                <i class="cs-caret" data-lucide="chevron-down"></i>
+                            </div>
+                            <div class="cs-drop is-hidden" data-cs-drop>
+                                <div class="cs-search"><input type="text" placeholder="@(isRtl ? "بحث..." : "Search...")" data-cs-search /></div>
+                                <div class="cs-list">
+                                    @if (ViewBag.Processes != null) { foreach (var item in ViewBag.Processes as SelectList) {
+                                        <label class="cs-opt"><input type="checkbox" value="@item.Value" data-cs-chk data-label="@item.Text" @(existingProcessIds.Contains(item.Value) ? "checked" : "") /><span>@item.Text</span></label>
+                                    } }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="pc-label"><i data-lucide="target" style="width:14px;height:14px;color:#005B99;vertical-align:-2px;"></i> @Shared["Label_StrategicObjective"]</label>
+                        <div class="cs-wrap" data-cs-id="objectives">
+                            <div class="cs-trigger" data-cs-toggle>
+                                <div class="cs-chips" data-cs-chips></div>
+                                <span class="cs-ph" data-cs-ph>@(isRtl ? "اختر الأهداف..." : "Select objectives...")</span>
+                                <i class="cs-caret" data-lucide="chevron-down"></i>
+                            </div>
+                            <div class="cs-drop is-hidden" data-cs-drop>
+                                <div class="cs-search"><input type="text" placeholder="@(isRtl ? "بحث..." : "Search...")" data-cs-search /></div>
+                                <div class="cs-list">
+                                    @if (ViewBag.StrategicObjectives != null) { foreach (var item in ViewBag.StrategicObjectives as SelectList) {
+                                        <label class="cs-opt"><input type="checkbox" value="@item.Value" data-cs-chk data-label="@item.Text" @(existingObjectiveIds.Contains(item.Value) ? "checked" : "") /><span>@item.Text</span></label>
+                                    } }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label class="pc-label"><i data-lucide="package" style="width:14px;height:14px;color:#005B99;vertical-align:-2px;"></i> @Shared["Label_RequiredAssets"]</label>
+                        <div class="cs-wrap" data-cs-id="assets">
+                            <div class="cs-trigger" data-cs-toggle>
+                                <div class="cs-chips" data-cs-chips></div>
+                                <span class="cs-ph" data-cs-ph>@(isRtl ? "اختر الأصول..." : "Select assets...")</span>
+                                <i class="cs-caret" data-lucide="chevron-down"></i>
+                            </div>
+                            <div class="cs-drop is-hidden" data-cs-drop>
+                                <div class="cs-search"><input type="text" placeholder="@(isRtl ? "بحث..." : "Search...")" data-cs-search /></div>
+                                <div class="cs-list">
+                                    @if (ViewBag.Assets != null) { foreach (var item in ViewBag.Assets as SelectList) {
+                                        <label class="cs-opt"><input type="checkbox" value="@item.Value" data-cs-chk data-label="@item.Text" @(existingAssetIds.Contains(item.Value) ? "checked" : "") /><span>@item.Text</span></label>
+                                    } }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="pc-label"><i data-lucide="alert-triangle" style="width:14px;height:14px;color:#005B99;vertical-align:-2px;"></i> @Shared["Label_ServiceRisks"]</label>
+                        <div class="cs-wrap" data-cs-id="risks">
+                            <div class="cs-trigger" data-cs-toggle>
+                                <div class="cs-chips" data-cs-chips></div>
+                                <span class="cs-ph" data-cs-ph>@(isRtl ? "اختر المخاطر..." : "Select risks...")</span>
+                                <i class="cs-caret" data-lucide="chevron-down"></i>
+                            </div>
+                            <div class="cs-drop is-hidden" data-cs-drop>
+                                <div class="cs-search"><input type="text" placeholder="@(isRtl ? "بحث..." : "Search...")" data-cs-search /></div>
+                                <div class="cs-list">
+                                    @if (ViewBag.Risks != null) { foreach (var item in ViewBag.Risks as SelectList) {
+                                        <label class="cs-opt"><input type="checkbox" value="@item.Value" data-cs-chk data-label="@item.Text" @(existingRiskIds.Contains(item.Value) ? "checked" : "") /><span>@item.Text</span></label>
+                                    } }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @* Legacy single-FK preserved silently so existing data survives a save.
+                   Use the multi-select Strategic Objectives above for new linkages. *@
+                <input type="hidden" asp-for="StrategicObjectiveId" />
+
+                <div class="pc-row">
+                    <label class="pc-label"><i data-lucide="tag" style="width:14px;height:14px;color:#005B99;vertical-align:-2px;"></i> @Shared["Column_Tags"]</label>
+                    <div id="tagContainer" class="wiz-tag-container">
+                        <input id="tagInput" type="text" placeholder="@(isRtl ? "اكتب واضغط Enter" : "Type and press Enter")" />
+                    </div>
+                    <div class="pc-help">@(isRtl ? "اكتب كل وسم ثم اضغط Enter لإضافته" : "Type each tag then press Enter")</div>
+                </div>
+
+            </div>
+
+            <!-- Step 3 -->
+            <div class="wiz-step-content" data-step="3">
+                <div class="wiz-stephdr"><i data-lucide="gauge" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 3: @step3</h2></div>
+
+                <div class="pc-grid-4 pc-row">
+                    <div>
+                        <label asp-for="SLADays" class="pc-label">@Shared["Label_SLA_Days"]</label>
+                        <input asp-for="SLADays" type="number" id="SLADays" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="TargetDeliveryDays" class="pc-label">@Shared["Label_Target_Days"]</label>
+                        <input asp-for="TargetDeliveryDays" type="number" step="0.01" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="ActualDeliveryDays" class="pc-label">@Shared["Label_Actual_Days"]</label>
+                        <input asp-for="ActualDeliveryDays" type="number" step="0.01" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="ServiceFee" class="pc-label">@Shared["Label_ServiceFee"]</label>
+                        <input asp-for="ServiceFee" type="number" step="0.01" id="ServiceFee" class="pc-input" />
+                    </div>
+                </div>
+
+                <div class="pc-grid-2">
+                    <div>
+                        <label asp-for="CustomerSatisfactionScore" class="pc-label">@Shared["Label_Satisfaction"]</label>
+                        <input asp-for="CustomerSatisfactionScore" type="number" step="0.1" min="0" max="100" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="AnnualTransactionCount" class="pc-label">@Shared["Label_AnnualTransactions"]</label>
+                        <input asp-for="AnnualTransactionCount" type="number" min="0" class="pc-input" />
+                    </div>
+                </div>
+
+                @* ─── Advanced (optional) catalog content ──────────────────
+                   Mirrors the Create wizard's Advanced section, plus the
+                   Publish toggle (since the standalone EditCatalog page was
+                   merged in here). Pre-populated from Model.CatalogInfo when
+                   present; first save with any narrative field creates a
+                   Draft sidecar, the Publish toggle stamps PublishedAt/By. *@
+                @{
+                    var ci = Model.CatalogInfo;
+                    var openAttr = "";
+                    if (ci != null) { openAttr = "open"; } // already drafted? keep visible
+                }
+                <details id="catalog-advanced" class="pc-row" @openAttr style="border:1px solid #e5e7eb;border-radius:.5rem;margin-top:.75rem;background:#fafbfc;">
+                    <summary style="cursor:pointer;padding:.65rem 1rem;font-weight:600;font-size:var(--fs-sm);color:#0f172a;display:flex;align-items:center;gap:.45rem;list-style:none;flex-wrap:wrap;">
+                        <i data-lucide="chevron-right" style="width:14px;height:14px;"></i>
+                        <i data-lucide="book-open" style="width:16px;height:16px;color:#005B99;"></i>
+                        <span>@(isRtl ? "ميزات متقدمة" : "Advanced features")</span>
+                        @if (ci != null)
+                        {
+                            if (ci.IsPublished)
+                            {
+                                <span class="badge badge-success" style="margin-inline-start:.25rem;">@(isRtl ? "منشور" : "Published")</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-secondary" style="margin-inline-start:.25rem;">@(isRtl ? "مسودة" : "Draft")</span>
+                            }
+                        }
+                        else
+                        {
+                            <span class="esems-body-secondary small" style="margin-inline-start:auto;color:#94a3b8;font-weight:400;">
+                                @(isRtl ? "لم يتم الإعداد بعد" : "Not drafted yet")
+                            </span>
+                        }
+                    </summary>
+                    <div style="padding:.5rem 1rem 1rem;border-top:1px solid #f1f5f9;">
+
+                        <label class="wiz-checkbox-row pc-row">
+                            <input type="checkbox" name="CatalogIsPublished" value="true" @(ci != null && ci.IsPublished ? "checked" : "") />
+                            <span style="font-size: var(--fs-xs);color:#374151;">
+                                @(isRtl ? "منشور في دليل الخدمات (يظهر للمتعاملين)" : "Published in the services catalog (visible to citizens)")
+                            </span>
+                        </label>
+
+                        @* Duration — structured value + unit *@
+                        <div class="pc-row">
+                            <label class="pc-label">@(isRtl ? "المدة" : "Duration")</label>
+                            <div style="display:grid;grid-template-columns:140px 1fr;gap:.5rem;">
+                                <input name="CatalogDurationValue" type="number" step="0.01" min="0" class="pc-input" placeholder="@(isRtl ? "مثل: 15" : "e.g. 15")" value="@(ci?.DurationValue?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")" />
+                                <select name="CatalogDurationUnit" class="pc-select">
+                                    @{ var sel = ci?.DurationUnit?.ToString() ?? ""; }
+                                    <option value="" selected="@(sel == "")">@(isRtl ? "— اختر الوحدة —" : "— Select unit —")</option>
+                                    <option value="Minutes" selected="@(sel == "Minutes")">@(isRtl ? "دقائق" : "Minutes")</option>
+                                    <option value="Hours" selected="@(sel == "Hours")">@(isRtl ? "ساعات" : "Hours")</option>
+                                    <option value="Days" selected="@(sel == "Days")">@(isRtl ? "أيام" : "Days")</option>
+                                    <option value="BusinessDays" selected="@(sel == "BusinessDays")">@(isRtl ? "أيام عمل" : "Business Days")</option>
+                                    <option value="Weeks" selected="@(sel == "Weeks")">@(isRtl ? "أسابيع" : "Weeks")</option>
+                                    <option value="Months" selected="@(sel == "Months")">@(isRtl ? "أشهر" : "Months")</option>
+                                    <option value="Years" selected="@(sel == "Years")">@(isRtl ? "سنوات" : "Years")</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        @* Fee — amount + IsFree + optional note *@
+                        <div class="pc-row">
+                            <label class="pc-label">@(isRtl ? "الرسوم" : "Fees")</label>
+                            <div style="display:grid;grid-template-columns:160px auto 1fr;gap:.5rem;align-items:center;">
+                                <input name="CatalogFeeAmount" type="number" step="0.01" min="0" class="pc-input" placeholder="@(isRtl ? "المبلغ (درهم)" : "Amount (AED)")" id="catalogFeeAmount" value="@(ci?.FeeAmount?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")" />
+                                <label class="pc-checkbox-row" style="white-space:nowrap;">
+                                    <input type="checkbox" name="CatalogIsFree" value="true" id="catalogIsFree" @(ci?.IsFree == true ? "checked" : "") />
+                                    <span>@(isRtl ? "مجاناً" : "Free")</span>
+                                </label>
+                                <input name="CatalogFeeNote" class="pc-input" maxlength="200" placeholder="@(isRtl ? "ملاحظة (مثل: تعود لبلدية دبي)" : "Note (e.g. belongs to Dubai Municipality)")" value="@(ci?.FeeNote ?? "")" />
+                            </div>
+                            <div class="pc-help">@(isRtl ? "ضع علامة على \"مجاناً\" أو حدد المبلغ بالدرهم. الملاحظة اختيارية لأي تفصيل." : "Tick \"Free\" or enter an amount in AED. Note is optional for any qualifier.")</div>
+                        </div>
+
+                        @* Delivery Channels — multi-select fixed list *@
+                        <div class="pc-row">
+                            <label class="pc-label">@(isRtl ? "قنوات تقديم الخدمة" : "Delivery Channels")</label>
+                            @{ var selectedChannels = ci?.GetDeliveryChannelList() ?? new List<ESEMS.Web.Models.Enums.ServiceDeliveryChannel>(); }
+                            <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:.35rem .75rem;background:#fff;border:1px solid #d1d5db;border-radius:.375rem;padding:.55rem .75rem;">
+                                @foreach (var ch in Enum.GetValues<ESEMS.Web.Models.Enums.ServiceDeliveryChannel>())
+                                {
+                                    var labelAr = ch switch {
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.MobileApp => "تطبيق جوّال",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.DubaiNowApp => "تطبيق دبي الآن",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.SmartGovPortal => "بوابة الحكومة الذكية",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.WebPortal => "الموقع الإلكتروني",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.ServiceCenter => "مركز خدمة",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.PhoneCall => "اتصال هاتفي",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.WhatsApp => "واتساب",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.Email => "بريد إلكتروني",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.Mail => "بريد",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.Kiosk => "كشك خدمة ذاتية",
+                                        _ => ch.ToString()
+                                    };
+                                    var labelEn = ch switch {
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.MobileApp => "Mobile App",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.DubaiNowApp => "Dubai Now App",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.SmartGovPortal => "Smart Gov Portal",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.WebPortal => "Web Portal",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.ServiceCenter => "Service Center",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.PhoneCall => "Phone Call",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.WhatsApp => "WhatsApp",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.Email => "Email",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.Mail => "Mail",
+                                        ESEMS.Web.Models.Enums.ServiceDeliveryChannel.Kiosk => "Kiosk",
+                                        _ => ch.ToString()
+                                    };
+                                    <label class="pc-checkbox-row" style="font-size: var(--fs-xs);">
+                                        <input type="checkbox" name="CatalogDeliveryChannels" value="@ch" @(selectedChannels.Contains(ch) ? "checked" : "") />
+                                        <span>@(isRtl ? labelAr : labelEn)</span>
+                                    </label>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="pc-grid-2 pc-row">
+                            <div>
+                                <label class="pc-label">@(isRtl ? "الجمهور المستهدف / الأهلية (إنجليزي)" : "Target Audience / Eligibility (English)")</label>
+                                <textarea name="CatalogTargetAudienceEn" class="pc-textarea" rows="3" maxlength="2000">@(ci?.TargetAudienceEn ?? "")</textarea>
+                            </div>
+                            <div>
+                                <label class="pc-label">@(isRtl ? "الجمهور المستهدف / الأهلية (عربي)" : "Target Audience / Eligibility (Arabic)")</label>
+                                <textarea name="CatalogTargetAudienceAr" dir="rtl" class="pc-textarea" rows="3" maxlength="2000">@(ci?.TargetAudienceAr ?? "")</textarea>
+                            </div>
+                        </div>
+
+                        <div class="pc-grid-2 pc-row">
+                            <div>
+                                <label class="pc-label">@(isRtl ? "شروط التقديم (إنجليزي)" : "Pre-Conditions (English)")</label>
+                                <textarea name="CatalogPreConditionsEn" class="pc-textarea" rows="5" maxlength="4000">@(ci?.PreConditionsEn ?? "")</textarea>
+                            </div>
+                            <div>
+                                <label class="pc-label">@(isRtl ? "شروط التقديم (عربي)" : "Pre-Conditions (Arabic)")</label>
+                                <textarea name="CatalogPreConditionsAr" dir="rtl" class="pc-textarea" rows="5" maxlength="4000">@(ci?.PreConditionsAr ?? "")</textarea>
+                            </div>
+                        </div>
+
+                        <div class="pc-grid-2 pc-row">
+                            <div>
+                                <label class="pc-label">@(isRtl ? "ضوابط الانتفاع (إنجليزي)" : "Policies (English)")</label>
+                                <textarea name="CatalogPoliciesEn" class="pc-textarea" rows="4" maxlength="4000">@(ci?.PoliciesEn ?? "")</textarea>
+                            </div>
+                            <div>
+                                <label class="pc-label">@(isRtl ? "ضوابط الانتفاع (عربي)" : "Policies (Arabic)")</label>
+                                <textarea name="CatalogPoliciesAr" dir="rtl" class="pc-textarea" rows="4" maxlength="4000">@(ci?.PoliciesAr ?? "")</textarea>
+                            </div>
+                        </div>
+
+                        <div class="pc-grid-2 pc-row">
+                            <div>
+                                <label class="pc-label">@(isRtl ? "إجراء الخدمة (إنجليزي)" : "Procedure (English)")</label>
+                                <textarea name="CatalogProcedureEn" class="pc-textarea" rows="6" maxlength="4000">@(ci?.ProcedureEn ?? "")</textarea>
+                            </div>
+                            <div>
+                                <label class="pc-label">@(isRtl ? "إجراء الخدمة (عربي)" : "Procedure (Arabic)")</label>
+                                <textarea name="CatalogProcedureAr" dir="rtl" class="pc-textarea" rows="6" maxlength="4000">@(ci?.ProcedureAr ?? "")</textarea>
+                            </div>
+                        </div>
+
+                    </div>
+                </details>
+            </div>
+
+            <div class="wiz-footer">
+                <button type="button" class="pc-btn pc-btn-ghost" id="prevBtn" disabled>
+                    <i data-lucide="@(isRtl ? "chevron-right" : "chevron-left")" style="width:16px;height:16px;"></i>
+                    @(isRtl ? "السابق" : "Previous")
+                </button>
+                <button type="button" class="pc-btn pc-btn-primary" id="nextBtn">
+                    @(isRtl ? "التالي" : "Next")
+                    <i data-lucide="@(isRtl ? "chevron-left" : "chevron-right")" style="width:16px;height:16px;"></i>
+                </button>
+                <button type="submit" class="pc-btn pc-btn-primary d-none" id="submitBtnInline">
+                    <i data-lucide="save" style="width:16px;height:16px;"></i>
+                    @Shared["Button_SaveChanges"]
+                </button>
+            </div>
+        </section>
+
+        <aside class="wiz-summary">
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="hash"></i><h3>@(isRtl ? "رمز الخدمة" : "Service Code")</h3></div>
+                <p class="wiz-sum-note">@(isRtl ? "غير قابل للتعديل" : "Read-only")</p>
+                <div class="wiz-sum-codepreview">@Model.Code</div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="info"></i><h3>@(isRtl ? "ملخص" : "Summary")</h3></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="bookmark"></i> @Shared["Label_ServiceType"]</span><span class="wiz-sum-pill" id="sumType">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="globe"></i> @Shared["Label_Channel"]</span><span class="wiz-sum-pill" id="sumChannel">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="building-2"></i> @Shared["Column_OwningUnit"]</span><span class="wiz-sum-pill" id="sumUnit">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="circle"></i> @Shared["Label_IsActive"]</span><span class="wiz-sum-pill" id="sumActive">—</span></div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="link-2"></i><h3>@(isRtl ? "ملخص الروابط" : "Linked Summary")</h3></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="git-branch"></i> @Shared["Section_LinkedProcesses"]</span><span class="wiz-sum-pill" id="sumProcesses">0</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="target"></i> @(isRtl ? "الأهداف" : "Objectives")</span><span class="wiz-sum-pill" id="sumObjectives">0</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="package"></i> @(isRtl ? "الأصول" : "Assets")</span><span class="wiz-sum-pill" id="sumAssets">0</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="alert-triangle"></i> @(isRtl ? "المخاطر" : "Risks")</span><span class="wiz-sum-pill" id="sumRisks">0</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="tag"></i> @Shared["Column_Tags"]</span><span class="wiz-sum-pill" id="sumTags">0</span></div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="gauge"></i><h3>@(isRtl ? "معاينة SLA" : "SLA Preview")</h3></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="clock"></i> @Shared["Label_SLA_Days"]</span><span class="wiz-sum-pill" id="sumSla">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="banknote"></i> @Shared["Label_ServiceFee"]</span><span class="wiz-sum-pill" id="sumFee">—</span></div>
+            </div>
+
+            <div class="wiz-sum-actions">
+                <button type="submit" class="pc-btn pc-btn-primary pc-btn-block" id="submitBtn">
+                    <i data-lucide="save" style="width:16px;height:16px;"></i>
+                    @Shared["Button_SaveChanges"]
+                </button>
+                <a asp-action="Details" asp-route-id="@Model.Id" class="pc-btn pc-btn-ghost pc-btn-block">
+                    <i data-lucide="x" style="width:16px;height:16px;"></i>
+                    @Shared["Button_Cancel"]
+                </a>
+            </div>
+        </aside>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+        const isRtl = @Html.Raw(isRtl ? "true" : "false");
+
+        // IsFree disables FeeAmount (and clears it).
+        (function () {
+            const freeChk = document.getElementById('catalogIsFree');
+            const amount  = document.getElementById('catalogFeeAmount');
+            if (!freeChk || !amount) return;
+            function sync() {
+                amount.disabled = freeChk.checked;
+                if (freeChk.checked) amount.value = '';
+            }
+            freeChk.addEventListener('change', sync);
+            sync();
+        })();
+
+        const TOTAL_STEPS = 3;
+        let currentStep = 1, highestVisited = 1;
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const submitBtn = document.getElementById('submitBtn');
+        const submitBtnInline = document.getElementById('submitBtnInline');
+        const stepCounterEl = document.getElementById('stepCounter');
+
+        function validateStep(n) {
+            const errors = [];
+            const mark = (id, label) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (!(el.value || '').trim()) { el.classList.add('invalid'); errors.push(label); } else { el.classList.remove('invalid'); }
+            };
+            if (n === 1) {
+                mark('NameEn', isRtl ? "الاسم بالإنجليزية مطلوب" : "English name is required");
+                mark('NameAr', isRtl ? "الاسم بالعربية مطلوب"   : "Arabic name is required");
+            }
+            if (errors.length) {
+                Swal.fire({ icon:'warning', title: isRtl ? "حقول مطلوبة" : "Required Fields", html: errors.join('<br>'), confirmButtonColor:'#005B99' });
+                return false;
+            }
+            return true;
+        }
+
+        function showStep(n) {
+            currentStep = Math.max(1, Math.min(TOTAL_STEPS, n));
+            highestVisited = Math.max(highestVisited, currentStep);
+            document.querySelectorAll('.wiz-step').forEach(el => {
+                const s = parseInt(el.dataset.step, 10);
+                el.classList.toggle('active', s === currentStep);
+                el.classList.toggle('completed', s < highestVisited && s !== currentStep);
+            });
+            document.querySelectorAll('.wiz-step-content').forEach(p => {
+                p.classList.toggle('active', parseInt(p.dataset.step, 10) === currentStep);
+            });
+            prevBtn.disabled = (currentStep === 1);
+            nextBtn.classList.toggle('d-none', currentStep === TOTAL_STEPS);
+            if (submitBtnInline) submitBtnInline.classList.toggle('d-none', currentStep !== TOTAL_STEPS);
+            if (stepCounterEl) stepCounterEl.textContent = currentStep;
+            if (window.lucide) lucide.createIcons();
+        }
+        function wizGoTo(n) {
+            if (n <= currentStep) { showStep(n); return; }
+            if (n === currentStep + 1) { if (validateStep(currentStep)) showStep(n); return; }
+            if (validateStep(currentStep)) showStep(currentStep + 1);
+        }
+        document.querySelectorAll('[data-wiz-goto]').forEach(el => {
+            el.addEventListener('click', () => wizGoTo(parseInt(el.dataset.wizGoto, 10)));
+        });
+        prevBtn.addEventListener('click', () => showStep(currentStep - 1));
+        nextBtn.addEventListener('click', () => { if (validateStep(currentStep)) showStep(currentStep + 1); });
+
+        // ========== Chip-Select component (event-delegated, CSP-clean) ==========
+        let openCS = null;
+        function csClose(id) {
+            const wrap = document.querySelector('.cs-wrap[data-cs-id="' + id + '"]');
+            if (!wrap) return;
+            wrap.querySelector('[data-cs-drop]').classList.add('is-hidden');
+            wrap.querySelector('[data-cs-toggle]').classList.remove('cs-open');
+        }
+        function csOpen(id) {
+            const wrap = document.querySelector('.cs-wrap[data-cs-id="' + id + '"]');
+            if (!wrap) return;
+            wrap.querySelector('[data-cs-drop]').classList.remove('is-hidden');
+            wrap.querySelector('[data-cs-toggle]').classList.add('cs-open');
+            wrap.querySelector('[data-cs-search]')?.focus();
+        }
+        function csUpdate(id) {
+            const wrap = document.querySelector('.cs-wrap[data-cs-id="' + id + '"]');
+            if (!wrap) return;
+            const chips = wrap.querySelector('[data-cs-chips]');
+            const ph = wrap.querySelector('[data-cs-ph]');
+            const checks = wrap.querySelectorAll('[data-cs-chk]:checked');
+            chips.innerHTML = '';
+            checks.forEach(chk => {
+                const label = chk.dataset.label || '';
+                const short = label.length > 22 ? label.substring(0, 20) + '…' : label;
+                const span = document.createElement('span');
+                span.className = 'cs-chip';
+                span.textContent = short;
+                const x = document.createElement('button');
+                x.type = 'button';
+                x.className = 'cs-chip-x';
+                x.dataset.csRemove = chk.value;
+                x.textContent = '×';
+                span.appendChild(x);
+                chips.appendChild(span);
+            });
+            ph.style.display = checks.length > 0 ? 'none' : '';
+            updateSummary();
+        }
+        function csValues(id) {
+            const wrap = document.querySelector('.cs-wrap[data-cs-id="' + id + '"]');
+            return wrap ? Array.from(wrap.querySelectorAll('[data-cs-chk]:checked')).map(c => c.value) : [];
+        }
+        document.querySelectorAll('.cs-wrap').forEach(wrap => {
+            const id = wrap.dataset.csId;
+            wrap.querySelector('[data-cs-toggle]').addEventListener('click', function (e) {
+                if (e.target.closest('.cs-chip-x')) return;
+                if (openCS && openCS !== id) csClose(openCS);
+                const drop = wrap.querySelector('[data-cs-drop]');
+                if (drop.classList.contains('is-hidden')) { csOpen(id); openCS = id; }
+                else { csClose(id); openCS = null; }
+            });
+            wrap.querySelector('[data-cs-search]')?.addEventListener('input', function (e) {
+                const q = (e.target.value || '').toLowerCase();
+                wrap.querySelectorAll('.cs-opt').forEach(lbl => {
+                    lbl.style.display = lbl.textContent.toLowerCase().includes(q) ? '' : 'none';
+                });
+            });
+            wrap.querySelectorAll('[data-cs-chk]').forEach(chk => chk.addEventListener('change', () => csUpdate(id)));
+            wrap.querySelector('[data-cs-chips]').addEventListener('click', function (e) {
+                const x = e.target.closest('.cs-chip-x');
+                if (!x) return;
+                e.stopPropagation();
+                const v = x.dataset.csRemove;
+                const chk = wrap.querySelector('[data-cs-chk][value="' + v + '"]');
+                if (chk) { chk.checked = false; csUpdate(id); }
+            });
+        });
+        document.addEventListener('click', function(e) {
+            if (openCS && !e.target.closest('.cs-wrap')) { csClose(openCS); openCS = null; }
+        });
+
+        // ========== Tag input (event-delegated) — seeded from existing Tags ==========
+        const tagsBoundInput = document.getElementById('TagsBound');
+        const initialTags = (tagsBoundInput?.value || '').split(',').map(t => t.trim()).filter(Boolean);
+        const tags = [...initialTags];
+        const tagInput = document.getElementById('tagInput');
+        const tagContainer = document.getElementById('tagContainer');
+        const tagListHidden = document.getElementById('tagListHidden');
+        function renderTags() {
+            tagContainer.querySelectorAll('.wiz-tag-badge').forEach(t => t.remove());
+            tags.forEach((tag, i) => {
+                const b = document.createElement('span');
+                b.className = 'wiz-tag-badge';
+                b.textContent = tag;
+                const x = document.createElement('button');
+                x.type = 'button';
+                x.dataset.tagRemove = String(i);
+                x.textContent = '×';
+                b.appendChild(x);
+                tagContainer.insertBefore(b, tagInput);
+            });
+            tagListHidden.value = tags.join(',');
+            updateSummary();
+        }
+        tagInput.addEventListener('keydown', function(e) {
+            if ((e.key === 'Enter' || e.key === ',') && this.value.trim()) {
+                e.preventDefault();
+                const tag = this.value.trim().replace(/,/g, '');
+                if (tag && !tags.includes(tag)) { tags.push(tag); renderTags(); }
+                this.value = '';
+            }
+            if (e.key === 'Backspace' && !this.value && tags.length > 0) { tags.pop(); renderTags(); }
+        });
+        tagContainer.addEventListener('click', function (e) {
+            const x = e.target.closest('[data-tag-remove]');
+            if (x) { tags.splice(parseInt(x.dataset.tagRemove, 10), 1); renderTags(); return; }
+            if (e.target === tagContainer) tagInput.focus();
+        });
+
+        // ========== Live summary ==========
+        function updateSummary() {
+            const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v || '—'; };
+            const t = document.getElementById('ServiceTypeSel');
+            set('sumType', t?.value ? t.options[t.selectedIndex]?.text?.trim() : '');
+            const c = document.getElementById('ChannelSel');
+            set('sumChannel', c?.value ? c.options[c.selectedIndex]?.text?.trim() : '');
+            const u = document.getElementById('OwningUnitSel');
+            set('sumUnit', u?.value ? u.options[u.selectedIndex]?.text?.trim() : '');
+            const a = !!document.getElementById('IsActiveInp')?.checked;
+            const sa = document.getElementById('sumActive');
+            sa.textContent = a ? (isRtl ? 'نعم' : 'Yes') : (isRtl ? 'لا' : 'No');
+            sa.className = 'wiz-sum-pill ' + (a ? 'wiz-sum-pill-on' : 'wiz-sum-pill-off');
+            set('sumProcesses',  String(csValues('processes').length));
+            set('sumObjectives', String(csValues('objectives').length));
+            set('sumAssets',     String(csValues('assets').length));
+            set('sumRisks',      String(csValues('risks').length));
+            set('sumTags',       String(tags.length));
+            const sla = (document.getElementById('SLADays')?.value || '').trim();
+            set('sumSla', sla || '—');
+            const fee = (document.getElementById('ServiceFee')?.value || '').trim();
+            set('sumFee', fee || '—');
+        }
+        ['ServiceTypeSel','ChannelSel','OwningUnitSel','IsActiveInp','SLADays','ServiceFee'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', updateSummary);
+            document.getElementById(id)?.addEventListener('input', updateSummary);
+        });
+
+        // ========== Submit — inject SelectedXxxIds[] hidden fields ==========
+        document.getElementById('wizardForm').addEventListener('submit', function (e) {
+            if (!validateStep(1)) { e.preventDefault(); showStep(1); return; }
+            function inject(form, csId, name) {
+                form.querySelectorAll('input[type="hidden"][name="' + name + '"]').forEach(el => el.remove());
+                csValues(csId).forEach(val => {
+                    const inp = document.createElement('input');
+                    inp.type = 'hidden'; inp.name = name; inp.value = val;
+                    form.appendChild(inp);
+                });
+            }
+            inject(this, 'processes',  'SelectedProcessIds');
+            inject(this, 'objectives', 'SelectedObjectiveIds');
+            inject(this, 'assets',     'SelectedAssetIds');
+            inject(this, 'risks',      'SelectedRiskIds');
+        });
+
+        // Initialize chip displays from server-rendered checked state
+        ['processes','objectives','assets','risks'].forEach(id => csUpdate(id));
+        renderTags();
+        showStep(1);
+        updateSummary();
+
+        // Anchor jump from Service Details "Edit Catalog" button — auto-jump
+        // to Step 3 and scroll the Advanced section into view (it's already
+        // <details open> when a catalog row exists, but force it open here
+        // so the empty-catalog flow lands inside the open editor too).
+        //
+        // Use showStep(3) directly instead of wizGoTo(3): wizGoTo enforces
+        // a "skip-ahead is only allowed one step at a time" guard for
+        // normal wizard navigation, which would land users on Step 2
+        // instead of Step 3 when entering from the deep link.
+        if (window.location.hash === '#catalog-advanced') {
+            showStep(3);
+            const adv = document.getElementById('catalog-advanced');
+            if (adv) {
+                adv.setAttribute('open', '');
+                setTimeout(() => adv.scrollIntoView({block:'start',behavior:'smooth'}), 50);
+            }
+        }
+    </script>
+}

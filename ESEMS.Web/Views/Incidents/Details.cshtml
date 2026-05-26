@@ -1,0 +1,253 @@
+@model Incident
+@{
+    ViewData["Title"] = Model.IncidentNumber;
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+    var priorityClass = Model.Priority switch { 1 => "bg-red-100 text-red-800", 2 => "bg-orange-100 text-orange-800", 3 => "bg-yellow-100 text-yellow-800", _ => "bg-gray-100 text-gray-800" };
+    var priorityLabel = Model.Priority switch { 1 => Shared["Priority_Critical"].Value, 2 => Shared["Priority_High"].Value, 3 => Shared["Priority_Medium"].Value, _ => Shared["Priority_Low"].Value };
+    var statusClass = Model.Status switch { IncidentStatus.New => "bg-blue-100 text-blue-800", IncidentStatus.InProgress => "bg-purple-100 text-purple-800", IncidentStatus.Resolved => "bg-green-100 text-green-800", IncidentStatus.Closed => "bg-gray-100 text-gray-800", _ => "bg-gray-100 text-gray-800" };
+}
+
+<!-- Modern Banner Header -->
+<div class="mb-8 rounded-2xl shadow-xl overflow-hidden" style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+    <div class="px-8 py-10">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-6">
+                <div class="w-20 h-20 bg-white/10 backdrop-blur-sm rounded-2xl flex items-center justify-center">
+                    <i data-lucide="alert-triangle" class="w-10 h-10 text-white"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-3 mb-2">
+                        <h1 class="text-4xl font-bold text-white">@Model.IncidentNumber</h1>
+                        <span class="px-3 py-1 text-sm font-medium rounded-full @priorityClass">@priorityLabel</span>
+                        <span class="px-3 py-1 text-sm font-medium rounded-full @statusClass">@Model.Status</span>
+                        @if (Model.SlaBreached)
+                        {
+                            <span class="px-3 py-1 text-sm font-medium rounded-full bg-red-100 text-red-800">@Shared["Label_SLABreached"]</span>
+                        }
+                    </div>
+                    <p class="text-blue-100 text-lg">@(isRtl ? Model.NameAr : Model.NameEn)</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <button type="button" onclick="executeAiAnalysis('/AI/AnalyzeIncident?incidentId=@Model.Id', null, '@(isRtl ? "تحليل الذكاء الاصطناعي للحوادث" : "AI Incident Analysis")')" class="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-semibold rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all shadow-md border-0">
+                    <i data-lucide="sparkles" class="w-5 h-5"></i>
+                    @(isRtl ? "تحليل الذكاء الاصطناعي" : "AI Analysis")
+                </button>
+                <a asp-action="Index" class="inline-flex items-center gap-2 px-6 py-3 bg-white font-semibold rounded-lg hover:bg-blue-50 transition-all shadow-md" style="color: #005B99;">
+                    <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" class="w-5 h-5" style="stroke: #005B99;"></i>
+                    @Shared["Button_BackToList"]
+                </a>
+                @if (Model.Status != IncidentStatus.Resolved && Model.Status != IncidentStatus.Closed)
+                {
+                    <button onclick="showResolveModal()" class="inline-flex items-center gap-2 px-6 py-3 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-600 transition-all shadow-md">
+                        <i data-lucide="check-circle" class="w-5 h-5"></i>
+                        @Shared["Button_Resolve"]
+                    </button>
+                }
+                @if (Model.Status == IncidentStatus.Resolved)
+                {
+                    <form asp-action="Close" asp-route-id="@Model.Id" method="post" class="inline">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="inline-flex items-center gap-2 px-6 py-3 bg-white/10 backdrop-blur-sm text-white font-semibold rounded-lg hover:bg-white/20 transition-all border border-white/20">
+                            <i data-lucide="archive" class="w-5 h-5"></i>
+                            @Shared["Button_Close"]
+                        </button>
+                    </form>
+                }
+                @if (Model.ProblemId == null && Model.Status != IncidentStatus.Closed)
+                {
+                    <a asp-controller="Problems" asp-action="CreateFromIncident" asp-route-incidentId="@Model.Id" class="inline-flex items-center gap-2 px-6 py-3 bg-amber-500 text-white font-semibold rounded-lg hover:bg-amber-600 transition-all shadow-md">
+                        <i data-lucide="arrow-up-right" class="w-5 h-5"></i>
+                        @Shared["Button_EscalateToProblem"]
+                    </a>
+                }
+                @if (Model.ProblemId != null)
+                {
+                    <a asp-controller="Problems" asp-action="Details" asp-route-id="@Model.ProblemId" class="inline-flex items-center gap-2 px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg hover:bg-purple-600 transition-all shadow-md">
+                        <i data-lucide="link" class="w-5 h-5"></i>
+                        @Shared["Button_ViewProblem"]
+                    </a>
+                }
+                <a asp-action="Edit" asp-route-id="@Model.Id" class="inline-flex items-center gap-2 px-6 py-3 bg-white/10 backdrop-blur-sm text-white font-semibold rounded-lg hover:bg-white/20 transition-all border border-white/20">
+                    <i data-lucide="edit" class="w-5 h-5"></i>
+                    @Shared["Button_Edit"]
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Left Column - Details -->
+    <div class="lg:col-span-2 space-y-6">
+        <!-- Description Card -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-100" style="background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%);">
+                <i data-lucide="file-text" class="w-5 h-5" style="color: #005B99;"></i>
+                <h3 class="text-lg font-semibold text-gray-900">@Shared["Label_Description"]</h3>
+            </div>
+            <div class="p-6">
+                <p class="text-gray-700 whitespace-pre-wrap leading-relaxed">@(isRtl ? Model.DescriptionAr : Model.DescriptionEn)</p>
+            </div>
+        </div>
+
+        <!-- Resolution Card -->
+        @if (!string.IsNullOrEmpty(Model.ResolutionNotes))
+        {
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden border-s-4 border-s-green-500">
+                <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-100" style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);">
+                    <i data-lucide="check-circle-2" class="w-5 h-5 text-green-600"></i>
+                    <h3 class="text-lg font-semibold text-gray-900">@Shared["Label_Resolution"]</h3>
+                </div>
+                <div class="p-6">
+                    <p class="text-gray-700 whitespace-pre-wrap leading-relaxed">@Model.ResolutionNotes</p>
+                </div>
+            </div>
+        }
+
+        <!-- Comments Section -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-100" style="background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%);">
+                <i data-lucide="message-square" class="w-5 h-5" style="color: #005B99;"></i>
+                <h3 class="text-lg font-semibold text-gray-900">@Shared["Label_Comments"]</h3>
+                <span class="px-2.5 py-0.5 text-xs font-semibold rounded-full text-white" style="background: #005B99;">@Model.Comments.Count</span>
+            </div>
+            <div class="p-6">
+                @if (Model.Comments.Any())
+                {
+                    <div class="space-y-4">
+                        @foreach (var comment in Model.Comments.OrderByDescending(c => c.CreatedAt))
+                        {
+                            <div class="border-s-4 ps-4 py-3 rounded-e-lg bg-gray-50" style="border-color: #005B99;">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <i data-lucide="user" class="w-4 h-4 text-gray-400"></i>
+                                    <span class="text-sm font-semibold text-gray-900">@(comment.CreatedBy?.GetLocalizedFullName() ?? "System")</span>
+                                    <span class="text-xs text-gray-400">•</span>
+                                    <span class="text-xs text-gray-500">@comment.CreatedAt.ToDubaiString("MMM dd, yyyy HH:mm")</span>
+                                </div>
+                                <p class="text-sm text-gray-700 leading-relaxed">@comment.Comment</p>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center py-8">
+                        <i data-lucide="message-circle" class="w-10 h-10 text-gray-300 mx-auto mb-3"></i>
+                        <p class="text-gray-400 text-sm">@Shared["Text_NoComments"]</p>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column - Info -->
+    <div class="space-y-6">
+        <!-- SLA Card -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-100" style="background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%);">
+                <i data-lucide="clock" class="w-5 h-5" style="color: #005B99;"></i>
+                <h3 class="text-lg font-semibold text-gray-900">@Shared["Label_SLAInformation"]</h3>
+            </div>
+            <div class="p-6 space-y-3">
+                <div class="flex justify-between items-center"><span class="text-sm text-gray-500">@Shared["Label_TargetHours"]</span><span class="text-sm font-semibold">@Model.SlaTargetHours h</span></div>
+                <div class="flex justify-between items-center"><span class="text-sm text-gray-500">@Shared["Label_DueDate"]</span><span class="text-sm font-semibold">@Model.SlaDueDate.ToDubaiString("MMM dd, HH:mm")</span></div>
+                <div class="flex justify-between items-center"><span class="text-sm text-gray-500">@Shared["Label_Status"]</span>
+                    @if (Model.SlaBreached) { <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">@Shared["Label_Breached"]</span> }
+                    else { <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">@Shared["Label_OnTrack"]</span> }
+                </div>
+            </div>
+        </div>
+
+        <!-- Details Card -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-100" style="background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%);">
+                <i data-lucide="info" class="w-5 h-5" style="color: #005B99;"></i>
+                <h3 class="text-lg font-semibold text-gray-900">@Shared["Label_Details"]</h3>
+            </div>
+            <div class="p-6 space-y-3">
+                <div class="flex justify-between items-center"><span class="text-sm text-gray-500">@Shared["Label_Category"]</span><span class="text-sm font-semibold">@Model.Category</span></div>
+                <div class="flex justify-between items-center"><span class="text-sm text-gray-500">@Shared["Label_Impact"]</span><span class="text-sm font-semibold">@(Model.Impact switch { 1 => "Critical", 2 => "High", 3 => "Medium", _ => "Low" })</span></div>
+                <div class="flex justify-between items-center"><span class="text-sm text-gray-500">@Shared["Label_Urgency"]</span><span class="text-sm font-semibold">@(Model.Urgency switch { 1 => "Critical", 2 => "High", 3 => "Medium", _ => "Low" })</span></div>
+                @if (Model.Service != null) { <div class="flex justify-between items-center"><span class="text-sm text-gray-500">@Shared["Label_Service"]</span><span class="text-sm font-semibold">@(isRtl ? Model.Service.NameAr : Model.Service.NameEn)</span></div> }
+                @if (Model.Process != null) { <div class="flex justify-between items-center"><span class="text-sm text-gray-500">@Shared["Label_Process"]</span><span class="text-sm font-semibold">@(isRtl ? Model.Process.NameAr : Model.Process.NameEn)</span></div> }
+                @if (Model.Asset != null) { <div class="flex justify-between items-center"><span class="text-sm text-gray-500">@Shared["Label_Asset"]</span><span class="text-sm font-semibold">@(isRtl ? Model.Asset.NameAr : Model.Asset.NameEn)</span></div> }
+                @if (Model.AssignedToUnit != null) { <div class="flex justify-between items-center"><span class="text-sm text-gray-500">@Shared["Label_AssignedTo"]</span><span class="text-sm font-semibold">@(isRtl ? Model.AssignedToUnit.NameAr : Model.AssignedToUnit.NameEn)</span></div> }
+            </div>
+        </div>
+
+        <!-- Timeline Card -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-100" style="background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%);">
+                <i data-lucide="history" class="w-5 h-5" style="color: #005B99;"></i>
+                <h3 class="text-lg font-semibold text-gray-900">@Shared["Label_Timeline"]</h3>
+            </div>
+            <div class="p-6">
+                <div class="relative pl-6 space-y-4">
+                    <div class="absolute left-2 top-2 bottom-2 w-0.5 bg-gray-200"></div>
+                    <div class="relative flex justify-between items-center">
+                        <div class="absolute -left-4 w-3 h-3 rounded-full border-2 border-white" style="background: #005B99;"></div>
+                        <span class="text-sm text-gray-500">@Shared["Label_Reported"]</span>
+                        <span class="text-sm font-semibold">@Model.ReportedAt.ToDubaiString("MMM dd, HH:mm")</span>
+                    </div>
+                    @if (Model.AcknowledgedAt.HasValue)
+                    {
+                        <div class="relative flex justify-between items-center">
+                            <div class="absolute -left-4 w-3 h-3 rounded-full border-2 border-white bg-blue-400"></div>
+                            <span class="text-sm text-gray-500">@Shared["Label_Acknowledged"]</span>
+                            <span class="text-sm font-semibold">@Model.AcknowledgedAt.Value.ToDubaiString("MMM dd, HH:mm")</span>
+                        </div>
+                    }
+                    @if (Model.ResolvedAt.HasValue)
+                    {
+                        <div class="relative flex justify-between items-center">
+                            <div class="absolute -left-4 w-3 h-3 rounded-full border-2 border-white bg-green-500"></div>
+                            <span class="text-sm text-gray-500">@Shared["Label_Resolved"]</span>
+                            <span class="text-sm font-semibold">@Model.ResolvedAt.Value.ToDubaiString("MMM dd, HH:mm")</span>
+                        </div>
+                    }
+                    @if (Model.ClosedAt.HasValue)
+                    {
+                        <div class="relative flex justify-between items-center">
+                            <div class="absolute -left-4 w-3 h-3 rounded-full border-2 border-white bg-gray-500"></div>
+                            <span class="text-sm text-gray-500">@Shared["Label_Closed"]</span>
+                            <span class="text-sm font-semibold">@Model.ClosedAt.Value.ToDubaiString("MMM dd, HH:mm")</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Resolve Modal -->
+<div id="resolveModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-2xl shadow-2xl p-0 w-full max-w-md mx-4 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100" style="background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%);">
+            <div class="flex items-center gap-3">
+                <i data-lucide="check-circle" class="w-5 h-5" style="color: #005B99;"></i>
+                <h3 class="text-lg font-semibold text-gray-900">@Shared["Title_ResolveIncident"]</h3>
+            </div>
+        </div>
+        <form asp-action="Resolve" asp-route-id="@Model.Id" method="post">
+            @Html.AntiForgeryToken()
+            <div class="p-6">
+                <textarea name="resolutionNotes" rows="4" class="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400" placeholder="@Shared["Placeholder_ResolutionNotes"]" required></textarea>
+            </div>
+            <div class="flex justify-end gap-2 px-6 py-4 border-t border-gray-100 bg-gray-50">
+                <button type="button" onclick="hideResolveModal()" class="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 font-medium text-sm">@Shared["Button_Cancel"]</button>
+                <button type="submit" class="px-5 py-2.5 bg-green-500 text-white rounded-lg hover:bg-green-600 font-medium text-sm shadow-sm">@Shared["Button_Resolve"]</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+<script nonce="@Context.CspNonce()">
+    function showResolveModal() { document.getElementById('resolveModal').classList.remove('hidden'); document.getElementById('resolveModal').classList.add('flex'); }
+    function hideResolveModal() { document.getElementById('resolveModal').classList.add('hidden'); document.getElementById('resolveModal').classList.remove('flex'); }
+</script>
+}
+

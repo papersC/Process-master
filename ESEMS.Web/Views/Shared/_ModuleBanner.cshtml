@@ -1,0 +1,72 @@
+@*
+    Reusable Module Banner Component
+    Usage:
+    @await Html.PartialAsync("_ModuleBanner", new ModuleBannerViewModel {
+        Icon = "layout-dashboard",
+        Title = "Assets Overview",
+        Subtitle = "Analytics & Insights",
+        ButtonText = "View All Assets",
+        ButtonIcon = "list",
+        ButtonAction = "Index",
+        ButtonController = "Assets"
+    })
+*@
+
+@model dynamic
+
+@{
+    // Safely extract values from ViewBag or Model (if it's a dynamic object)
+    string GetModelValue(string propertyName, string defaultValue = "")
+    {
+        try
+        {
+            if (Model != null && Model.GetType().GetProperty(propertyName) != null)
+            {
+                var value = Model.GetType().GetProperty(propertyName).GetValue(Model);
+                return value?.ToString() ?? defaultValue;
+            }
+        }
+        catch
+        {
+            // Ignore errors for strongly-typed models that don't have these properties
+        }
+        return defaultValue;
+    }
+
+    var icon = ViewBag.BannerIcon ?? GetModelValue("Icon") ?? "layout-dashboard";
+    var title = ViewBag.BannerTitle ?? GetModelValue("Title") ?? ViewData["Title"];
+    var subtitle = ViewBag.BannerSubtitle ?? GetModelValue("Subtitle") ?? "";
+    var buttonText = ViewBag.BannerButtonText ?? GetModelValue("ButtonText") ?? "";
+    var buttonIcon = ViewBag.BannerButtonIcon ?? GetModelValue("ButtonIcon") ?? "plus";
+    var buttonAction = ViewBag.BannerButtonAction ?? GetModelValue("ButtonAction") ?? "";
+    var buttonController = ViewBag.BannerButtonController ?? GetModelValue("ButtonController") ?? "";
+    var showButton = !string.IsNullOrEmpty(buttonText) && !string.IsNullOrEmpty(buttonAction);
+}
+
+@*
+    Compact module header — replaces the previous gradient hero. Same
+    public contract (ViewBag.Banner* / dynamic Model with Icon / Title /
+    etc.), so all 39 calling pages get the new style with no per-page
+    edits. Single sticky row: icon + title + subtitle + primary action.
+*@
+<div class="d-flex align-items-center justify-content-between mb-3 pb-2" style="border-bottom: 1px solid #e5e7eb;">
+    <div style="min-width:0;">
+        <h1 style="margin:0;font-size: var(--fs-base);font-weight:600;color:#111827;display:flex;align-items:center;gap:.5rem;">
+            <i data-lucide="@icon" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>
+            @title
+        </h1>
+        @if (!string.IsNullOrEmpty(subtitle?.ToString()))
+        {
+            <p style="margin:0;font-size: var(--fs-xs);color:#6b7280;">@subtitle</p>
+        }
+    </div>
+    @if (showButton)
+    {
+        <a asp-controller="@buttonController" asp-action="@buttonAction"
+           style="background:#005B99;color:#fff;border:none;border-radius:.375rem;padding:.42rem .85rem;font-size: var(--fs-xs);font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;flex-shrink:0;">
+            <i data-lucide="@buttonIcon" class="w-4 h-4" aria-hidden="true"></i>
+            @buttonText
+        </a>
+    }
+</div>
+

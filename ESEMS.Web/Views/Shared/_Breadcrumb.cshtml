@@ -1,0 +1,155 @@
+@inject IStringLocalizer<ESEMS.Web.SharedResource> Shared
+@{
+    var culture = System.Globalization.CultureInfo.CurrentUICulture.Name;
+    var isRtl = culture.StartsWith("ar");
+    var controller = ViewContext.RouteData.Values["controller"]?.ToString();
+    var action = ViewContext.RouteData.Values["action"]?.ToString();
+
+    // Build breadcrumb items based on controller/action
+    var crumbs = new List<(string Label, string? Url, string? Icon)>();
+
+    // Dashboard is always home
+    crumbs.Add((Shared["Nav_Dashboard"].Value, Url.Action("Index", "Dashboard"), "home"));
+
+    // Section-level breadcrumb (aligned with sidebar module grouping).
+    // F-CC-003: Activities, Tasks and Maintenance were previously missing from
+    // these lists so their Details pages lost the section crumb.
+    var processControllers = new[] { "Categories", "ProcessGroups", "Processes", "ProcessHierarchy", "Activities", "Tasks" };
+    var serviceControllers = new[] { "Services", "ServiceCategories", "Incidents", "Problems", "SLA" };
+    var assetControllers = new[] { "Assets", "AssetCategories", "Maintenance" };
+    var riskImprovementControllers = new[] { "EnterpriseRisks", "RiskCategories", "Improvements", "ChangeRequests" };
+    var strategyControllers = new[] { "StrategicObjectives", "KpiLibrary" };
+    var adminControllers = new[] { "OrganizationUnits", "AuditLogs", "Users", "Roles", "RoleGroups", "SettingsHub" };
+    var aiControllers = new[] { "AI" };
+    var workloadControllers = new[] { "WorkloadAnalysis" };
+    var helpControllers = new[] { "Help" };
+
+    if (processControllers.Contains(controller))
+        crumbs.Add((Shared["Section_ProcessManagement"].Value, null, "git-branch"));
+    else if (serviceControllers.Contains(controller))
+        crumbs.Add((Shared["Section_Services"].Value, null, "briefcase"));
+    else if (assetControllers.Contains(controller))
+        crumbs.Add((Shared["Section_AssetManagement"].Value, null, "package"));
+    else if (riskImprovementControllers.Contains(controller))
+        crumbs.Add((Shared["Section_RiskAndImprovement"].Value, null, "shield-alert"));
+    else if (strategyControllers.Contains(controller))
+        crumbs.Add((Shared["Section_StrategyMeasurement"].Value, null, "target"));
+    else if (adminControllers.Contains(controller))
+        crumbs.Add((Shared["Section_Settings"].Value, null, "settings"));
+    else if (aiControllers.Contains(controller))
+        crumbs.Add((Shared["Section_AITools"].Value, null, "sparkles"));
+    else if (workloadControllers.Contains(controller))
+        crumbs.Add((isRtl ? "تحليل حجم العمل" : "Workload Analysis", null, "calculator"));
+    else if (helpControllers.Contains(controller))
+        crumbs.Add((Shared["Title_HelpSupport"].Value, null, "life-buoy"));
+
+    // Controller-level breadcrumb (the Index page).
+    // F-CC-003: Activities/Tasks/Maintenance/RiskCategories/ServiceCategories
+    // added so Details pages get the correct Index → Details breadcrumb chain.
+    var navKeyMap = new Dictionary<string, string> {
+        {"Categories","Nav_Categories"}, {"ProcessGroups","Nav_ProcessGroups"}, {"Processes","Nav_Processes"},
+        {"ProcessHierarchy","Title_ProcessHierarchy"}, {"Activities","Title_Activities"}, {"Tasks","Title_Tasks"},
+        {"Services","Nav_Services"}, {"ServiceCategories","Nav_ServiceCategories"},
+        {"Incidents","Nav_Incidents"},
+        {"Problems","Nav_Problems"}, {"SLA","Nav_SLA"}, {"Assets","Nav_Assets"},
+        {"Maintenance","Nav_Maintenance"},
+        {"EnterpriseRisks","Nav_Risks"}, {"RiskCategories","Nav_RiskCategories"},
+        {"Improvements","Nav_Improvements"}, {"ChangeRequests","Nav_ChangeRequests"},
+        {"OrganizationUnits","Nav_OrganizationUnits"}, {"AuditLogs","Nav_AuditLogs"},
+        {"WorkloadAnalysis","Nav_WorkloadAnalysis"},
+        {"StrategicObjectives","Nav_StrategicObjectives"}, {"KpiLibrary","Nav_KpiLibrary"},
+        {"Users","Nav_Users"}, {"Roles","Nav_Roles"}, {"RoleGroups","Nav_RoleGroups"},
+        {"SettingsHub","Nav_SettingsHub"}, {"AssetCategories","Nav_AssetCategories"},
+        {"Help","Nav_HelpCenter"}
+    };
+
+    if (controller != "Dashboard" && navKeyMap.ContainsKey(controller))
+    {
+        var indexUrl = action != "Index" ? Url.Action("Index", controller) : null;
+        var navLabel = Shared[navKeyMap[controller]].Value;
+        // Skip when this label exactly matches the section-level crumb
+        // (e.g. "Service Catalog" -> "Service Catalog" duplicate).
+        if (crumbs.Count == 0 || !string.Equals(crumbs[^1].Label, navLabel, StringComparison.OrdinalIgnoreCase))
+        {
+            crumbs.Add((navLabel, indexUrl, null));
+        }
+    }
+
+    // Action-level breadcrumb
+    if (action != "Index" && controller != "Dashboard")
+    {
+        var actionLabel = action switch {
+            "Create" => Shared["Button_Create"].Value,
+            "Edit" => Shared["Button_Edit"].Value,
+            "Details" => Shared["Label_Details"].Value,
+            "Wizard" => Shared["Button_Create"].Value,
+            "Kanban" => Shared["Nav_Kanban"].Value,
+            "Roadmap" => Shared["Nav_Roadmap"].Value,
+            "HeatMap" => Shared["Nav_RiskHeatMap"].Value,
+            "Dashboard" when controller == "WorkloadAnalysis" => isRtl ? "نظرة عامة" : "Overview",
+            "Dashboard" => Shared["Nav_Dashboard"].Value,
+            "Diagrams" => Shared["Nav_AIDiagrams"].Value,
+            "ProcessAnalyzer" => Shared["Nav_ProcessAnalyzer"].Value,
+            "Config" => isRtl ? "الإعدادات" : "Configuration",
+            "PendingApprovals" => Shared["Title_PendingApprovals"].Value,
+            "MyPendingReadings" => isRtl ? "قراءاتي المعلقة" : "My Pending Readings",
+            // Fallback: insert a space before each interior uppercase letter so
+            // route names like "QuadrantAnalysis" render as "Quadrant Analysis"
+            // rather than the raw CamelCase string.
+            _ => System.Text.RegularExpressions.Regex.Replace(action, "([a-z])([A-Z])", "$1 $2")
+        };
+        crumbs.Add((actionLabel, null, null));
+    }
+}
+
+@if (controller != "Dashboard")
+{
+    <nav aria-label="@(isRtl ? "التنقل التفصيلي" : "Breadcrumb")" class="mb-4">
+        <ol class="flex items-center gap-1.5 text-sm text-gray-600 flex-wrap">
+            @for (int i = 0; i < crumbs.Count; i++)
+            {
+                var (label, url, icon) = crumbs[i];
+                var isLast = i == crumbs.Count - 1;
+
+                @if (i > 0)
+                {
+                    <li class="flex items-center">
+                        <i data-lucide="@(isRtl ? "chevron-left" : "chevron-right")" class="w-3.5 h-3.5 text-gray-300 mx-1"></i>
+                    </li>
+                }
+
+                <li class="flex items-center gap-1">
+                    @if (!string.IsNullOrEmpty(url) && !isLast)
+                    {
+                        @* M-10: anchor inherits browser default (#0000EE-ish before visited), but in this
+                           layout the parent <ol class="text-gray-600"> propagates — pin a readable color
+                           on the anchor itself to clear contrast in both EN+AR. *@
+                        <a href="@url" class="text-gray-700 hover:text-primary-600 transition-colors flex items-center gap-1">
+                            @if (!string.IsNullOrEmpty(icon))
+                            {
+                                <i data-lucide="@icon" class="w-3.5 h-3.5"></i>
+                            }
+                            <span>@label</span>
+                        </a>
+                    }
+                    else
+                    {
+                        @* F-CC-010: aria-current="page" so screen readers announce the
+                           current location instead of just reading another label. *@
+                        @* M-10 (Tier-3 a11y): non-last segments switched from text-gray-400 (#9ca3af,
+                           contrast 2.8:1) to text-gray-600 (#4b5563, contrast 7.2:1) so the breadcrumb
+                           middle nodes clear WCAG 2.1 AA 4.5:1. *@
+                        <span class="@(isLast ? "text-gray-900 font-medium" : "text-gray-600") flex items-center gap-1" aria-current="@(isLast ? "page" : null)">
+                            @if (!string.IsNullOrEmpty(icon))
+                            {
+                                <i data-lucide="@icon" class="w-3.5 h-3.5"></i>
+                            }
+                            @label
+                        </span>
+                    }
+                </li>
+            }
+        </ol>
+    </nav>
+}
+

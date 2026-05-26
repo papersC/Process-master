@@ -1,0 +1,96 @@
+@model ProcessGroup
+@{
+    ViewData["Title"] = Shared["Title_ProcessGroupDetails"].Value;
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+}
+
+<div class="esems-container">
+    <!-- Page Header -->
+    <div class="esems-page-header">
+        <div class="esems-page-header-content">
+            <div class="d-flex align-items-center gap-3 mb-2">
+                <span class="badge badge-primary">@Model.Code</span>
+                <h1 class="esems-page-title mb-0">@(isRtl ? Model.NameAr : Model.NameEn)</h1>
+            </div>
+            <p class="esems-page-subtitle">@(isRtl ? "فئة:" : "Category:") @(isRtl ? Model.Category?.NameAr : Model.Category?.NameEn)</p>
+        </div>
+        <div class="esems-page-header-actions">
+            <a asp-action="Index" class="btn btn-outline-secondary">
+                <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" style="width: 16px; height: 16px;"></i>
+                @(isRtl ? "رجوع" : "Back")
+            </a>
+            <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary">
+                <i data-lucide="edit" style="width: 16px; height: 16px;"></i>
+                @(isRtl ? "تعديل" : "Edit")
+            </a>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Information Card -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i data-lucide="info" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                    <span class="esems-card-title">@(isRtl ? "معلومات" : "Information")</span>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        @* Owning Unit removed: ownership lives at L3 (Process), not L2. *@
+                        <div class="col-md-12">
+                            <label class="esems-label">@(isRtl ? "وسوم" : "Tags")</label>
+                            <p class="esems-body fw-medium">@(string.IsNullOrWhiteSpace(Model.Tags) ? "-" : Model.Tags)</p>
+                        </div>
+                        <div class="col-12">
+                            <label class="esems-label">@(isRtl ? "الوصف" : "Description")</label>
+                            <p class="esems-body">@(isRtl ? (Model.DescriptionAr ?? "-") : (Model.DescriptionEn ?? "-"))</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Processes Card -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center gap-2">
+                        <i data-lucide="git-branch" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                        <span class="esems-card-title">@(isRtl ? "العمليات" : "Processes")</span>
+                    </div>
+                    <span class="badge badge-secondary">@Model.Processes.Count</span>
+                </div>
+                <div class="card-body">
+                    @if (Model.Processes.Any())
+                    {
+                        <div class="list-group list-group-flush">
+                            @foreach (var p in Model.Processes.OrderBy(p => p.DisplayOrder).Take(8))
+                            {
+                                <a asp-controller="Processes" asp-action="Details" asp-route-id="@p.Id" class="list-group-item list-group-item-action px-0">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="esems-body fw-medium text-truncate">@(isRtl ? p.NameAr : p.NameEn)</span>
+                                        <span class="badge badge-secondary">@p.Code</span>
+                                    </div>
+                                </a>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="esems-body-secondary text-center py-3">@(isRtl ? "لا توجد عمليات" : "No processes")</p>
+                    }
+                    <div class="mt-4">
+                        <a asp-controller="Processes" asp-action="Create" asp-route-processGroupId="@Model.Id" class="btn btn-dark w-100">
+                            <i data-lucide="plus" style="width: 16px; height: 16px;"></i>
+                            @(isRtl ? "إضافة عملية" : "Add Process")
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">lucide.createIcons();</script>
+}

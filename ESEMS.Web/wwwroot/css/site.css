@@ -1,0 +1,1844 @@
+html {
+  font-size: 16px;
+  position: relative;
+  min-height: 100%;
+}
+
+/* ============================================================
+   Live "Still need: X" checklist — wired by SP_LIVE_CHECKLIST in site.js.
+   Any element with [data-required-checklist] gets the same look as the
+   Improvements wizard's inline checklist.
+   ============================================================ */
+.wiz-checklist {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .75rem;
+  margin-bottom: .85rem;
+  border-radius: 6px;
+  font-size: var(--fs-sm, .875rem);
+  line-height: 1.35;
+  transition: background-color .2s ease, border-color .2s ease, color .2s ease;
+}
+.wiz-checklist[data-state="missing"] {
+  background: #fefce8;
+  border: 1px solid #fde047;
+  color: #854d0e;
+}
+.wiz-checklist[data-state="ok"] {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  color: #166534;
+}
+.wiz-checklist svg { flex-shrink: 0; }
+
+/* ========================================
+   Design X — design tokens (PM-inspired)
+   Brand colors, card/button transitions, fadeInUp animations
+   ======================================== */
+:root {
+    --esems-primary: #005B99;
+    --esems-primary-hover: #003d6b;
+    --esems-success: #15803D;
+    --esems-warning: #B45309;
+    --esems-danger: #B91C1C;
+    --esems-info: #005B99;
+
+    /* Override Bootstrap's default primary (#556ee6 indigo from Velzon) so
+       .btn-primary, .text-primary, .bg-primary, focus rings, links, etc.
+       all snap to MBRHE corporate blue. */
+    --bs-primary: #005B99;
+    --bs-primary-rgb: 0, 91, 153;
+    --bs-link-color: #005B99;
+    --bs-link-hover-color: #003d6b;
+
+    /* Type scale — Major Third 1.25, anchored at 16px */
+    --fs-xs:  0.75rem;   /* 12px — captions, helper text */
+    --fs-sm:  0.875rem;  /* 14px — secondary, dense controls */
+    --fs-base: 1rem;     /* 16px — body */
+    --fs-lg:  1.25rem;   /* 20px — H4, KPI value */
+    --fs-xl:  1.5625rem; /* 25px — H2, page section */
+    --fs-2xl: 2rem;      /* 32px — H1, hero */
+
+    /* 8-pt spacing tokens */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 24px;
+    --sp-6: 32px;
+    --sp-7: 48px;
+    --sp-8: 64px;
+}
+
+/* Bilingual typography — Arabic glyphs come from a real Arabic typeface,
+   Latin from Poppins. Browsers pick per-character based on the cascade.
+   IBM Plex Sans Arabic is designed for x-height parity with Latin at the
+   same nominal size, so no per-language size bump is needed. */
+body {
+    font-family: 'IBM Plex Sans Arabic', 'Frutiger LT Arabic',
+                 'Noto Sans Arabic', 'Poppins', system-ui,
+                 -apple-system, 'Segoe UI', Arial, sans-serif !important;
+}
+[dir="rtl"] body {
+    /* Slightly looser line-height for Arabic only — diacritics need air. */
+    line-height: 1.55;
+}
+
+/* Skeleton placeholder for chart/data loading — replace spinners */
+.skeleton {
+    background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 37%, #f1f5f9 63%);
+    background-size: 400% 100%;
+    border-radius: 6px;
+    animation: skeleton-shimmer 1.4s ease infinite;
+}
+@keyframes skeleton-shimmer {
+    0% { background-position: 100% 50%; }
+    100% { background-position: 0 50%; }
+}
+
+/* ==========================================================================
+   Type system — 6-step Major Third 1.25 scale (Material Design 3 inspired)
+   --------------------------------------------------------------------------
+   Locks every page in the app to one of 6 sizes. Headings, body text,
+   utility classes (Bootstrap .fs-1..6, Tailwind .text-xs..2xl) all map
+   here. Override individual rules by setting font-size on a parent class —
+   do NOT introduce new fractional values without updating the scale.
+   ========================================================================== */
+
+/* Headings — line-heights tightened for display sizes per Material 3. */
+h1, .h1 { font-size: var(--fs-2xl); line-height: 1.15; font-weight: 700; }
+h2, .h2 { font-size: var(--fs-xl);  line-height: 1.2;  font-weight: 700; }
+h3, .h3 { font-size: var(--fs-lg);  line-height: 1.25; font-weight: 600; }
+h4, .h4 { font-size: var(--fs-base);line-height: 1.4;  font-weight: 600; }
+h5, .h5 { font-size: var(--fs-sm);  line-height: 1.4;  font-weight: 600; }
+h6, .h6 { font-size: var(--fs-sm);  line-height: 1.4;  font-weight: 600; }
+
+/* Body + form controls — 16px is the WCAG-recommended minimum for body. */
+p, body, button, input, select, textarea, label, td, th { font-size: var(--fs-base); }
+small, .small { font-size: var(--fs-sm); }
+
+/* Tailwind text utility classes — clamp to scale. */
+.text-xs   { font-size: var(--fs-xs)   !important; }
+.text-sm   { font-size: var(--fs-sm)   !important; }
+.text-base { font-size: var(--fs-base) !important; }
+.text-lg   { font-size: var(--fs-lg)   !important; }
+.text-xl   { font-size: var(--fs-xl)   !important; }
+.text-2xl  { font-size: var(--fs-2xl)  !important; }
+.text-3xl  { font-size: var(--fs-2xl)  !important; }
+
+/* Bootstrap font-size utilities — clamp to same scale. */
+.fs-1 { font-size: var(--fs-2xl) !important; }
+.fs-2 { font-size: var(--fs-xl)  !important; }
+.fs-3 { font-size: var(--fs-lg)  !important; }
+.fs-4 { font-size: var(--fs-base)!important; }
+.fs-5 { font-size: var(--fs-sm)  !important; }
+.fs-6 { font-size: var(--fs-xs)  !important; }
+
+/* Skote/Velzon legacy size classes — clamp to scale. */
+.font-size-10, .font-size-11, .font-size-12 { font-size: var(--fs-xs) !important; }
+.font-size-13, .font-size-14               { font-size: var(--fs-sm) !important; }
+.font-size-15, .font-size-16               { font-size: var(--fs-base) !important; }
+.font-size-17, .font-size-18, .font-size-20 { font-size: var(--fs-lg) !important; }
+.font-size-22, .font-size-24               { font-size: var(--fs-xl) !important; }
+.font-size-28, .font-size-32               { font-size: var(--fs-2xl) !important; }
+
+/* Bootstrap badge keeps its original size (badges should be tight) but lock
+   to the smallest scale step rather than a random fractional rem. */
+.badge { font-size: var(--fs-xs); font-weight: 600; }
+
+/* Form labels — match scale and add a touch of weight for hierarchy. */
+.form-label, .col-form-label { font-size: var(--fs-sm); font-weight: 500; }
+
+/* Card headers — keep them quietly differentiated from body. */
+.card-title  { font-size: var(--fs-lg);  font-weight: 600; line-height: 1.3; }
+.card-header { font-size: var(--fs-base); }
+
+/* Tables — dense by default; user can override per page. */
+.table { font-size: var(--fs-sm); }
+.table thead th { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .03em; font-weight: 600; }
+
+/* Buttons — Bootstrap defaults `.btn-sm` to 0.7109375rem (11.375px) which is
+   off-scale. Snap all three button sizes to the type scale. */
+.btn      { font-size: var(--fs-sm); }
+.btn-sm   { font-size: var(--fs-xs); }
+.btn-lg   { font-size: var(--fs-base); }
+
+/* Skote/Velzon overrides body to 14px in app.min.css — snap back to base 16px
+   so the WCAG body-text minimum holds and the cascade stays predictable. */
+body, .navbar-brand, .skip-to-content { font-size: var(--fs-base); }
+
+/* Dropdown items + nav-links — keep them slightly smaller than body but
+   on-scale (Bootstrap defaults to 0.875 / 0.9 / 1rem mix). */
+.dropdown-item, .nav-link, .breadcrumb { font-size: var(--fs-sm); }
+
+/* Touch-target safety — keep visual icon at 24px but pad hit area to 44×44.
+   Apple HIG / Fitts's Law on small icon-only buttons (hamburger, etc.). */
+.btn-touch-44 {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Card polish — borderless with soft shadow, lift on hover */
+.esems-card {
+    border: none;
+    border-radius: .75rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    transition: all .2s ease;
+}
+.esems-card:hover {
+    box-shadow: 0 8px 25px -5px rgba(0,91,153,.15), 0 4px 6px -2px rgba(0,0,0,.05);
+    transform: translateY(-2px);
+}
+
+/* Button polish — subtle lift on hover */
+.esems-btn-primary {
+    background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);
+    color: #fff;
+    border: none;
+    border-radius: .375rem;
+    padding: .5rem 1rem;
+    transition: all .15s ease;
+}
+.esems-btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,91,153,.25);
+    color: #fff;
+}
+.esems-btn-primary:focus-visible {
+    outline: 2px solid #005B99;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 3px rgba(0,91,153,.25);
+}
+
+/* Form-input focus ring — brand blue instead of browser default */
+.form-control:focus,
+.form-select:focus {
+    border-color: #005B99;
+    box-shadow: 0 0 0 3px rgba(0,91,153,.1);
+}
+
+/* Pill badges — fully rounded with subtle variant */
+.esems-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    border-radius: 9999px;
+    padding: .35rem .75rem;
+    font-weight: 500;
+    font-size: .75rem;
+}
+
+/* Entrance animations — fade up with staggered delays */
+@keyframes esems-fade-in-up {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes esems-slide-up {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes esems-scale-in {
+    from { opacity: 0; transform: scale(.95); }
+    to   { opacity: 1; transform: scale(1); }
+}
+
+.esems-animate-in { animation: esems-fade-in-up .4s ease backwards; }
+.esems-animate-in-delay-1 { animation-delay: .05s; }
+.esems-animate-in-delay-2 { animation-delay: .10s; }
+.esems-animate-in-delay-3 { animation-delay: .15s; }
+.esems-animate-in-delay-4 { animation-delay: .20s; }
+.esems-animate-in-delay-5 { animation-delay: .25s; }
+
+/* Modal backdrop blur — cleaner overlay */
+.modal-backdrop.show {
+    backdrop-filter: blur(4px);
+}
+
+/* Loading skeleton shimmer */
+@keyframes esems-shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+.esems-skeleton {
+    background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+    background-size: 200% 100%;
+    animation: esems-shimmer 1.5s ease-in-out infinite;
+    border-radius: .25rem;
+}
+
+/* ========================================
+   Scrollbar styling
+   Hide the up/down arrow buttons on the native scrollbar
+   (Windows default) so the scroll track shows only the thumb.
+   Firefox uses scrollbar-width; WebKit uses the ::-webkit-* pseudos.
+   ======================================== */
+* {
+  scrollbar-width: thin;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-button {
+  display: none;
+  height: 0;
+  width: 0;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 16px;
+  }
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  --bs-body-font-size: 0.9375rem;
+  font-size: 0.9375rem;
+}
+
+/* ========================================
+   ACCESSIBILITY
+   ======================================== */
+
+/* Skip to content link (screen-reader friendly) */
+.skip-to-content {
+  position: absolute;
+  top: -100%;
+  left: 0;
+  background: var(--primary-color, #005B99);
+  color: #fff;
+  padding: 0.75rem 1.5rem;
+  z-index: 9999;
+  font-weight: 600;
+  border-radius: 0 0 0.5rem 0;
+  transition: top 0.2s ease;
+}
+.skip-to-content:focus {
+  top: 0;
+  outline: 3px solid #F1B44C;
+}
+html[dir="rtl"] .skip-to-content {
+  left: auto;
+  right: 0;
+  border-radius: 0 0 0 0.5rem;
+}
+
+/* ============================================================================
+   Sprint 1 design tokens — global :focus-visible ring
+   --------------------------------------------------------------------------
+   The audit flagged that focus rings were inconsistent — some buttons had a
+   2px outline, some had a box-shadow, some had nothing at all. These tokens
+   give every interactive element the same WCAG-AA visible ring. Override
+   per-component by re-defining the custom properties on the element.
+
+   Why :where() — keeps specificity at 0,0,0 so any explicit focus style
+   on a component can still win without using !important.
+   ========================================================================== */
+:root {
+  --focus-ring-color: #005B99;
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --focus-ring-halo: rgba(0, 91, 153, 0.18);
+}
+
+:where(a, button, summary, select, textarea, input, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: 0 0 0 4px var(--focus-ring-halo);
+  border-radius: 4px;
+}
+
+/* Enhanced keyboard focus — kept for back-compat where explicit selectors
+   already exist; values match the :where() defaults above. */
+.btn:focus-visible, .form-control:focus-visible, .form-select:focus-visible,
+.form-check-input:focus-visible, a:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: 0 0 0 4px var(--focus-ring-halo);
+}
+
+.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
+  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem var(--focus-ring-color);
+}
+
+/* Focus indicators for table action buttons */
+table a:focus-visible,
+table button:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: 4px;
+}
+
+/* ========================================
+   ESEMS CUSTOM THEME
+   Using CSS Variables from material-design-3.css
+   Primary: #005B99
+   Success: #34C38F
+   Warning: #F1B44C
+   Danger: #F46A6A
+   Info: #50A5F1
+   ======================================== */
+
+/* Sidebar nav-link styling. MUST be scoped to .sidebar — earlier these
+   rules were unscoped and leaked into Bootstrap .nav-tabs strips like
+   the SettingsHub tab row, where `color: white !important` on a
+   white-background tab bar made the hovered tab text vanish. */
+.sidebar .nav-link.active {
+  background: rgba(0, 91, 153, 0.15) !important;
+  color: var(--primary-color, #005B99) !important;
+  border-left: 3px solid var(--primary-color, #005B99);
+}
+
+.sidebar .nav-link:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: white !important;
+}
+
+.badge-mbrhe-gold {
+  background-color: rgba(197, 165, 114, 0.2);
+  color: #8B6914;
+}
+
+/* Card styles (consolidated) */
+.card {
+  border: none;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+}
+.card:hover {
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+.card-header {
+  border-radius: 0.5rem 0.5rem 0 0;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+.card-body { padding: 1.5rem; }
+
+/* Table styles (consolidated) */
+.table {
+  background: white;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.table thead th {
+  background-color: #f9fafb;
+  border-bottom: 2px solid #e5e7eb;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  padding: 1rem;
+}
+/* Blue-gradient table header – use class "table-blue-header" on <thead>,
+   or just put the gradient inline on <thead> – the rule below catches both. */
+.table-blue-header {
+  background: linear-gradient(135deg, #005B99 0%, #003d6b 100%) !important;
+}
+.table-blue-header th,
+.table-blue-header td,
+thead[style*="005B99"] th,
+thead[style*="005B99"] td {
+  background: transparent !important;
+  color: #fff !important;
+  border-bottom-color: rgba(255,255,255,.2) !important;
+  padding: 0.35rem 0.5rem !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.03em !important;
+  white-space: nowrap !important;
+}
+
+.table tbody tr { transition: background-color 0.15s ease; }
+.table tbody tr:hover { background-color: #f8f9fa; }
+.table tbody td { padding: 1rem; vertical-align: middle; }
+
+/* Badge styles (consolidated) */
+.badge {
+  font-weight: 500;
+  padding: 0.35rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+}
+
+/* Button styles (consolidated) */
+.btn {
+  border-radius: 0.375rem;
+  padding: 0.5rem 1rem;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+.btn-outline-primary:hover,
+.btn-outline-success:hover,
+.btn-outline-warning:hover,
+.btn-outline-secondary:hover {
+  transform: translateY(-1px);
+}
+.btn-primary {
+  background-color: #0078D4;
+  border-color: #0078D4;
+}
+.btn-primary:hover {
+  background-color: #106EBE;
+  border-color: #106EBE;
+}
+
+/* Form controls (consolidated) */
+.form-control, .form-select {
+  border-radius: 0.375rem;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #d1d5db;
+  transition: all 0.15s ease;
+}
+.form-control:focus, .form-select:focus {
+  border-color: #0078D4;
+  box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.1);
+}
+
+/* Kanban board styles */
+.kanban-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+  padding: 1rem 0;
+}
+
+.kanban-column {
+  background: #f9fafb;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  min-height: 500px;
+}
+
+.kanban-column-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.kanban-column-title {
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.kanban-column-count {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  background: #e5e7eb;
+  color: #374151;
+  font-weight: 600;
+}
+
+.kanban-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.kanban-card {
+  background: white;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.kanban-card:hover {
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  transform: translateY(-2px);
+}
+
+.kanban-card-title {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #111827;
+  margin-bottom: 0.5rem;
+}
+
+.kanban-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: #6b7280;
+  align-items: center;
+}
+
+.kanban-card-meta .badge {
+  font-size: 0.7rem;
+  padding: 0.125rem 0.5rem;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #9ca3af;
+}
+
+.empty-state-icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 1rem;
+  opacity: 0.5;
+}
+
+.empty-state-description {
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+/* Filter bar */
+.filter-bar {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+  margin-bottom: 1.5rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.filter-bar label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  margin-bottom: 0.5rem;
+}
+
+/* Sortable ghost */
+.sortable-ghost {
+  opacity: 0.4;
+  background: #e5e7eb;
+}
+
+/* DataTables customization */
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter {
+  margin-bottom: 1rem;
+}
+
+.dataTables_wrapper .dataTables_paginate {
+  margin-top: 1rem;
+}
+
+/* Progress bar */
+.progress {
+  height: 0.5rem;
+  border-radius: 9999px;
+  background-color: #e5e7eb;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
+/* ========================================
+   TOAST NOTIFICATIONS
+   ======================================== */
+.esems-toast {
+  position: relative;
+  overflow: hidden;
+  animation: esems-toast-in 0.4s ease-out;
+}
+
+.esems-toast-hiding {
+  animation: esems-toast-out 0.4s ease-in forwards;
+}
+
+.esems-toast-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  width: 100%;
+  animation: esems-toast-countdown 5s linear forwards;
+}
+.esems-toast-progress-success { background: #34C38F; }
+.esems-toast-progress-error { background: #F46A6A; }
+
+@keyframes esems-toast-in {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes esems-toast-out {
+  from { opacity: 1; transform: translateY(0); max-height: 100px; }
+  to { opacity: 0; transform: translateY(-12px); max-height: 0; margin: 0; padding: 0; }
+}
+@keyframes esems-toast-countdown {
+  from { width: 100%; }
+  to { width: 0; }
+}
+
+/* ========================================
+   FLOATING-ACTION CLEARANCE
+   ----------------------------------------
+   The AI Assistant bubble (#esemsAiBubble) sits fixed at bottom:4rem. On
+   narrow viewports where tables don't fill the screen, the last row's
+   action icons can sit underneath the bubble, making them un-clickable.
+   Reserve 7rem at the bottom of every standard page shell so the bubble
+   always floats above blank space.
+   ======================================== */
+.lt-shell, .pc-shell, .wa-page, .help-shell, .dash-shell { padding-bottom: 7rem; }
+
+/* ========================================
+   BACK TO TOP BUTTON
+   ======================================== */
+.esems-back-to-top {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  z-index: 900;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--primary-color, #005B99);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.3s ease, transform 0.3s ease, background 0.2s ease;
+  pointer-events: none;
+}
+html[dir="rtl"] .esems-back-to-top { right: auto; left: 2rem; }
+.esems-back-to-top.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.esems-back-to-top:hover {
+  background: var(--hover-color, #004a7c);
+  transform: translateY(-2px);
+}
+
+/* ========================================
+   LOADING SKELETON
+   ======================================== */
+.esems-skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: esems-skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 0.25rem;
+}
+.esems-skeleton-line {
+  height: 1rem;
+  margin-bottom: 0.5rem;
+}
+.esems-skeleton-line:last-child {
+  width: 60%;
+}
+@keyframes esems-skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* ========================================
+   RTL SEARCH INPUT FIX
+   ======================================== */
+html[dir="rtl"] .relative .absolute.left-3 {
+  left: auto;
+  right: 0.75rem;
+}
+html[dir="rtl"] .relative input.pl-10 {
+  padding-left: 1rem;
+  padding-right: 2.5rem;
+}
+
+/* Risk title wrapping - allow long titles to wrap to 2 lines */
+.risk-title {
+  max-width: 350px;
+  white-space: normal !important;
+  word-wrap: break-word;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Override table-nowrap for title columns */
+.table td.title-cell,
+.table th.title-cell {
+  white-space: normal !important;
+  max-width: 350px;
+}
+
+/* Ensure table cells can wrap text */
+.table-wrap-text td {
+  white-space: normal !important;
+}
+
+/* Fix Tailwind .collapse conflicting with Bootstrap accordion .collapse.
+   Tailwind's `.collapse` utility sets `visibility: collapse`, which clobbers
+   every Bootstrap collapse element on the page (including SettingsHub's
+   per-category accordion bodies). Target `.collapse.show` because Tailwind's
+   utility never combines with `.show` — anywhere `.collapse.show` appears
+   it's Bootstrap, and we want it visible. */
+.accordion-collapse.collapse:not(.show) {
+  display: none;
+}
+.collapse.show,
+.collapse.show * {
+  visibility: visible !important;
+}
+
+/* ========================================
+   BPMN MODELER PAGE
+   ======================================== */
+.bjs-powered-by { display: none !important; }
+
+#bpmnCanvas {
+  height: calc(100vh - 320px);
+  min-height: 450px;
+  background: #fafafa;
+  background-image: linear-gradient(rgba(0,0,0,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,.04) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Draggable palette */
+#bpmnCanvas .djs-palette {
+  cursor: default;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.12);
+  transition: box-shadow .15s;
+}
+#bpmnCanvas .djs-palette.dragging {
+  box-shadow: 0 6px 20px rgba(0,0,0,.22);
+  opacity: .92;
+}
+#bpmnCanvas .palette-drag-handle {
+  display: flex; align-items: center; justify-content: center;
+  height: 18px; cursor: grab; background: linear-gradient(to bottom, #e2e8f0, #cbd5e1);
+  border-radius: 7px 7px 0 0; border-bottom: 1px solid #94a3b8;
+  user-select: none; -webkit-user-select: none;
+}
+#bpmnCanvas .palette-drag-handle:active { cursor: grabbing; }
+#bpmnCanvas .palette-drag-handle .grip {
+  width: 20px; height: 4px;
+  background: repeating-linear-gradient(to right, #94a3b8 0px, #94a3b8 3px, transparent 3px, transparent 5px);
+  border-radius: 2px;
+}
+
+.loading-overlay {
+  position: absolute; inset: 0; background: rgba(255,255,255,0.9);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.spinner { width: 40px; height: 40px; border: 4px solid #e5e7eb; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Focus / maximize mode */
+#bpmnPage.focus-mode .side-panel { display: none !important; }
+#bpmnPage.focus-mode .col-lg-9 { flex: 0 0 100%; max-width: 100%; }
+#bpmnPage.focus-mode #bpmnCanvas { height: calc(100vh - 160px); }
+
+/* Color picker */
+.color-swatch {
+  width: 22px; height: 22px; border-radius: 4px; border: 2px solid #dee2e6;
+  cursor: pointer; transition: transform .1s, box-shadow .1s; padding: 0;
+}
+.color-swatch:hover { transform: scale(1.15); box-shadow: 0 0 0 2px rgba(59,130,246,.45); }
+.color-dropdown .dropdown-menu { min-width: auto; padding: 8px; }
+.color-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+
+/* Searchable dropdown */
+.search-dropdown { position: relative; }
+.search-dropdown .search-results {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 1050;
+  max-height: 220px; overflow-y: auto; background: #fff;
+  border: 1px solid #dee2e6; border-top: 0; border-radius: 0 0 .375rem .375rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,.12); display: none;
+}
+.search-dropdown .search-results.show { display: block; }
+.search-dropdown .search-item {
+  padding: 6px 10px; cursor: pointer; font-size: .875rem;
+  border-bottom: 1px solid #f1f5f9; transition: background .1s;
+}
+.search-dropdown .search-item:hover, .search-dropdown .search-item.active { background: #eff6ff; }
+.search-dropdown .search-item .code { font-weight: 600; color: #3b82f6; }
+.search-dropdown .search-item .name { color: #475569; }
+.search-dropdown .search-empty { padding: 10px; text-align: center; color: #94a3b8; font-size: .875rem; }
+
+.linked-process-badge {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px;
+  background: #dbeafe; color: #1e40af; border-radius: 6px; font-size: .8rem; font-weight: 500;
+}
+.linked-process-badge .unlink-btn { cursor: pointer; opacity: .6; transition: opacity .15s; }
+.linked-process-badge .unlink-btn:hover { opacity: 1; }
+
+/* BPMN Page Layout */
+#bpmnPage {
+  margin-left: 0;
+  margin-right: 0;
+}
+#bpmnPage > .side-panel {
+  padding-left: 0;
+}
+#bpmnPage > .col-lg-9 {
+  padding-right: 0;
+}
+
+/* BPMN Side Panel Accordion */
+#bpmnSideAccordion .accordion-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem !important;
+  background: white;
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+}
+#bpmnSideAccordion .accordion-button {
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.65rem 0.875rem;
+  background: #f8fafc;
+  border-radius: 0 !important;
+  box-shadow: none;
+  color: #334155;
+  gap: 0;
+  transition: background .15s, color .15s;
+}
+#bpmnSideAccordion .accordion-button:not(.collapsed) {
+  background: #f0f7ff;
+  color: var(--primary-color, #005B99);
+  box-shadow: none;
+  border-bottom: 1px solid #e0ecf7;
+}
+#bpmnSideAccordion .accordion-button.collapsed {
+  border-bottom: none;
+}
+#bpmnSideAccordion .accordion-button:focus {
+  box-shadow: none;
+  outline: 2px solid var(--primary-color, #005B99);
+  outline-offset: -2px;
+}
+#bpmnSideAccordion .accordion-button::after {
+  width: 0.875rem;
+  height: 0.875rem;
+  background-size: 0.875rem;
+}
+#bpmnSideAccordion .accordion-body {
+  padding: 0.875rem;
+  background: white;
+}
+#bpmnSideAccordion .form-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #475569;
+  margin-bottom: 0.25rem;
+}
+#bpmnSideAccordion .form-control-sm,
+#bpmnSideAccordion .form-select-sm {
+  font-size: 0.825rem;
+  padding: 0.4rem 0.65rem;
+}
+#bpmnSideAccordion .btn-sm {
+  font-size: 0.8rem;
+  padding: 0.375rem 0.75rem;
+}
+
+/* BPMN Toolbar */
+#bpmnPage .card-header.bg-light {
+  background: #f8fafc !important;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0.4rem 0.75rem !important;
+}
+#bpmnPage .card-header .btn-group-sm .btn,
+#bpmnPage .card-header .btn-sm {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.78rem;
+}
+#bpmnPage .card-header .btn-outline-secondary {
+  border-color: #d1d5db;
+  color: #4b5563;
+}
+#bpmnPage .card-header .btn-outline-secondary:hover {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+  color: #1f2937;
+}
+#bpmnPage .card-header .btn-success {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.625rem;
+}
+
+/* BPMN Status bar */
+#bpmnPage .border-bottom.small {
+  font-size: 0.78rem;
+  padding: 0.35rem 0.75rem !important;
+  background: #fefce8 !important;
+  color: #92400e !important;
+  border-bottom-color: #fde68a !important;
+}
+
+/* ========================================
+   Field fill-state coloring
+   --------------------------------------------------------------
+   Visual cue that a field has a value. Toggled by the JS in
+   wwwroot/js/site.js (input/change/blur listeners + initial pass
+   on DOMContentLoaded). Works for text, textarea, select, date,
+   number, file, checkbox, radio. RTL- and dark-mode-safe.
+   ======================================== */
+
+/* Default text-like inputs when filled */
+input.is-filled:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="submit"]):not([type="reset"]):not([type="button"]),
+textarea.is-filled,
+select.is-filled {
+    background-color: #f0f7ff;
+    border-color: #b3d7f5;
+}
+
+/* File input "filled" — has a chosen file */
+input[type="file"].is-filled {
+    background-color: #f0f7ff;
+    border-color: #b3d7f5;
+}
+
+/* Checkbox / radio: highlight the surrounding label or the box itself when checked */
+input[type="checkbox"].is-filled,
+input[type="radio"].is-filled {
+    box-shadow: 0 0 0 2px rgba(0, 91, 153, 0.18);
+}
+
+/* Bootstrap form-floating compatibility — keep the "filled" tint without
+   stomping the floating-label transform. */
+.form-floating > .form-control.is-filled,
+.form-floating > .form-select.is-filled {
+    background-color: #f0f7ff;
+}
+
+/* Dark mode: switch to a low-luminance brand tint instead of light blue. */
+@media (prefers-color-scheme: dark) {
+    input.is-filled:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="submit"]):not([type="reset"]):not([type="button"]),
+    textarea.is-filled,
+    select.is-filled,
+    input[type="file"].is-filled,
+    .form-floating > .form-control.is-filled,
+    .form-floating > .form-select.is-filled {
+        background-color: rgba(0, 91, 153, 0.12);
+        border-color: rgba(80, 165, 241, 0.45);
+    }
+}
+
+/* Validation errors take priority over fill-state — don't tint a red field blue. */
+input.is-filled.is-invalid,
+textarea.is-filled.is-invalid,
+select.is-filled.is-invalid,
+input.is-filled[aria-invalid="true"],
+textarea.is-filled[aria-invalid="true"],
+select.is-filled[aria-invalid="true"] {
+    background-color: #fff5f5;
+    border-color: #f46a6a;
+}
+
+/* ============================================================================
+   Audit quick-wins — UX polish tokens
+   --------------------------------------------------------------------------
+   Each rule below addresses a specific finding from the 2026-05-15 UX/UI
+   audit. Kept centralised so a single change propagates across the suite.
+   ========================================================================== */
+
+/* (1) Null-state — a muted, centred em-dash that reads as "no data" rather
+       than as a minus sign or a stray glyph next to a number. */
+.null-cell, span.null-cell {
+    color: #9ca3af;
+    font-weight: 400;
+    letter-spacing: .04em;
+    display: inline-block;
+    min-width: 1em;
+    text-align: center;
+}
+
+/* (2) Right-edge fade on horizontally-scrolling tables so users on narrower
+       viewports get a clear "more columns →" affordance. Tables that don't
+       actually overflow keep showing the fade harmlessly; the cost is one
+       gradient. */
+.lt-table-wrap { position: relative; }
+.lt-table-wrap::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 24px;
+    pointer-events: none;
+    background: linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, .92));
+    border-top-right-radius: inherit;
+    border-bottom-right-radius: inherit;
+    z-index: 2;
+}
+html[dir="rtl"] .lt-table-wrap::after {
+    right: auto;
+    left: 0;
+    background: linear-gradient(to left, rgba(255, 255, 255, 0), rgba(255, 255, 255, .92));
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-top-left-radius: inherit;
+    border-bottom-left-radius: inherit;
+}
+
+/* (3) Anchor-jump tabs need a visible active state. Adds a brand-coloured
+       bottom border + filled background on the active anchor so the user
+       knows where they are. Applies to the .wa-anchor pattern used on
+       Workload Details, and matches the .dash-tab-btn pattern already in
+       Dashboard/Index. */
+.wa-anchor {
+    border-bottom: 2px solid transparent;
+    transition: background .12s, color .12s, border-color .12s;
+}
+.wa-anchor.is-active,
+.wa-anchor[aria-current="true"] {
+    background: #eff6ff;
+    color: #005B99;
+    border-bottom-color: #005B99;
+}
+
+/* (4) "No roles" warning — used in Users/Index when a user has no role
+       assignment. Replaces the previous muted-italic treatment which read
+       as "intentional blank" instead of "needs attention". */
+.lt-warn-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    padding: .1rem .5rem;
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+    border-radius: 9999px;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+}
+
+/* ============================================================================
+   Sprint 1 design tokens — numeric typography
+   --------------------------------------------------------------------------
+   The 2026-05-15 UX audit called out wildly inconsistent number rendering:
+   integers with commas, one-decimal floats, two-decimal floats, mixed unit
+   positions, and proportional digits making column widths jitter. The
+   classes below set a single house style so the suite stops looking
+   artisanal.
+
+   USAGE
+     <span class="num num-int">2,037,017</span>
+     <span class="num num-fte">1.05</span>
+     <span class="num num-hrs">1,081</span> <span class="num-unit">hrs</span>
+     <span class="num num-pct">96.2</span><span class="num-unit">%</span>
+     <span class="num num-aed">8.9M</span> <span class="num-unit">AED</span>
+
+   Tables should also add `.num-cell` to <td>/`<th>` so the column right-
+   aligns and adopts tabular figures without per-row spans.
+   ========================================================================== */
+.num,
+.num-int,
+.num-fte,
+.num-pct,
+.num-hrs,
+.num-aed,
+.num-cell {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
+    /* Stops Chromium ligaturing "1/1" or "1x" inside dense table cells. */
+    font-variant-ligatures: none;
+}
+
+/* Right-align numerics inside table cells so columns don't wander. */
+td.num-cell, th.num-cell { text-align: end; }
+
+/* RTL fix: DataTables and Bootstrap base styles sometimes override the
+   .lt-table-wrap th text-align: start with text-align: left, which leaves
+   Arabic column headers stuck on the left edge under dir="rtl". A single
+   specificity bump on .esems-datatable th (the class every list page
+   slaps on its <table>) keeps headers on the LEADING edge regardless of
+   which sheet "wins" the cascade. Cells overriding via inline style
+   (text-align:center / text-align:end) still win — those are intentional. */
+.esems-datatable th,
+table.esems-datatable th {
+    text-align: start;
+}
+
+/* RTL: pin every table's column headers to the right (leading) edge in the
+   Arabic UI. DataTables ships `table.dataTable thead th { text-align:left }`
+   (specificity 0,1,3) which beats the `start` rule above and strands Arabic
+   headers on the LEFT. This dir-scoped, higher-specificity rule fixes it
+   across ALL tables (.lt-table, .esems-datatable, Bootstrap .table). Per-column
+   intent is preserved: inline overrides (text-align:center for counts,
+   text-align:end for the actions column) and Bootstrap's !important text
+   utilities (.text-center / .text-end) still win over this. */
+html[dir="rtl"] table thead th,
+html[dir="rtl"] table.dataTable thead th {
+    text-align: right;
+}
+
+/* Tailwind preflight is disabled (see _Layout: corePlugins.preflight=false)
+   to protect Bootstrap/Skote, but that leaves bare icon <button>s — the ones
+   that only set a Tailwind text colour, e.g. modal close (×) buttons —
+   showing the browser's default bevelled grey chrome — e.g. modal close (×)
+   buttons, and the "?" help buttons in dark table headers (where the grey
+   default box looks like a white square). Strip it for these bare icon
+   buttons. :where() keeps specificity 0 so any explicit .btn / utility
+   styling still wins. */
+:where(button.text-gray-400),
+:where(button.text-gray-500),
+:where(button[class*="text-white/"]) {
+    background-color: transparent;
+    border: 0;
+    cursor: pointer;
+}
+
+/* Unit suffix — smaller, lower contrast, sits after the number. Designers
+   shouldn't put a space inside the unit-suffix span; the inherent margin
+   handles the gap. */
+.num-unit {
+    font-size: var(--fs-xs);
+    font-weight: 500;
+    color: #6b7280;
+    margin-inline-start: .2em;
+    letter-spacing: 0;
+}
+
+/* ============================================================================
+   Sprint 1 design tokens — status pill taxonomy
+   --------------------------------------------------------------------------
+   The audit counted 18+ status colours drifting across modules — "Submitted"
+   was blue-gray on one screen and blue on another, "Approved" green
+   everywhere except where it became cyan, "In Progress" sometimes purple
+   sometimes blue. Consolidate into four semantic buckets so the colour
+   itself carries meaning and identical-meaning states share a treatment.
+
+   USAGE
+     <span class="status-pill status-positive">Active</span>
+     <span class="status-pill status-negative">Breached</span>
+     <span class="status-pill status-neutral">Archived</span>
+     <span class="status-pill status-progress">In Progress</span>
+     <span class="status-pill status-warning">Draft</span>
+
+   MAPPING (canonical — apply when migrating existing pills)
+     positive  →  Active, Completed, Resolved, Met, Approved, Implemented, Operational
+     negative  →  Breached, Rejected, Critical, Failed, Overdue
+     neutral   →  Archived, Closed, Retired, Disposed, Cancelled, Inactive
+     progress  →  In Progress, Under Review, Submitted, New, Pending, Acknowledged
+     warning   →  Draft, On Hold, Returned for Correction, Maintenance Due
+
+   This deliberately collapses some shades — the audit specifically flagged
+   the New / Submitted / Pending Approval drift, and "Critical/High/Medium/
+   Low" priority bands (red→amber→green) which are NOT status pills and
+   should use the separate .priority-pill family below.
+   ========================================================================== */
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    padding: .1rem .55rem;
+    border-radius: 9999px;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    line-height: 1.4;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+/* Glyph prefix — colour + shape redundancy for WCAG-AA SC 1.4.1 (Use of
+   Color). Critical/Breached should be identifiable to a colour-blind user
+   without relying on the red fill alone. The ::before slot is decorative
+   (aria-hidden by default) and inherits the pill's text colour so the
+   contrast is already guaranteed. */
+.status-pill::before {
+    font-weight: 700;
+    font-size: .85em;
+    line-height: 1;
+    opacity: .9;
+}
+
+.status-positive  { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
+.status-negative  { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+.status-neutral   { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+.status-progress  { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
+.status-warning   { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+
+.status-positive::before { content: "\2714"; }   /* ✔ heavy check */
+.status-negative::before { content: "\2716"; }   /* ✖ heavy cross */
+.status-neutral::before  { content: "\2014"; }   /* — em dash */
+.status-progress::before { content: "\25D0"; }   /* ◐ half circle */
+.status-warning::before  { content: "\26A0"; }   /* ⚠ warning sign */
+
+/* Priority pills — separate family because Critical → Low is a magnitude
+   scale, not a state. Mapped to a red → amber → yellow → blue → green
+   ramp so colorblind users get a recognisable gradient as well as the
+   numeric labels (1..5) the audit recommended pairing with icons. */
+.priority-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    padding: .1rem .55rem;
+    border-radius: .25rem;
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+/* Magnitude glyph — arrow ramp mirrors the colour ramp so the ordering
+   is readable even when the pill is greyscaled or printed in B/W. */
+.priority-pill::before {
+    font-weight: 800;
+    font-size: .9em;
+    line-height: 1;
+    opacity: .85;
+}
+.priority-critical { background: #fee2e2; color: #991b1b; }
+.priority-high     { background: #fed7aa; color: #9a3412; }
+.priority-medium   { background: #fef3c7; color: #92400e; }
+.priority-low      { background: #dbeafe; color: #1e40af; }
+.priority-trivial  { background: #d1fae5; color: #065f46; }
+
+.priority-critical::before { content: "\203C"; }  /* ‼ double exclamation */
+.priority-high::before     { content: "\25B2"; }  /* ▲ up triangle */
+.priority-medium::before   { content: "\25CF"; }  /* ● filled circle */
+.priority-low::before      { content: "\25BC"; }  /* ▼ down triangle */
+.priority-trivial::before  { content: "\25E6"; }  /* ◦ small ring */
+
+/* ============================================================================
+   Sprint 1 design tokens — entity-code chip
+   --------------------------------------------------------------------------
+   The audit flagged that brand-purple was carrying too many semantic loads:
+   the primary Edit/Save CTA, status pills like "PROCESS"/"APPROVER", entity
+   identifier badges like "WS-020"/"SVC-292768"/"SLA-001", the AI bubble,
+   and link colours. When five semantic objects share a colour the primary
+   action loses its singular emphasis.
+
+   The .id-chip class is the neutral home for entity identifiers. It's
+   monospace (a code, not a brand), light-slate background (subordinate
+   to the title it sits next to), and never picks up the brand purple.
+
+   USAGE — replaces the older purple .lt-pill-code / inline styled
+   ID pills:
+     <span class="id-chip">WS-020</span>
+     <span class="id-chip">SVC-0042</span>
+     <span class="id-chip">RSK-2024-005</span>
+     <span class="id-chip">CR-001</span>
+   ========================================================================== */
+.id-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: .12rem .45rem;
+    font-family: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: #475569;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: .25rem;
+    letter-spacing: .02em;
+    line-height: 1.4;
+    white-space: nowrap;
+    user-select: all;
+}
+.id-chip:hover { color: #1e293b; }
+
+/* (5) Risk heat-map hatch overlays — pair each colour band with a
+       directional pattern so users with red-green colour vision deficiency
+       can still tell bands apart. The hatch sits on top of the base colour
+       at low opacity so the fill stays readable. */
+.lt-heatmap-cell { position: relative; isolation: isolate; }
+.lt-heatmap-cell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: .22;
+    z-index: 0;
+    background-repeat: repeat;
+}
+.lt-heatmap-cell.lt-c-crit::before {
+    /* Critical — densest 45° hatch */
+    background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, .85) 0 2px, transparent 2px 6px);
+}
+.lt-heatmap-cell.lt-c-high::before {
+    /* High — opposite-direction hatch (visually distinct from Crit when adjacent) */
+    background-image: repeating-linear-gradient(-45deg, rgba(255, 255, 255, .85) 0 2px, transparent 2px 6px);
+}
+.lt-heatmap-cell.lt-c-med::before {
+    /* Medium — vertical stripes */
+    background-image: repeating-linear-gradient(90deg, rgba(0, 0, 0, .25) 0 1px, transparent 1px 6px);
+}
+.lt-heatmap-cell.lt-c-low::before {
+    /* Low — dot grid */
+    background-image: radial-gradient(circle, rgba(255, 255, 255, .85) 1px, transparent 1.6px);
+    background-size: 6px 6px;
+}
+.lt-heatmap-cell > * { position: relative; z-index: 1; }
+
+/* ============================================================================
+   Sprint 1 design tokens — adoption bridge for bespoke pill classes
+   --------------------------------------------------------------------------
+   Seven list views (Improvements, ChangeRequests, Incidents, CustomerFeedback,
+   Maintenance/Schedules, Maintenance/Records, Assets, SLA, Services) each
+   shipped their own `.lt-pill-st-*` / `.sl-pill-*` / `.lt-pill-pri-*` colour
+   schemes. Instead of touching every view to adopt .status-pill markup, this
+   block bolts the new glyph prefixes onto whatever pill classes already
+   exist — colour-blind users get the shape redundancy for free, the views
+   keep their per-view colour palettes, and adoption happens without a
+   30-file PR.
+
+   Rule of thumb for the glyph map:
+     ✔  Completed states (Done, Resolved, Approved, Implemented, Operational, ok, met, success)
+     ✖  Negative states (Rejected, Cancelled, breach, danger, error, overdue, Failed)
+     —  Quiet/neutral states (Planning, default, inactive, muted, Closed)
+     ◐  In-flight states (InProgress, UnderReview, Submitted, New, progress)
+     ⚠  Attention/warning (OnHold, UnderMaintenance, soon, warn, Warranty)
+
+   The pseudo-element is decorative (CSS content). Screen readers already
+   announce the status text, so the glyph adds visual redundancy without
+   doubling the audible label.
+   ========================================================================== */
+
+/* Shared glyph styling — every bridged pill picks up the same shape rules.
+   Uses display:inline-block (not flex) so we don't disturb the existing
+   .lt-pill { display: inline-block } each view inlines. */
+body .lt-pill-st-Completed::before,
+body .lt-pill-st-completed::before,
+body .lt-pill-st-Resolved::before,
+body .lt-pill-st-Approved::before,
+body .lt-pill-st-Implemented::before,
+body .lt-pill-st-Operational::before,
+body .lt-pill-st-ok::before,
+body .lt-pill-st-met::before,
+body .lt-pill-sla-ok::before,
+body .lt-pill-sla-met::before,
+body .sl-pill-success::before,
+body .lt-pill-completed::before,
+body .lt-pill-st-success::before {
+    content: "\2714";       /* ✔ */
+    display: inline-block;
+    margin-inline-end: .25rem;
+    font-weight: 700;
+    font-size: .85em;
+    opacity: .85;
+    line-height: 1;
+}
+
+body .lt-pill-st-Rejected::before,
+body .lt-pill-st-Cancelled::before,
+body .lt-pill-st-Failed::before,
+body .lt-pill-st-failed::before,
+body .lt-pill-st-error::before,
+body .lt-pill-st-conversion_failed::before,
+body .lt-pill-st-validation_failed::before,
+body .lt-pill-st-breach::before,
+body .lt-pill-st-overdue::before,
+body .lt-pill-sla-breach::before,
+body .sl-pill-danger::before {
+    content: "\2716";       /* ✖ */
+    display: inline-block;
+    margin-inline-end: .25rem;
+    font-weight: 700;
+    font-size: .85em;
+    opacity: .85;
+    line-height: 1;
+}
+
+body .lt-pill-st-Planning::before,
+body .lt-pill-st-default::before,
+body .lt-pill-st-inactive::before,
+body .lt-pill-st-Closed::before,
+body .lt-pill-st-Archived::before,
+body .lt-pill-st-Retired::before,
+body .lt-pill-st-Disposed::before,
+body .sl-pill-muted::before {
+    content: "\2014";       /* — */
+    display: inline-block;
+    margin-inline-end: .25rem;
+    font-weight: 700;
+    font-size: .85em;
+    opacity: .85;
+    line-height: 1;
+}
+
+body .lt-pill-st-InProgress::before,
+body .lt-pill-st-progress::before,
+body .lt-pill-progress::before,
+body .lt-pill-st-Submitted::before,
+body .lt-pill-st-UnderReview::before,
+body .lt-pill-st-New::before,
+body .lt-pill-st-Acknowledged::before,
+body .lt-pill-st-Active::before {
+    content: "\25D0";       /* ◐ */
+    display: inline-block;
+    margin-inline-end: .25rem;
+    font-weight: 700;
+    font-size: .85em;
+    opacity: .85;
+    line-height: 1;
+}
+
+body .lt-pill-st-OnHold::before,
+body .lt-pill-st-UnderMaintenance::before,
+body .lt-pill-st-Draft::before,
+body .lt-pill-st-Warranty::before,
+body .lt-pill-st-soon::before,
+body .lt-pill-st-warn::before,
+body .lt-pill-st-scheduled::before,
+body .lt-pill-sla-soon::before,
+body .lt-pill-sla-warn::before {
+    content: "\26A0";       /* ⚠ */
+    display: inline-block;
+    margin-inline-end: .25rem;
+    font-weight: 700;
+    font-size: .85em;
+    opacity: .85;
+    line-height: 1;
+}
+
+/* Priority bridge — the existing .lt-pill-pri / .lt-pill-pri-{1..5} classes
+   are mapped to the magnitude ramp glyphs. The .lt-pill-pri (no suffix)
+   gets a medium "●" since views that use it pass the number as text. */
+body .lt-pill-pri-1::before,
+body .lt-pill-pri-critical::before,
+body .lt-pill-pri-Highest::before {
+    content: "\203C";       /* ‼ */
+    display: inline-block;
+    margin-inline-end: .25rem;
+    font-weight: 800;
+    font-size: .9em;
+    opacity: .85;
+    line-height: 1;
+}
+
+body .lt-pill-pri-2::before,
+body .lt-pill-pri-high::before,
+body .lt-pill-pri-High::before {
+    content: "\25B2";       /* ▲ */
+    display: inline-block;
+    margin-inline-end: .25rem;
+    font-weight: 800;
+    font-size: .9em;
+    opacity: .85;
+    line-height: 1;
+}
+
+body .lt-pill-pri::before,
+body .lt-pill-pri-3::before,
+body .lt-pill-pri-medium::before,
+body .lt-pill-pri-Medium::before {
+    content: "\25CF";       /* ● */
+    display: inline-block;
+    margin-inline-end: .25rem;
+    font-weight: 800;
+    font-size: .9em;
+    opacity: .85;
+    line-height: 1;
+}
+
+body .lt-pill-pri-4::before,
+body .lt-pill-pri-low::before,
+body .lt-pill-pri-Low::before {
+    content: "\25BC";       /* ▼ */
+    display: inline-block;
+    margin-inline-end: .25rem;
+    font-weight: 800;
+    font-size: .9em;
+    opacity: .85;
+    line-height: 1;
+}
+
+body .lt-pill-pri-5::before,
+body .lt-pill-pri-trivial::before,
+body .lt-pill-pri-Lowest::before {
+    content: "\25E6";       /* ◦ */
+    display: inline-block;
+    margin-inline-end: .25rem;
+    font-weight: 800;
+    font-size: .9em;
+    opacity: .85;
+    line-height: 1;
+}
+
+/* ============================================================================
+   Sprint 1 design tokens — tablet (768-1024px) reflow defaults
+   --------------------------------------------------------------------------
+   The audit called out awkward layouts at the mid-breakpoint: 4-column KPI
+   grids squeezing too tight, 2-column action bars wrapping mid-button.
+   These rules give every list page a sane fallback without rewriting per-
+   view layouts. Each view that has its own @media block continues to win.
+   ========================================================================== */
+@media (min-width: 768px) and (max-width: 1023.98px) {
+    /* KPI grids — bump 4-col layouts to 2 cols so each card has room to
+       breathe, and label/value text stays on one line. */
+    .lt-kpis,
+    .ad-kpi-grid,
+    .pc-kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+    /* Action bars — let action buttons stack vertically rather than
+       crowding the row. Affects .lt-toolbar / .pc-toolbar containers. */
+    .lt-toolbar > .lt-search,
+    .pc-toolbar > .pc-search {
+        flex-basis: 100%;
+        max-width: 100%;
+    }
+    /* Tables get a fade indicator on the trailing edge so users see there's
+       more to scroll. Existing .lt-table-wrap::after is already brand-blue;
+       this rule only adds the cursor hint. */
+    .lt-table-wrap,
+    .esems-table-wrap {
+        cursor: grab;
+    }
+}
+
+/* ============================================================================
+   Sprint 1 design tokens — empty state token
+   --------------------------------------------------------------------------
+   Every list/table page renders a slightly different "no records" cell —
+   some are a lucide icon + grey text, some are an inline empty <td>. The
+   .empty-state class gives them all the same anatomy: centred icon-circle
+   + heading + helper text + optional action. Drop-in for any data shell
+   that needs a fallback.
+   ========================================================================== */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2.5rem 1.5rem;
+    color: #64748b;
+}
+.empty-state-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: #f1f5f9;
+    color: #94a3b8;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1rem;
+}
+.empty-state-icon i,
+.empty-state-icon svg { width: 28px; height: 28px; }
+.empty-state-title {
+    font-size: var(--fs-base);
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0 0 .25rem;
+}
+.empty-state-text {
+    font-size: var(--fs-sm);
+    color: #64748b;
+    max-width: 32rem;
+    line-height: 1.5;
+    margin: 0 0 1rem;
+}
+.empty-state-action {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .5rem 1rem;
+    border-radius: .375rem;
+    background: #005B99;
+    color: #fff;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    text-decoration: none;
+    transition: background .15s;
+}
+.empty-state-action:hover { background: #003d6b; color: #fff; }
+
+/* ============================================================================
+   Sprint 1 design tokens — loading skeleton
+   --------------------------------------------------------------------------
+   Shimmer placeholder for cards/lists while data is in flight. Cheaper to
+   render than a spinner-only state and keeps the layout from jumping. The
+   shimmer is a CSS-only gradient — no JS, no asset.
+   ========================================================================== */
+.skel {
+    display: inline-block;
+    background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 50%, #f1f5f9 100%);
+    background-size: 200% 100%;
+    animation: esems-skeleton-pulse 1.4s ease-in-out infinite;
+    border-radius: .25rem;
+    color: transparent;
+    user-select: none;
+}
+.skel-text   { height: 1em; width: 100%; }
+.skel-title  { height: 1.4em; width: 60%; }
+.skel-pill   { height: 1.2em; width: 4.5rem; border-radius: 9999px; }
+.skel-circle { width: 36px; height: 36px; border-radius: 50%; }
+.skel-block  { display: block; width: 100%; height: 100%; min-height: 6rem; border-radius: .5rem; }
+@keyframes esems-skeleton-pulse {
+    0%   { background-position: 0% 50%; }
+    100% { background-position: -200% 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .skel { animation: none; opacity: .8; }
+}
+
+/* ============================================================================
+   OrganizationUnits/Details — redesign tokens
+   --------------------------------------------------------------------------
+   Closes seven findings from the senior UI critique:
+     • H1 readable hierarchy (was: same colour as body)
+     • Subtitle properly demoted
+     • Constrained reading width
+     • Clickable stat-tile strip distinct from content-card chrome
+     • 32×32 hit-target icon buttons
+     • Directional-glyph RTL mirroring
+     • Breadcrumb row that walks the OrgUnit ancestor chain
+
+   Selectors are scoped to `body` to win over material-design-3.css base
+   rules without resorting to !important — keeps cascade predictable.
+   ========================================================================== */
+
+/* (1) Heading hierarchy — promote H1 to slate-900, demote subtitle to slate-500 */
+body .esems-page-title    { color: #0f172a !important; font-weight: 700; }
+body .esems-page-subtitle { color: #64748b !important; font-size: 14px; }
+
+/* (2) Container measure — material-design-3.css sets max-width 1400px but
+       it's overridden somewhere downstream to "none". Re-assert + tighten
+       to 1280px so reading-line stays within Müller-Brockmann measure. */
+body .esems-container {
+    max-width: 1280px;
+    margin-inline: auto;
+    padding-inline: 24px;
+}
+
+/* (3) Org-unit reverse-link breadcrumb row — sits above the page-header
+       title block, walks the ancestor chain (Sector › Dept › Section …)
+       with chevron separators that mirror in RTL. */
+.ou-crumbs {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .25rem;
+    font-size: var(--fs-xs);
+    color: #64748b;
+    margin-bottom: .5rem;
+}
+.ou-crumbs a {
+    color: #475569;
+    text-decoration: none;
+    padding: .15rem .45rem;
+    border-radius: .25rem;
+    transition: background .12s ease, color .12s ease;
+}
+.ou-crumbs a:hover { background: #f1f5f9; color: #005B99; }
+.ou-crumbs .ou-crumb-sep {
+    color: #cbd5e1;
+    display: inline-flex;
+    width: 14px;
+    height: 14px;
+    align-items: center;
+    justify-content: center;
+}
+html[dir="rtl"] .ou-crumbs .ou-crumb-sep svg { transform: scaleX(-1); }
+.ou-crumbs .ou-crumb-current { color: #0f172a; font-weight: 600; padding: .15rem .45rem; }
+
+/* (4) Stat-tile strip — semantic distinction from content cards.
+       Lighter background, subtle border, no shadow (until hover). Each
+       tile is an anchor that jumps to its detail section. */
+.org-stat-tile {
+    display: block;
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 18px 12px;
+    text-align: center;
+    color: inherit;
+    text-decoration: none;
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.org-stat-tile:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 91, 153, .08);
+    border-color: #cbd5e1;
+    color: inherit;
+    text-decoration: none;
+}
+.org-stat-tile .v { font-size: 32px; font-weight: 700; line-height: 1; }
+.org-stat-tile .v.is-zero { color: #cbd5e1; }
+.org-stat-tile .v.is-positive { color: #005B99; }
+.org-stat-tile .l {
+    font-size: var(--fs-xs);
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-top: .35rem;
+}
+.org-stat-tile .l-extra {
+    font-size: var(--fs-xs);
+    color: #94a3b8;
+    margin-top: .2rem;
+}
+
+/* (5) Icon-only "view/edit" buttons — 32×32 hit area meets WCAG 2.2 §2.5.5
+       (min 24×24 css px) and Apple HIG (44pt physical) with comfort. */
+.lt-icon-btn {
+    display: inline-flex;
+    width: 32px;
+    height: 32px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    color: #475569;
+    background: transparent;
+    text-decoration: none;
+    transition: background .15s ease, color .15s ease;
+}
+.lt-icon-btn:hover  { background: #f1f5f9; color: #005B99; }
+.lt-icon-btn:focus-visible { outline: 2px solid var(--focus-ring-color, #005B99); outline-offset: 2px; }
+.lt-icon-btn svg { width: 16px; height: 16px; }
+
+/* (6) RTL mirror for directional glyphs that don't logically flip on their own. */
+html[dir="rtl"] [data-lucide="external-link"] svg,
+html[dir="rtl"] svg[data-lucide="external-link"],
+html[dir="rtl"] [data-lucide="arrow-left"] svg,
+html[dir="rtl"] svg[data-lucide="arrow-left"],
+html[dir="rtl"] [data-lucide="arrow-right"] svg,
+html[dir="rtl"] svg[data-lucide="arrow-right"] {
+    transform: scaleX(-1);
+}

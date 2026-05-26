@@ -1,0 +1,123 @@
+@model JobPosition
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = isRtl ? "إضافة منصب" : "Add Job Position";
+}
+
+<style>
+    .pc-shell { max-width: 720px; margin: 0 auto; }
+    .pc-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .55rem; border-bottom: 1px solid #e5e7eb; margin-bottom: .85rem; }
+    .pc-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .pc-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; padding: 1rem; }
+    .pc-row { margin-bottom: .75rem; }
+    .pc-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+    @@media (max-width: 768px) { .pc-grid-2 { grid-template-columns: 1fr; } }
+    .pc-label { display: block; font-size: var(--fs-xs); font-weight: 600; color: #374151; margin-bottom: .25rem; }
+    .pc-label .req { color: #dc2626; }
+    .pc-input, .pc-select, .pc-textarea { width: 100%; padding: .42rem .65rem; border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-sm); background: #fff; color: #111827; }
+    .pc-input:focus, .pc-select:focus, .pc-textarea:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .pc-err { font-size: var(--fs-xs); color: #dc2626; margin-top: .2rem; display: block; }
+    .pc-actions { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; padding-top: .75rem; border-top: 1px solid #f1f5f9; }
+    .pc-btn { border-radius: .375rem; padding: .55rem 1rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; border: 1px solid transparent; }
+    .pc-btn-primary { background: #005B99; color: #fff; }
+    .pc-btn-ghost { background: transparent; color: #374151; border-color: #d1d5db; }
+    .pc-checkbox-row { display: inline-flex; align-items: center; gap: .45rem; cursor: pointer; }
+    .pc-checkbox-row input { width: 1rem; height: 1rem; accent-color: #005B99; }
+</style>
+
+<div class="pc-shell">
+    <div class="pc-header">
+        <h1><i data-lucide="briefcase" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>@ViewData["Title"]</h1>
+        <a asp-action="Index" class="pc-btn pc-btn-ghost">
+            <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "رجوع" : "Back")
+        </a>
+    </div>
+
+    <form asp-action="Create" method="post" class="pc-card">
+        @Html.AntiForgeryToken()
+        <div asp-validation-summary="ModelOnly" style="margin-bottom:.6rem;padding:.6rem .8rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.375rem;color:#b91c1c;font-size: var(--fs-xs);"></div>
+
+        <div class="pc-grid-2 pc-row">
+            <div>
+                <label asp-for="NameEn" class="pc-label">@(isRtl ? "الاسم (إنجليزي)" : "Name (English)") <span class="req">*</span></label>
+                <input asp-for="NameEn" class="pc-input" />
+                <span asp-validation-for="NameEn" class="pc-err"></span>
+            </div>
+            <div>
+                <label asp-for="NameAr" class="pc-label">@(isRtl ? "الاسم (عربي)" : "Name (Arabic)") <span class="req">*</span></label>
+                <input asp-for="NameAr" dir="rtl" class="pc-input" />
+                <span asp-validation-for="NameAr" class="pc-err"></span>
+            </div>
+        </div>
+
+        <div class="pc-grid-2 pc-row">
+            <div>
+                <label asp-for="Code" class="pc-label">@(isRtl ? "الرمز" : "Code")</label>
+                <input asp-for="Code" class="pc-input" placeholder="@(isRtl ? "مثال: DIR, MGR, SR-SPEC" : "e.g., DIR, MGR, SR-SPEC")" />
+            </div>
+            <div>
+                <label asp-for="Category" class="pc-label">@(isRtl ? "الفئة" : "Category")</label>
+                <input asp-for="Category" class="pc-input" placeholder="@(isRtl ? "قيادة / متخصص / إداري" : "Leadership / Specialist / Administrative")" />
+            </div>
+        </div>
+
+        <div class="pc-grid-2 pc-row">
+            <div>
+                <label asp-for="DisplayOrder" class="pc-label">@(isRtl ? "الترتيب" : "Display Order")</label>
+                <input asp-for="DisplayOrder" type="number" min="0" class="pc-input" />
+            </div>
+            <div style="padding-top:1.5rem;">
+                <label class="pc-checkbox-row">
+                    <input asp-for="IsLeadership" />
+                    <span style="font-size: var(--fs-xs);color:#374151;">@(isRtl ? "دور قيادي" : "Leadership role")</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="pc-row">
+            <label asp-for="OrganizationUnitId" class="pc-label">@(isRtl ? "نطاق الوحدة (اختياري)" : "Unit scope (optional)")</label>
+            <select asp-for="OrganizationUnitId" class="pc-select">
+                <option value="">@(isRtl ? "— عام (يظهر لجميع الوحدات) —" : "— Global (visible to all units) —")</option>
+                @{
+                    var orgUnits = ViewBag.OrgUnits as System.Collections.IEnumerable;
+                    if (orgUnits != null)
+                    {
+                        foreach (dynamic u in orgUnits)
+                        {
+                            <option value="@u.Id">@(isRtl ? u.NameAr : u.NameEn)</option>
+                        }
+                    }
+                }
+            </select>
+            <div class="pc-help">
+                @(isRtl
+                    ? "اتركه عاماً ليظهر في كل عمليات/أنشطة/مهام النظام. حدد وحدة لقصره على عناصرها فقط."
+                    : "Leave global so the role shows on every process / activity / task. Pick a unit to scope it to that unit's items only.")
+            </div>
+        </div>
+
+        <div class="pc-grid-2 pc-row">
+            <div>
+                <label asp-for="DescriptionEn" class="pc-label">@(isRtl ? "الوصف (إنجليزي)" : "Description (English)")</label>
+                <textarea asp-for="DescriptionEn" rows="3" class="pc-textarea"></textarea>
+            </div>
+            <div>
+                <label asp-for="DescriptionAr" class="pc-label">@(isRtl ? "الوصف (عربي)" : "Description (Arabic)")</label>
+                <textarea asp-for="DescriptionAr" dir="rtl" rows="3" class="pc-textarea"></textarea>
+            </div>
+        </div>
+
+        <div class="pc-actions">
+            <a asp-action="Index" class="pc-btn pc-btn-ghost">
+                <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "إلغاء" : "Cancel")
+            </a>
+            <button type="submit" class="pc-btn pc-btn-primary">
+                <i data-lucide="save" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "حفظ" : "Save")
+            </button>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">if (window.lucide) lucide.createIcons();</script>
+}

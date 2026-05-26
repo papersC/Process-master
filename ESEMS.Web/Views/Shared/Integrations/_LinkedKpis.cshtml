@@ -1,0 +1,163 @@
+@*
+    Reusable KPIs panel — pulls from IProcessPerformanceProvider for any
+    (entityType, entityId). Mirrors _LinkedRisks: renders nothing when disabled or empty.
+
+    Usage:
+        @await Html.PartialAsync("Integrations/_LinkedKpis", new ESEMS.Web.Views.Shared.Integrations.LinkedPanelArgs {
+            EntityType = ESEMS.Web.Services.Integrations.Contracts.LinkedEntityType.Process,
+            EntityId   = Model.Id
+        })
+*@
+@using ESEMS.Web.Services.Integrations.Contracts
+@inject IProcessPerformanceProvider PerfProvider
+@model ESEMS.Web.Views.Shared.Integrations.LinkedPanelArgs
+
+@{
+    if (!PerfProvider.IsEnabled || Model is null || string.IsNullOrEmpty(Model.EntityId))
+    {
+        return;
+    }
+
+    var kpis = await PerfProvider.GetKpisForEntityAsync(Model.EntityType, Model.EntityId, take: Model.MaxItems);
+    var deepLink = PerfProvider.GetEntityDeepLink(Model.EntityType, Model.EntityId);
+    var offTrack = kpis.Count(k => string.Equals(k.Status, "OffTrack", StringComparison.OrdinalIgnoreCase) || string.Equals(k.Status, "AtRisk", StringComparison.OrdinalIgnoreCase));
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+
+    string FormatTarget(decimal? v, string? unit) => v.HasValue ? v.Value.ToString("N1") + (unit ?? "") : "—";
+    string TrendIcon(decimal? trend, LinkedKpiDirection dir)
+    {
+        if (!trend.HasValue || trend.Value == 0) return "minus";
+        var goingUp = trend.Value > 0;
+        var goodUp = dir == LinkedKpiDirection.HigherBetter;
+        return (goingUp == goodUp) ? "trending-up" : "trending-down";
+    }
+    string TrendColor(decimal? trend, LinkedKpiDirection dir)
+    {
+        if (!trend.HasValue || trend.Value == 0) return "#94a3b8";
+        var goingUp = trend.Value > 0;
+        var goodUp = dir == LinkedKpiDirection.HigherBetter;
+        return (goingUp == goodUp) ? "#15803d" : "#b91c1c";
+    }
+}
+
+<style>
+    .lk-card { background:#fff; border:1px solid #e5e7eb; border-radius:.5rem; overflow:hidden; }
+    .lk-head { display:flex; align-items:center; justify-content:space-between; gap:.5rem; padding:.55rem .85rem; border-bottom:1px solid #f1f5f9; }
+    .lk-title { display:inline-flex; align-items:center; gap:.4rem; font-size: var(--fs-sm); font-weight:600; color:#111827; margin:0; }
+    .lk-title i { width:16px; height:16px; color:#005B99; }
+    .lk-source { font-size: var(--fs-xs); color:#94a3b8; font-weight:500; padding:.1rem .35rem; background:#f8fafc; border-radius:.25rem; font-family:ui-monospace,monospace; }
+    .lk-count { display:inline-flex; align-items:center; gap:.3rem; font-size: var(--fs-xs); color:#374151; font-weight:600; }
+    .lk-count-bad { color:#b91c1c; font-weight:700; }
+    .lk-table-wrap { max-height:240px; overflow-y:auto; }
+    .lk-table { width:100%; font-size: var(--fs-xs); border-collapse:collapse; }
+    .lk-table th { font-size: var(--fs-xs); text-transform:uppercase; letter-spacing:.04em; color:#6b7280; font-weight:600; padding:.4rem .6rem; text-align:start; border-bottom:1px solid #e5e7eb; background:#f8fafc; }
+    .lk-table th.num, .lk-table td.num { text-align:end; font-family:ui-monospace,monospace; }
+    .lk-table td { padding:.35rem .6rem; border-bottom:1px solid #f3f4f6; color:#374151; vertical-align:middle; }
+    .lk-table tbody tr:last-child td { border-bottom:none; }
+    .lk-status { display:inline-block; padding:.1rem .45rem; font-size: var(--fs-xs); font-weight:700; border-radius:.25rem; }
+    .lk-status-OnTrack  { background:#f0fdf4; color:#15803d; }
+    .lk-status-AtRisk   { background:#fefce8; color:#a16207; }
+    .lk-status-OffTrack { background:#fef2f2; color:#b91c1c; }
+    .lk-status-Unknown  { background:#f1f5f9; color:#64748b; }
+    .lk-empty { padding:.85rem; text-align:center; color:#94a3b8; font-size: var(--fs-xs); }
+    .lk-foot { display:flex; justify-content:flex-end; padding:.4rem .85rem; background:#fafbfc; border-top:1px solid #f1f5f9; }
+    .lk-foot a { color:#005B99; font-size: var(--fs-xs); font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:.25rem; }
+    .lk-foot a:hover { text-decoration:underline; }
+</style>
+
+<div class="lk-card" id="@(Model.AnchorId ?? "linked-kpis")">
+    <div class="lk-head">
+        <h3 class="lk-title">
+            <i data-lucide="gauge"></i>
+            <span>@(isRtl ? "مؤشرات الأداء المرتبطة" : "Linked KPIs")</span>
+            <span class="lk-source">@PerfProvider.ProviderName</span>
+        </h3>
+        @if (kpis.Count > 0)
+        {
+            <span class="lk-count @(offTrack > 0 ? "lk-count-bad" : "")">
+                <i data-lucide="@(offTrack > 0 ? "alert-triangle" : "check-circle-2")" style="width:13px;height:13px;"></i>
+                @if (offTrack > 0)
+                {
+                    <span>@offTrack @(isRtl ? "خارج المسار" : "off-track") — @kpis.Count @(isRtl ? "إجمالي" : "total")</span>
+                }
+                else
+                {
+                    <span>@kpis.Count @(isRtl ? "على المسار" : "on-track")</span>
+                }
+            </span>
+        }
+    </div>
+
+    @if (kpis.Count == 0)
+    {
+        <div class="lk-empty">
+            <i data-lucide="bar-chart-3" style="width:24px;height:24px;color:#cbd5e1;display:block;margin:0 auto .35rem;"></i>
+            @(isRtl ? "لا توجد مؤشرات أداء مرتبطة." : "No linked KPIs for this entity.")
+        </div>
+    }
+    else
+    {
+        <div class="lk-table-wrap">
+            <table class="lk-table">
+                <thead>
+                    <tr>
+                        <th>@(isRtl ? "الرمز" : "Code")</th>
+                        <th>@(isRtl ? "المؤشر" : "KPI")</th>
+                        <th class="num">@(isRtl ? "الهدف" : "Target")</th>
+                        <th class="num">@(isRtl ? "الفعلي" : "Actual")</th>
+                        <th>@(isRtl ? "الفترة" : "Period")</th>
+                        <th>@(isRtl ? "الاتجاه" : "Trend")</th>
+                        <th>@(isRtl ? "الحالة" : "Status")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var k in kpis)
+                    {
+                        var statusClass = k.Status?.Replace(" ", "") ?? "Unknown";
+                        if (statusClass != "OnTrack" && statusClass != "AtRisk" && statusClass != "OffTrack") statusClass = "Unknown";
+                        <tr>
+                            <td style="font-family:ui-monospace,monospace;color:#475569;">@k.Code</td>
+                            <td style="color:#111827;font-weight:500;">
+                                @if (!string.IsNullOrEmpty(k.ExternalUrl))
+                                {
+                                    <a href="@k.ExternalUrl" target="_blank" rel="noopener" style="color:#005B99;text-decoration:none;">@k.Title</a>
+                                }
+                                else
+                                {
+                                    @k.Title
+                                }
+                            </td>
+                            <td class="num">@FormatTarget(k.Target, k.UnitOfMeasure)</td>
+                            <td class="num" style="font-weight:700;">@FormatTarget(k.Actual, k.UnitOfMeasure)</td>
+                            <td style="color:#6b7280;">@k.Period</td>
+                            <td>
+                                @if (k.TrendVsPrevious.HasValue && k.TrendVsPrevious.Value != 0)
+                                {
+                                    <span style="display:inline-flex;align-items:center;gap:.2rem;color:@TrendColor(k.TrendVsPrevious, k.Direction);font-weight:600;font-size: var(--fs-xs);">
+                                        <i data-lucide="@TrendIcon(k.TrendVsPrevious, k.Direction)" style="width:12px;height:12px;"></i>
+                                        @(k.TrendVsPrevious.Value > 0 ? "+" : "")@k.TrendVsPrevious.Value.ToString("N1")
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span style="color:#cbd5e1;">—</span>
+                                }
+                            </td>
+                            <td><span class="lk-status lk-status-@statusClass">@k.Status</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(deepLink))
+    {
+        <div class="lk-foot">
+            <a href="@deepLink" target="_blank" rel="noopener">
+                @(isRtl ? "فتح في النظام" : "Open in") @PerfProvider.ProviderName
+                <i data-lucide="external-link" style="width:12px;height:12px;"></i>
+            </a>
+        </div>
+    }
+</div>

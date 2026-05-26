@@ -1,0 +1,255 @@
+@model List<Category>
+@{
+    ViewData["Title"] = Shared["Title_ProcessArchitecture"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+
+    var visibleCategories = Model.OrderBy(c => c.SortKey ?? c.Code).ToList();
+    var totalCategories   = visibleCategories.Count;
+    var totalGroups       = visibleCategories.Sum(c => c.ProcessGroups.Count(pg => !pg.IsDeleted));
+    var totalProcesses    = visibleCategories.Sum(c => c.ProcessGroups.Where(pg => !pg.IsDeleted).Sum(pg => pg.Processes.Count(p => !p.IsDeleted)));
+    var avgPerGroup       = totalGroups > 0 ? Math.Round((decimal)totalProcesses / totalGroups, 1) : 0m;
+}
+
+@*
+    Process Architecture — Executive Brief layout (matches Dashboard/Index pattern).
+    ─ Header        : title + subtitle + actions (Categories, ProcessGroups, Processes shortcuts)
+    ─ Hero KPI band : 4 metrics — Total Categories / Process Groups / Processes / Avg per Group
+    ─ Tabbed body   : one tab per category, each pane shows that category's process groups in
+                      an adaptive grid; each group card lists its processes (scroll if >8).
+
+    Fits 1366×768 without page-scroll. Tabs prevent the endless vertical stack the
+    original page produced when many categories are present.
+*@
+
+<style>
+    /* ─────────── Shell + header ─────────── */
+    .pa-shell { display: flex; flex-direction: column; gap: var(--sp-3); height: calc(100vh - 140px); min-height: 620px; }
+    .pa-header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: 0 0 var(--sp-2); border-bottom: 1px solid #e5e7eb; flex: 0 0 auto; }
+    .pa-title-block h1 { margin: 0; font-size: var(--fs-xl); font-weight: 700; color: #0f172a; line-height: 1.15; }
+    .pa-title-block p { margin: 0; font-size: var(--fs-xs); color: #64748b; }
+
+    /* Action buttons reused across the architecture pages */
+    .pa-action-btn { background: var(--esems-primary); color: #fff; border: none; border-radius: .375rem; padding: .45rem .85rem; font-size: var(--fs-sm); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; transition: background .15s, box-shadow .15s; text-decoration: none; }
+    .pa-action-btn:hover { background: var(--esems-primary-hover); color: #fff; box-shadow: 0 4px 12px rgba(0, 91, 153, .25); }
+    .pa-action-btn.outline { background: #fff; color: var(--esems-primary); border: 1px solid #cbd5e1; }
+    .pa-action-btn.outline:hover { background: #f1f5f9; }
+
+    /* ─────────── Hero KPI band — same visual language as Dashboard/Index ─────────── */
+    .pa-hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-3); flex: 0 0 auto; }
+    .pa-hero-card { background: #fff; border: 1px solid #e5e7eb; border-inline-start: 4px solid var(--accent, var(--esems-primary)); border-radius: .5rem; padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-1); transition: box-shadow .15s, transform .15s; min-height: 96px; }
+    .pa-hero-card:hover { box-shadow: 0 4px 14px rgba(0, 91, 153, .10); transform: translateY(-1px); }
+    .pa-hero-card.is-info    { --accent: var(--esems-primary); }
+    .pa-hero-card.is-success { --accent: var(--esems-success); }
+    .pa-hero-card.is-warn    { --accent: var(--esems-warning); }
+    .pa-hero-label { display: flex; align-items: center; gap: .35rem; font-size: var(--fs-xs); color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+    .pa-hero-label svg { width: 14px; height: 14px; color: var(--accent, var(--esems-primary)); }
+    .pa-hero-value { font-size: var(--fs-2xl); font-weight: 700; color: #0f172a; line-height: 1.05; margin: 0; }
+
+    /* ─────────── Tabbed body ─────────── */
+    .pa-tabs-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; display: flex; flex-direction: column; min-height: 0; flex: 1 1 0; overflow: hidden; }
+    .pa-tabs-nav { display: flex; gap: 0; border-bottom: 1px solid #e5e7eb; padding: 0 var(--sp-3); flex: 0 0 auto; overflow-x: auto; }
+    .pa-tab-btn { background: transparent; border: none; padding: .85rem var(--sp-3); font-size: var(--fs-sm); font-weight: 600; color: #64748b; cursor: pointer; display: inline-flex; align-items: center; gap: .4rem; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; transition: color .15s, border-color .15s; }
+    .pa-tab-btn:hover { color: var(--esems-primary); }
+    .pa-tab-btn[aria-selected="true"] { color: var(--esems-primary); border-bottom-color: var(--esems-primary); }
+    .pa-tab-btn .pa-tab-code { font-size: var(--fs-xs); color: #94a3b8; font-weight: 500; }
+    .pa-tab-btn .pa-tab-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 18px; padding: 0 .4rem; border-radius: 9999px; background: #f1f5f9; color: #475569; font-size: var(--fs-xs); font-weight: 700; }
+    .pa-tab-btn[aria-selected="true"] .pa-tab-count { background: rgba(0,91,153,.12); color: var(--esems-primary); }
+    .pa-tab-panes { flex: 1 1 0; min-height: 0; padding: var(--sp-3); overflow-y: auto; }
+    .pa-tab-pane { display: none; }
+    .pa-tab-pane.is-active { display: block; }
+
+    /* Empty state for a category with no groups */
+    .pa-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .35rem; padding: var(--sp-6); color: #94a3b8; font-size: var(--fs-sm); text-align: center; }
+    .pa-empty svg { width: 36px; height: 36px; color: #cbd5e1; }
+
+    /* Category header inside each pane (not the tab — the heading row above the group grid) */
+    .pa-cat-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-3); padding-bottom: var(--sp-2); border-bottom: 1px dashed #e5e7eb; }
+    .pa-cat-head .lhs { display: flex; align-items: center; gap: .55rem; min-width: 0; }
+    .pa-cat-head .pa-cat-code { display: inline-flex; align-items: center; padding: .15rem .55rem; border-radius: .25rem; background: rgba(0,91,153,.08); color: var(--esems-primary); font-size: var(--fs-xs); font-weight: 700; letter-spacing: .03em; }
+    .pa-cat-head .pa-cat-name { font-size: var(--fs-base); font-weight: 600; color: #0f172a; }
+    .pa-cat-head .pa-cat-meta { font-size: var(--fs-xs); color: #64748b; }
+
+    /* ─────────── Process group grid (inside a pane) ─────────── */
+    .pa-group-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--sp-3); }
+    .pa-group-card { background: #fafbfc; border: 1px solid #e5e7eb; border-radius: .5rem; display: flex; flex-direction: column; min-height: 180px; max-height: 360px; overflow: hidden; transition: box-shadow .15s, border-color .15s; }
+    .pa-group-card:hover { border-color: #cbd5e1; box-shadow: 0 2px 8px rgba(0, 91, 153, .06); }
+    .pa-group-head { display: flex; align-items: center; justify-content: space-between; gap: .45rem; padding: .55rem var(--sp-3); border-bottom: 1px solid #f1f5f9; flex: 0 0 auto; }
+    .pa-group-head .pa-group-name { font-size: var(--fs-sm); font-weight: 600; color: #0f172a; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pa-group-head .pa-group-code { display: inline-flex; align-items: center; padding: .1rem .45rem; border-radius: .25rem; background: #f1f5f9; color: #475569; font-size: var(--fs-xs); font-weight: 600; flex-shrink: 0; }
+
+    .pa-process-list { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: .35rem 0; }
+    .pa-process-list a { display: flex; align-items: center; gap: .45rem; padding: .35rem var(--sp-3); font-size: var(--fs-sm); color: #334155; text-decoration: none; border-inline-start: 2px solid transparent; transition: background .12s, border-color .12s, color .12s; }
+    .pa-process-list a:hover { background: #eff6ff; color: var(--esems-primary); border-inline-start-color: var(--esems-primary); }
+    .pa-process-list a .pa-bullet { color: #cbd5e1; font-weight: 700; flex-shrink: 0; }
+    .pa-process-list a:hover .pa-bullet { color: var(--esems-primary); }
+    .pa-process-list a .pa-pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pa-process-list a .pa-pcode { font-size: var(--fs-xs); color: #94a3b8; font-weight: 500; flex-shrink: 0; }
+    .pa-process-empty { padding: .55rem var(--sp-3); font-size: var(--fs-xs); color: #94a3b8; font-style: italic; }
+</style>
+
+<div class="pa-shell">
+
+    @* ─────────── Page header ─────────── *@
+    <div class="pa-header">
+        <div class="pa-title-block">
+            <h1>@ViewData["Title"]</h1>
+            <p>@Shared["Text_ProcessArchitecture_Subtitle"]</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <a asp-controller="Categories" asp-action="Index" class="pa-action-btn outline">
+                <i data-lucide="layers" aria-hidden="true"></i>
+                <span>@Shared["Title_Categories"]</span>
+            </a>
+            <a asp-controller="ProcessGroups" asp-action="Index" class="pa-action-btn outline">
+                <i data-lucide="folder" aria-hidden="true"></i>
+                <span>@Shared["Title_ProcessGroups"]</span>
+            </a>
+            <a asp-controller="Processes" asp-action="Index" class="pa-action-btn">
+                <i data-lucide="git-branch" aria-hidden="true"></i>
+                <span>@Shared["Title_Processes"]</span>
+            </a>
+        </div>
+    </div>
+
+    @* ─────────── Hero KPI band ─────────── *@
+    <div class="pa-hero">
+        <div class="pa-hero-card is-info">
+            <div class="pa-hero-label"><i data-lucide="layers" aria-hidden="true"></i>@Shared["Label_TotalCategories"]</div>
+            <p class="pa-hero-value">@totalCategories</p>
+        </div>
+        <div class="pa-hero-card is-info">
+            <div class="pa-hero-label"><i data-lucide="folder-tree" aria-hidden="true"></i>@Shared["Label_TotalProcessGroups"]</div>
+            <p class="pa-hero-value">@totalGroups</p>
+        </div>
+        <div class="pa-hero-card is-info">
+            <div class="pa-hero-label"><i data-lucide="git-branch" aria-hidden="true"></i>@Shared["Label_TotalProcesses"]</div>
+            <p class="pa-hero-value">@totalProcesses</p>
+        </div>
+        <div class="pa-hero-card is-success">
+            <div class="pa-hero-label"><i data-lucide="bar-chart-3" aria-hidden="true"></i>@Shared["Label_AvgProcessesPerGroup"]</div>
+            <p class="pa-hero-value">@avgPerGroup.ToString("0.#")</p>
+        </div>
+    </div>
+
+    @* ─────────── Tabbed categories ─────────── *@
+    <div class="pa-tabs-card">
+
+        @if (visibleCategories.Any())
+        {
+            <div class="pa-tabs-nav" role="tablist" aria-label="@Shared["Title_Categories"]">
+                @{ var first = true; }
+                @foreach (var c in visibleCategories)
+                {
+                    var groupCount = c.ProcessGroups.Count(pg => !pg.IsDeleted);
+                    <button type="button" class="pa-tab-btn" role="tab"
+                            aria-selected="@(first ? "true" : "false")"
+                            aria-controls="pa-pane-@c.Id"
+                            data-tab="pa-pane-@c.Id">
+                        <span class="pa-tab-code">@c.Code</span>
+                        <span>@c.Name</span>
+                        <span class="pa-tab-count">@groupCount</span>
+                    </button>
+                    first = false;
+                }
+            </div>
+
+            <div class="pa-tab-panes">
+                @{ first = true; }
+                @foreach (var c in visibleCategories)
+                {
+                    var visibleGroups = c.ProcessGroups.Where(pg => !pg.IsDeleted).OrderBy(x => x.SortKey ?? x.Code).ToList();
+                    var catProcessCount = visibleGroups.Sum(pg => pg.Processes.Count(p => !p.IsDeleted));
+
+                    <div class="pa-tab-pane @(first ? "is-active" : "")" id="pa-pane-@c.Id" role="tabpanel">
+                        <div class="pa-cat-head">
+                            <div class="lhs">
+                                <span class="pa-cat-code">@c.Code</span>
+                                <span class="pa-cat-name">@c.Name</span>
+                            </div>
+                            <div class="pa-cat-meta">
+                                @visibleGroups.Count @Shared["Title_ProcessGroups"] · @catProcessCount @Shared["Title_Processes"]
+                            </div>
+                        </div>
+
+                        @if (visibleGroups.Any())
+                        {
+                            <div class="pa-group-grid">
+                                @foreach (var pg in visibleGroups)
+                                {
+                                    var groupProcesses = pg.Processes.Where(p => !p.IsDeleted).OrderBy(x => x.DisplayOrder).ToList();
+                                    <div class="pa-group-card">
+                                        <div class="pa-group-head">
+                                            <span class="pa-group-name" title="@pg.Name">@pg.Name</span>
+                                            <span class="pa-group-code">@pg.Code</span>
+                                        </div>
+                                        <div class="pa-process-list">
+                                            @if (groupProcesses.Any())
+                                            {
+                                                @foreach (var p in groupProcesses)
+                                                {
+                                                    <a asp-controller="Processes" asp-action="Details" asp-route-id="@p.Id" title="@p.Name">
+                                                        <span class="pa-bullet">•</span>
+                                                        <span class="pa-pname">@p.Name</span>
+                                                        <span class="pa-pcode">@p.Code</span>
+                                                    </a>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <div class="pa-process-empty">@Shared["Text_NoProcesses"]</div>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="pa-empty">
+                                <i data-lucide="folder-x" aria-hidden="true"></i>
+                                <span>@Shared["Title_ProcessGroups"]: 0</span>
+                            </div>
+                        }
+                    </div>
+                    first = false;
+                }
+            </div>
+        }
+        else
+        {
+            <div class="pa-empty" style="padding: var(--sp-7);">
+                <i data-lucide="inbox" aria-hidden="true"></i>
+                <span>@Shared["Title_Categories"]: 0</span>
+            </div>
+        }
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        lucide.createIcons();
+
+        // Tab switching — toggles aria-selected + .is-active. Persists active tab in
+        // localStorage so the user lands back on the same category after navigating.
+        const PA_TAB_KEY = 'esems.processArchitecture.activeTab';
+        const tabBtns = document.querySelectorAll('.pa-tab-btn');
+        const tabPanes = document.querySelectorAll('.pa-tab-pane');
+        function paActivateTab(paneId) {
+            let matched = false;
+            tabBtns.forEach(b => {
+                const active = b.dataset.tab === paneId;
+                b.setAttribute('aria-selected', active ? 'true' : 'false');
+                if (active) matched = true;
+            });
+            tabPanes.forEach(p => p.classList.toggle('is-active', p.id === paneId));
+            if (matched) {
+                try { localStorage.setItem(PA_TAB_KEY, paneId); } catch (_) {}
+            }
+        }
+        tabBtns.forEach(b => b.addEventListener('click', () => paActivateTab(b.dataset.tab)));
+        try {
+            const saved = localStorage.getItem(PA_TAB_KEY);
+            if (saved && document.getElementById(saved)) paActivateTab(saved);
+        } catch (_) {}
+    </script>
+}

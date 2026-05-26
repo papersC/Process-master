@@ -1,0 +1,678 @@
+﻿[
+    {
+        "SheetName":  "اعتماد مدراء الإدارات",
+        "VisioFile":  "Microsoft_Visio_Drawing.vsdx"
+    },
+    {
+        "SheetName":  "قياس رضا الشركاء",
+        "VisioFile":  "Microsoft_Visio_Drawing1.vsdx"
+    },
+    {
+        "SheetName":  "طلب تعزيز على التكلفة أو المواز",
+        "VisioFile":  "Microsoft_Visio_Drawing2.vsdx"
+    },
+    {
+        "SheetName":  "تقديم التقارير المالية للمشروع",
+        "VisioFile":  "Microsoft_Visio_Drawing3.vsdx"
+    },
+    {
+        "SheetName":  "تقييم الشراكة",
+        "VisioFile":  "Microsoft_Visio_Drawing4.vsdx"
+    },
+    {
+        "SheetName":  "إعداد خطة الشراكات والبحث عن ال",
+        "VisioFile":  "Microsoft_Visio_Drawing5.vsdx"
+    },
+    {
+        "SheetName":  "عقد او تعديل او الغاء اتفاقية ش",
+        "VisioFile":  "Microsoft_Visio_Drawing6.vsdx"
+    },
+    {
+        "SheetName":  "صرف الرواتب",
+        "VisioFile":  "Microsoft_Visio_Drawing7.vsdx"
+    },
+    {
+        "SheetName":  "تسوية الحسابات الدورية",
+        "VisioFile":  "Microsoft_Visio_Drawing8.vsdx"
+    },
+    {
+        "SheetName":  "الإفراج عن الضمانات البنكية",
+        "VisioFile":  "Microsoft_Visio_Drawing9.vsdx"
+    },
+    {
+        "SheetName":  "صرف السلف النثرية",
+        "VisioFile":  "Microsoft_Visio_Drawing10.vsdx"
+    },
+    {
+        "SheetName":  "اعتماد فواتير التبرعات",
+        "VisioFile":  "Microsoft_Visio_Drawing11.vsdx"
+    },
+    {
+        "SheetName":  "اعتماد فواتير دفعات المشاريع ال",
+        "VisioFile":  "Microsoft_Visio_Drawing12.vsdx"
+    },
+    {
+        "SheetName":  "اعتماد فواتير المنح والقروض وال",
+        "VisioFile":  "Microsoft_Visio_Drawing13.vsdx"
+    },
+    {
+        "SheetName":  "اعتماد الحالات الطارئة ",
+        "VisioFile":  "Microsoft_Visio_Drawing14.vsdx"
+    },
+    {
+        "SheetName":  "تسوية الحسابات البنكية",
+        "VisioFile":  "Microsoft_Visio_Drawing15.vsdx"
+    },
+    {
+        "SheetName":  "إنشاء القروض",
+        "VisioFile":  "Microsoft_Visio_Drawing16.vsdx"
+    },
+    {
+        "SheetName":  "متابعة فواتير المطالبات المالية",
+        "VisioFile":  "Microsoft_Visio_Drawing17.vsdx"
+    },
+    {
+        "SheetName":  "إصدار عقد قرض بناء أو صيانة",
+        "VisioFile":  "Microsoft_Visio_Drawing18.vsdx"
+    },
+    {
+        "SheetName":  "مراقبة مؤشرات الأداء",
+        "VisioFile":  "Microsoft_Visio_Drawing19.vsdx"
+    },
+    {
+        "SheetName":  "حوكمة الفرق واللجان",
+        "VisioFile":  "Microsoft_Visio_Drawing20.vsdx"
+    },
+    {
+        "SheetName":  "تقييم الخطة الاستراتيجية",
+        "VisioFile":  "Microsoft_Visio_Drawing21.vsdx"
+    },
+    {
+        "SheetName":  "تطوير الهيكل التنظيمي",
+        "VisioFile":  "Microsoft_Visio_Drawing22.vsdx"
+    },
+    {
+        "SheetName":  "إدارة التغيير",
+        "VisioFile":  "Microsoft_Visio_Drawing23.vsdx"
+    },
+    {
+        "SheetName":  "إعداد ومتابعة الخطط التشغيلية",
+        "VisioFile":  "Microsoft_Visio_Drawing24.vsdx"
+    },
+    {
+        "SheetName":  "إعداد الخطة الاستراتيجية",
+        "VisioFile":  "Microsoft_Visio_Drawing25.vsdx"
+    },
+    {
+        "SheetName":  "تحديدالاحتياجات لبناء الانظمSRS",
+        "VisioFile":  "Microsoft_Visio_Drawing26.vsdx"
+    },
+    {
+        "SheetName":  "وضع خطة البحوث والدراسات واستطل",
+        "VisioFile":  "Microsoft_Visio_Drawing27.vsdx"
+    },
+    {
+        "SheetName":  "تنفيذ استطلاعات الرأي والدراسات",
+        "VisioFile":  "Microsoft_Visio_Drawing28.vsdx"
+    },
+    {
+        "SheetName":  "تطوير الشراكات ذات الصلة بالدرا",
+        "VisioFile":  "Microsoft_Visio_Drawing29.vsdx"
+    },
+    {
+        "SheetName":  "مراجعة السياسات والتشريعات والق",
+        "VisioFile":  "Microsoft_Visio_Drawing30.vsdx"
+    },
+    {
+        "SheetName":  "تطوير بيانات المؤسسة",
+        "VisioFile":  "Microsoft_Visio_Drawing31.vsdx"
+    },
+    {
+        "SheetName":  "تطوير السياسات الإسكانية ",
+        "VisioFile":  "Microsoft_Visio_Drawing32.vsdx"
+    },
+    {
+        "SheetName":  "البحث عن الفرص الاستثمارية",
+        "VisioFile":  "Microsoft_Visio_Drawing33.vsdx"
+    },
+    {
+        "SheetName":  "تحليل التقييم المالي",
+        "VisioFile":  "Microsoft_Visio_Drawing34.vsdx"
+    },
+    {
+        "SheetName":  "حصر وتصنيف وتجميع المعارف",
+        "VisioFile":  "Microsoft_Visio_Drawing35.vsdx"
+    },
+    {
+        "SheetName":  "تطوير استراتيجية المعرفة والابت",
+        "VisioFile":  "Microsoft_Visio_Drawing36.vsdx"
+    },
+    {
+        "SheetName":  "التحسين المستمر وتطوير منظومة ا",
+        "VisioFile":  "Microsoft_Visio_Drawing37.vsdx"
+    },
+    {
+        "SheetName":  "المشاركة في جوائز التميز الداخل",
+        "VisioFile":  "Microsoft_Visio_Drawing38.vsdx"
+    },
+    {
+        "SheetName":  "قياس نضج التميز المؤسسي",
+        "VisioFile":  "Microsoft_Visio_Drawing39.vsdx"
+    },
+    {
+        "SheetName":  "آلية عمل نظام الشكاوى",
+        "VisioFile":  "Microsoft_Visio_Drawing40.vsdx"
+    },
+    {
+        "SheetName":  "إدارة التقييم الداخلي والخارجي",
+        "VisioFile":  "Microsoft_Visio_Drawing41.vsdx"
+    },
+    {
+        "SheetName":  "آلية عمل الاقتراحات",
+        "VisioFile":  "Microsoft_Visio_Drawing42.vsdx"
+    },
+    {
+        "SheetName":  "المراجعة الإدارية",
+        "VisioFile":  "Microsoft_Visio_Drawing43.vsdx"
+    },
+    {
+        "SheetName":  "حالات عد المطابقة والإجراءات ا ",
+        "VisioFile":  "Microsoft_Visio_Drawing44.vsdx"
+    },
+    {
+        "SheetName":  "التدقيق الداخلي على نظام إدارة ",
+        "VisioFile":  "Microsoft_Visio_Drawing45.vsdx"
+    },
+    {
+        "SheetName":  "ضبط  التعديلات على نظام إدارة ا",
+        "VisioFile":  "Microsoft_Visio_Drawing46.vsdx"
+    },
+    {
+        "SheetName":  "توثيق الإجراءات والوثائق",
+        "VisioFile":  "Microsoft_Visio_Drawing47.vsdx"
+    },
+    {
+        "SheetName":  "تطوير العمليات والإجراءات",
+        "VisioFile":  "Microsoft_Visio_Drawing48.vsdx"
+    },
+    {
+        "SheetName":  "إعداد الخطابات القانونية",
+        "VisioFile":  "Microsoft_Visio_Drawing49.vsdx"
+    },
+    {
+        "SheetName":  "إعداد ومراجعة العقود والاتفاقيا",
+        "VisioFile":  "Microsoft_Visio_Drawing50.vsdx"
+    },
+    {
+        "SheetName":  "الرد على طلبات الاستشارات القان",
+        "VisioFile":  "Microsoft_Visio_Drawing51.vsdx"
+    },
+    {
+        "SheetName":  "تنفيذ الإجراءات القانونية في ال",
+        "VisioFile":  "Microsoft_Visio_Drawing52.vsdx"
+    },
+    {
+        "SheetName":  "حل النزاعات القانونية ذات الصلة",
+        "VisioFile":  "Microsoft_Visio_Drawing53.vsdx"
+    },
+    {
+        "SheetName":  "إدارة المخاطر المؤسسية",
+        "VisioFile":  "Microsoft_Visio_Drawing54.vsdx"
+    },
+    {
+        "SheetName":  "تخطيط وتنفيذ التدقيق الداخلي",
+        "VisioFile":  "Microsoft_Visio_Drawing55.vsdx"
+    },
+    {
+        "SheetName":  "التواصل والمراسلات",
+        "VisioFile":  "Microsoft_Visio_Drawing56.vsdx"
+    },
+    {
+        "SheetName":  "إدارة المعلومات",
+        "VisioFile":  "Microsoft_Visio_Drawing57.vsdx"
+    },
+    {
+        "SheetName":  "استقطاب الرعاة",
+        "VisioFile":  "Microsoft_Visio_Drawing58.vsdx"
+    },
+    {
+        "SheetName":  "إعداد الخطة التسويقية",
+        "VisioFile":  "Microsoft_Visio_Drawing59.vsdx"
+    },
+    {
+        "SheetName":  "إعداد الكتيب السنوي",
+        "VisioFile":  "Microsoft_Visio_Drawing60.vsdx"
+    },
+    {
+        "SheetName":  "إعداد المحتوى الإعلامي",
+        "VisioFile":  "Microsoft_Visio_Drawing61.vsdx"
+    },
+    {
+        "SheetName":  "إعداد أو تطوير السياسات التقنية",
+        "VisioFile":  "Microsoft_Visio_Drawing62.vsdx"
+    },
+    {
+        "SheetName":  "متابعة تقارير إنجاز المشاريع ال",
+        "VisioFile":  "Microsoft_Visio_Drawing63.vsdx"
+    },
+    {
+        "SheetName":  "تحديد الاحتياجات للمشاريع BRS",
+        "VisioFile":  "Microsoft_Visio_Drawing64.vsdx"
+    },
+    {
+        "SheetName":  "تحديث الأنظمة والبرامج",
+        "VisioFile":  "Microsoft_Visio_Drawing65.vsdx"
+    },
+    {
+        "SheetName":  "تقييم حوكمة تقنية المعلومات",
+        "VisioFile":  "Microsoft_Visio_Drawing66.vsdx"
+    },
+    {
+        "SheetName":  "تصميم الأنظمة التقنية واختبارها",
+        "VisioFile":  "Microsoft_Visio_Drawing67.vsdx"
+    },
+    {
+        "SheetName":  "تقديم خدمة الدعم التقني",
+        "VisioFile":  "Microsoft_Visio_Drawing68.vsdx"
+    },
+    {
+        "SheetName":  "التحقق من جودة الأنظمة",
+        "VisioFile":  "Microsoft_Visio_Drawing69.vsdx"
+    },
+    {
+        "SheetName":  "تطوير خطط استمرارية الأعمال",
+        "VisioFile":  "Microsoft_Visio_Drawing70.vsdx"
+    },
+    {
+        "SheetName":  "إدارة قنوات التواصل الاجتماعي",
+        "VisioFile":  "Microsoft_Visio_Drawing71.vsdx"
+    },
+    {
+        "SheetName":  "إدارة محتوى الموقع الإلكتروني",
+        "VisioFile":  "Microsoft_Visio_Drawing72.vsdx"
+    },
+    {
+        "SheetName":  "تنظيم الفعاليات المؤسسية",
+        "VisioFile":  "Microsoft_Visio_Drawing73.vsdx"
+    },
+    {
+        "SheetName":  "الأخبار الصحفية والحصرية",
+        "VisioFile":  "Microsoft_Visio_Drawing74.vsdx"
+    },
+    {
+        "SheetName":  "تقديم طلب اتصال داخلي",
+        "VisioFile":  "Microsoft_Visio_Drawing75.vsdx"
+    },
+    {
+        "SheetName":  "تنفيذ أعمال الصيانة الدورية في ",
+        "VisioFile":  "Microsoft_Visio_Drawing76.vsdx"
+    },
+    {
+        "SheetName":  "إدارة الصيانة",
+        "VisioFile":  "Microsoft_Visio_Drawing77.vsdx"
+    },
+    {
+        "SheetName":  "متابعة المخازن",
+        "VisioFile":  "Microsoft_Visio_Drawing78.vsdx"
+    },
+    {
+        "SheetName":  "جرد الأصول والمخازن",
+        "VisioFile":  "Microsoft_Visio_Drawing79.vsdx"
+    },
+    {
+        "SheetName":  "إدارة الخدمات الأمنية",
+        "VisioFile":  "Microsoft_Visio_Drawing80.vsdx"
+    },
+    {
+        "SheetName":  "توزيع البريد",
+        "VisioFile":  "Microsoft_Visio_Drawing81.vsdx"
+    },
+    {
+        "SheetName":  "التخلص من الأصول",
+        "VisioFile":  "Microsoft_Visio_Drawing82.vsdx"
+    },
+    {
+        "SheetName":  "إدارة المواد التموينية والقرطاس",
+        "VisioFile":  "Microsoft_Visio_Drawing83.vsdx"
+    },
+    {
+        "SheetName":  "الدعم اللوجستي",
+        "VisioFile":  "Microsoft_Visio_Drawing84.vsdx"
+    },
+    {
+        "SheetName":  "تطوير سياسات واستراتيجية الموار",
+        "VisioFile":  "Microsoft_Visio_Drawing85.vsdx"
+    },
+    {
+        "SheetName":  "التحصيل المالي إيداعات خارجية",
+        "VisioFile":  "Microsoft_Visio_Drawing86.vsdx"
+    },
+    {
+        "SheetName":  "متابعة المتأخرات",
+        "VisioFile":  "Microsoft_Visio_Drawing87.vsdx"
+    },
+    {
+        "SheetName":  "السداد المبكر",
+        "VisioFile":  "Microsoft_Visio_Drawing88.vsdx"
+    },
+    {
+        "SheetName":  "إعادة جدولة القروض الإسكانية",
+        "VisioFile":  "Microsoft_Visio_Drawing89.vsdx"
+    },
+    {
+        "SheetName":  "تطوير سياسة التحصيل",
+        "VisioFile":  "Microsoft_Visio_Drawing90.vsdx"
+    },
+    {
+        "SheetName":  "مراقبة إيرادات المؤسسة",
+        "VisioFile":  "Microsoft_Visio_Drawing91.vsdx"
+    },
+    {
+        "SheetName":  "تنفيذ الإجراء التصحيحي الخاص با",
+        "VisioFile":  "Microsoft_Visio_Drawing92.vsdx"
+    },
+    {
+        "SheetName":  "إعداد وتخطيط الموازنة العامة",
+        "VisioFile":  "Microsoft_Visio_Drawing93.vsdx"
+    },
+    {
+        "SheetName":  "إغلاق الفترات المحاسبية وإعداد ",
+        "VisioFile":  "Microsoft_Visio_Drawing94.vsdx"
+    },
+    {
+        "SheetName":  "صرف الدفعات",
+        "VisioFile":  "Microsoft_Visio_Drawing95.vsdx"
+    },
+    {
+        "SheetName":  "الرقابة على الموازنة ",
+        "VisioFile":  "Microsoft_Visio_Drawing96.vsdx"
+    },
+    {
+        "SheetName":  "المناقلات المالية بين الحسابات",
+        "VisioFile":  "Microsoft_Visio_Drawing97.vsdx"
+    },
+    {
+        "SheetName":  "تمكين الموظفين",
+        "VisioFile":  "Microsoft_Visio_Drawing98.vsdx"
+    },
+    {
+        "SheetName":  "التوظيف",
+        "VisioFile":  "Microsoft_Visio_Drawing99.vsdx"
+    },
+    {
+        "SheetName":  "التعاقب الوظيفي",
+        "VisioFile":  "Microsoft_Visio_Drawing100.vsdx"
+    },
+    {
+        "SheetName":  "الترقيات",
+        "VisioFile":  "Microsoft_Visio_Drawing101.vsdx"
+    },
+    {
+        "SheetName":  "صياغة الأوصاف الوظيفية",
+        "VisioFile":  "Microsoft_Visio_Drawing102.vsdx"
+    },
+    {
+        "SheetName":  "تقييم الأداء الفردي",
+        "VisioFile":  "Microsoft_Visio_Drawing103.vsdx"
+    },
+    {
+        "SheetName":  "إدارة المواهب",
+        "VisioFile":  "Microsoft_Visio_Drawing104.vsdx"
+    },
+    {
+        "SheetName":  "مراجعة أو تحديث عمليات أو أدلة ",
+        "VisioFile":  "Microsoft_Visio_Drawing105.vsdx"
+    },
+    {
+        "SheetName":  "إعداد طلبات الأشغال",
+        "VisioFile":  "Microsoft_Visio_Drawing106.vsdx"
+    },
+    {
+        "SheetName":  "تسعير المساكن المسترجعة",
+        "VisioFile":  "Microsoft_Visio_Drawing107.vsdx"
+    },
+    {
+        "SheetName":  "إعداد العقود",
+        "VisioFile":  "Microsoft_Visio_Drawing108.vsdx"
+    },
+    {
+        "SheetName":  "التكليف المباشر",
+        "VisioFile":  "Microsoft_Visio_Drawing109.vsdx"
+    },
+    {
+        "SheetName":  "تقييم الموردين",
+        "VisioFile":  "Microsoft_Visio_Drawing110.vsdx"
+    },
+    {
+        "SheetName":  "طرح مناقصة أو ممارسة",
+        "VisioFile":  "Microsoft_Visio_Drawing111.vsdx"
+    },
+    {
+        "SheetName":  "الاتفاق المباشر",
+        "VisioFile":  "Microsoft_Visio_Drawing112.vsdx"
+    },
+    {
+        "SheetName":  "إصدار أمر شراء",
+        "VisioFile":  "Microsoft_Visio_Drawing113.vsdx"
+    },
+    {
+        "SheetName":  "اعتماد دفعات الموردين",
+        "VisioFile":  "Microsoft_Visio_Drawing114.vsdx"
+    },
+    {
+        "SheetName":  "تسجيل الموردين",
+        "VisioFile":  "Microsoft_Visio_Drawing115.vsdx"
+    },
+    {
+        "SheetName":  "معالجة طلبات المنح",
+        "VisioFile":  "Microsoft_Visio_Drawing116.vsdx"
+    },
+    {
+        "SheetName":  "معالجة طلبات القروض",
+        "VisioFile":  "Microsoft_Visio_Drawing117.vsdx"
+    },
+    {
+        "SheetName":  "معالجة طلبات الإعفاء من القروض ",
+        "VisioFile":  "Microsoft_Visio_Drawing118.vsdx"
+    },
+    {
+        "SheetName":  "قياس رضا المتعاملين -مكالمات ال",
+        "VisioFile":  "Microsoft_Visio_Drawing119.vsdx"
+    },
+    {
+        "SheetName":  "معالجة الشكاوى والاقتراحات ",
+        "VisioFile":  "Microsoft_Visio_Drawing120.vsdx"
+    },
+    {
+        "SheetName":  "اقتراح الحلول الملائمة لتحديات ",
+        "VisioFile":  "Microsoft_Visio_Drawing121.vsdx"
+    },
+    {
+        "SheetName":  "الرد على استفسارات المتعاملين",
+        "VisioFile":  "Microsoft_Visio_Drawing122.vsdx"
+    },
+    {
+        "SheetName":  "تقديم طلب الخدمة",
+        "VisioFile":  "Microsoft_Visio_Drawing123.vsdx"
+    },
+    {
+        "SheetName":  "إصدار عقد قرض بناءأو صيانة",
+        "VisioFile":  "Microsoft_Visio_Drawing124.vsdx"
+    },
+    {
+        "SheetName":  "التظلم على الطلبات أو عرض حالة ",
+        "VisioFile":  "Microsoft_Visio_Drawing125.vsdx"
+    },
+    {
+        "SheetName":  "توفير المخطط السكني للمستفيد",
+        "VisioFile":  "Microsoft_Visio_Drawing126.vsdx"
+    },
+    {
+        "SheetName":  "اعتماد دفعة الاستشاري",
+        "VisioFile":  "Microsoft_Visio_Drawing127.vsdx"
+    },
+    {
+        "SheetName":  "قياس رضا المستفيد عن التصميم",
+        "VisioFile":  "Microsoft_Visio_Drawing128.vsdx"
+    },
+    {
+        "SheetName":  "تأهيل مساكن أصحاب الهمم",
+        "VisioFile":  "Microsoft_Visio_Drawing129.vsdx"
+    },
+    {
+        "SheetName":  "الموافقة على صرف دفعة منحةأو قر",
+        "VisioFile":  "Microsoft_Visio_Drawing130.vsdx"
+    },
+    {
+        "SheetName":  "متابعة تصميم المشروع لإعداد ال ",
+        "VisioFile":  "Microsoft_Visio_Drawing131.vsdx"
+    },
+    {
+        "SheetName":  "تنفيذ المسوحات الميدانية",
+        "VisioFile":  "Microsoft_Visio_Drawing132.vsdx"
+    },
+    {
+        "SheetName":  "استرجاع وسحب المساكن وإعادة تأه",
+        "VisioFile":  "Microsoft_Visio_Drawing133.vsdx"
+    },
+    {
+        "SheetName":  "رقابة اعمال الصيانة في فترة الض",
+        "VisioFile":  "Microsoft_Visio_Drawing134.vsdx"
+    },
+    {
+        "SheetName":  "توقيع عقد المقاولة-نماذج",
+        "VisioFile":  "Microsoft_Visio_Drawing135.vsdx"
+    },
+    {
+        "SheetName":  "إغلاق المشاريع واستلامها",
+        "VisioFile":  "Microsoft_Visio_Drawing136.vsdx"
+    },
+    {
+        "SheetName":  "تسوية نزاعات أعمال البناء",
+        "VisioFile":  "Microsoft_Visio_Drawing137.vsdx"
+    },
+    {
+        "SheetName":  "توزيع طلبات النماذج الموحدة ",
+        "VisioFile":  "Microsoft_Visio_Drawing138.vsdx"
+    },
+    {
+        "SheetName":  "تقييم المقاولين والاستشاريين ",
+        "VisioFile":  "Microsoft_Visio_Drawing139.vsdx"
+    },
+    {
+        "SheetName":  "إعداد تقرير حالة المشروع",
+        "VisioFile":  "Microsoft_Visio_Drawing140.vsdx"
+    },
+    {
+        "SheetName":  "التدقيق على المشاريع الإسكانية ",
+        "VisioFile":  "Microsoft_Visio_Drawing141.vsdx"
+    },
+    {
+        "SheetName":  "التنسيق مع الشركاء في تنفيذ الم",
+        "VisioFile":  "Microsoft_Visio_Drawing142.vsdx"
+    },
+    {
+        "SheetName":  "رقابة أعمال المقاولين والاستشار",
+        "VisioFile":  "Microsoft_Visio_Drawing143.vsdx"
+    },
+    {
+        "SheetName":  "معالجة شكاوى المشاريع الهندسية",
+        "VisioFile":  "Microsoft_Visio_Drawing144.vsdx"
+    },
+    {
+        "SheetName":  "ضمان مطابقة مواد البناء بالمواص",
+        "VisioFile":  "Microsoft_Visio_Drawing145.vsdx"
+    },
+    {
+        "SheetName":  "الإشراف على المشاريع الهندسية",
+        "VisioFile":  "Microsoft_Visio_Drawing146.vsdx"
+    },
+    {
+        "SheetName":  "الإشراف على تنفيذ أعمال الصيانة",
+        "VisioFile":  "Microsoft_Visio_Drawing147.vsdx"
+    },
+    {
+        "SheetName":  "الموافقة على صرف دفعة",
+        "VisioFile":  "Microsoft_Visio_Drawing148.vsdx"
+    },
+    {
+        "SheetName":  "الموافقة على بنود الصيانة",
+        "VisioFile":  "Microsoft_Visio_Drawing149.vsdx"
+    },
+    {
+        "SheetName":  "تقييم حالة المسكن",
+        "VisioFile":  "Microsoft_Visio_Drawing150.vsdx"
+    },
+    {
+        "SheetName":  "إعداد القرارات الداخلية واعتماد",
+        "VisioFile":  "Microsoft_Visio_Drawing151.vsdx"
+    },
+    {
+        "SheetName":  "اعتماد التصميم الأولي للمشروع",
+        "VisioFile":  "Microsoft_Visio_Drawing153.vsdx"
+    },
+    {
+        "SheetName":  "اعتماد البرنامج التصميم",
+        "VisioFile":  "Microsoft_Visio_Drawing154.vsdx"
+    },
+    {
+        "SheetName":  "تطوير وتنفيذ استراتيجية إدارة ا",
+        "VisioFile":  "Microsoft_Visio_Drawing155.vsdx"
+    },
+    {
+        "SheetName":  "جرد الأصول الإسكانية",
+        "VisioFile":  "Microsoft_Visio_Drawing156.vsdx"
+    },
+    {
+        "SheetName":  "إدارة عقود الإيجار",
+        "VisioFile":  "Microsoft_Visio_Drawing157.vsdx"
+    },
+    {
+        "SheetName":  "رقابة أعمال الصيانة فترة الضمان",
+        "VisioFile":  "Microsoft_Visio_Drawing158.vsdx"
+    },
+    {
+        "SheetName":  "إدارة مرافق مشاريع المؤسسة",
+        "VisioFile":  "Microsoft_Visio_Drawing159.vsdx"
+    },
+    {
+        "SheetName":  "التفتيش على المساكن",
+        "VisioFile":  "Microsoft_Visio_Drawing160.vsdx"
+    },
+    {
+        "SheetName":  "استلام وتسليم المساكن",
+        "VisioFile":  "Microsoft_Visio_Drawing161.vsdx"
+    },
+    {
+        "SheetName":  "تخصيص المساكن",
+        "VisioFile":  "Microsoft_Visio_Drawing162.vsdx"
+    },
+    {
+        "SheetName":  "تنفيذ زيارة ميدانية",
+        "VisioFile":  "Microsoft_Visio_Drawing163.vsdx"
+    },
+    {
+        "SheetName":  "التدقيق على الأمن الإلكتروني",
+        "VisioFile":  "Microsoft_Visio_Drawing164.vsdx"
+    },
+    {
+        "SheetName":  "مراقبة التهديدات الأمنية",
+        "VisioFile":  "Microsoft_Visio_Drawing165.vsdx"
+    },
+    {
+        "SheetName":  "اختبار الثغرات الأمنية",
+        "VisioFile":  "Microsoft_Visio_Drawing166.vsdx"
+    },
+    {
+        "SheetName":  "التوعية الأمنية",
+        "VisioFile":  "Microsoft_Visio_Drawing167.vsdx"
+    },
+    {
+        "SheetName":  "تحديد طريقة التحصيل واستلام الم",
+        "VisioFile":  "Microsoft_Visio_Drawing168.vsdx"
+    },
+    {
+        "SheetName":  "اعتماد الفكرة التصميمية للمشروع",
+        "VisioFile":  "Microsoft_Visio_Drawing152.vsdx"
+    }
+]

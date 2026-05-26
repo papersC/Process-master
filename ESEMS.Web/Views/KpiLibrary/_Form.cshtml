@@ -1,0 +1,79 @@
+@model ESEMS.Web.Models.Improvement.KpiDefinition
+@{
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+}
+<style>
+    .kpi-row { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; margin-bottom: .65rem; }
+    @@media (max-width: 768px) { .kpi-row { grid-template-columns: 1fr; } }
+    .kpi-label { display: block; font-size: var(--fs-xs); font-weight: 600; color: #374151; margin-bottom: .25rem; }
+    .kpi-input, .kpi-select, .kpi-textarea { width: 100%; padding: .42rem .65rem; border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-sm); }
+    .kpi-input:focus, .kpi-select:focus, .kpi-textarea:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .kpi-err { color: #dc2626; font-size: var(--fs-xs); margin-top: .2rem; display: block; }
+</style>
+
+<input type="hidden" asp-for="Id" />
+<input type="hidden" asp-for="CreatedAt" />
+<input type="hidden" asp-for="CreatedById" />
+<input type="hidden" asp-for="Version" />
+
+<div asp-validation-summary="ModelOnly" style="margin-bottom:.6rem;padding:.6rem .8rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.375rem;color:#b91c1c;font-size: var(--fs-xs);"></div>
+
+<div class="kpi-row">
+    <div>
+        <label asp-for="Code" class="kpi-label">@(isRtl ? "الكود" : "Code") *</label>
+        <input asp-for="Code" class="kpi-input" placeholder="@(isRtl ? "مثال: CSAT" : "e.g. CSAT")" />
+        <span asp-validation-for="Code" class="kpi-err"></span>
+    </div>
+    <div>
+        <label asp-for="UnitOfMeasure" class="kpi-label">@(isRtl ? "وحدة القياس" : "Unit of Measure") *</label>
+        <input asp-for="UnitOfMeasure" class="kpi-input" placeholder="@(isRtl ? "%، درهم، ساعات" : "%, AED, hours")" />
+        <span asp-validation-for="UnitOfMeasure" class="kpi-err"></span>
+    </div>
+</div>
+
+<div class="kpi-row">
+    <div>
+        <label asp-for="NameEn" class="kpi-label">@(isRtl ? "الاسم بالإنجليزية" : "Name (English)") *</label>
+        <input asp-for="NameEn" class="kpi-input" />
+        <span asp-validation-for="NameEn" class="kpi-err"></span>
+    </div>
+    <div>
+        <label asp-for="NameAr" class="kpi-label">@(isRtl ? "الاسم بالعربية" : "Name (Arabic)")</label>
+        <input asp-for="NameAr" dir="rtl" class="kpi-input" />
+    </div>
+</div>
+
+<div class="kpi-row">
+    <div>
+        <label asp-for="DefaultType" class="kpi-label">@(isRtl ? "النوع الافتراضي" : "Default Type")</label>
+        <select asp-for="DefaultType" class="kpi-select">
+            @foreach (var t in Enum.GetValues<ESEMS.Web.Models.Enums.ImprovementMeasurementType>())
+            {
+                <option value="@t">@t</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label asp-for="Direction" class="kpi-label">@(isRtl ? "الاتجاه" : "Direction")</label>
+        <select asp-for="Direction" class="kpi-select">
+            <option value="HigherBetter">HigherBetter (e.g. satisfaction %)</option>
+            <option value="LowerBetter">LowerBetter (e.g. processing time)</option>
+        </select>
+    </div>
+</div>
+
+<div class="kpi-row">
+    <div>
+        <label asp-for="DescriptionEn" class="kpi-label">@(isRtl ? "الوصف بالإنجليزية" : "Description (English)")</label>
+        <textarea asp-for="DescriptionEn" rows="2" class="kpi-textarea"></textarea>
+    </div>
+    <div>
+        <label asp-for="DescriptionAr" class="kpi-label">@(isRtl ? "الوصف بالعربية" : "Description (Arabic)")</label>
+        <textarea asp-for="DescriptionAr" dir="rtl" rows="2" class="kpi-textarea"></textarea>
+    </div>
+</div>
+
+<label style="display:inline-flex;align-items:center;gap:.4rem;font-size: var(--fs-xs);color:#374151;margin-top:.25rem;">
+    <input asp-for="IsActive" type="checkbox" />
+    @(isRtl ? "نشط (يظهر في القائمة المنسدلة)" : "Active (visible in measurement picker)")
+</label>

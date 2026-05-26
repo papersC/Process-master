@@ -1,0 +1,352 @@
+@model IEnumerable<EnterpriseRisk>
+@{
+    ViewData["Title"] = Shared["Title_RiskHeatMap"].Value;
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+
+    var critical = Model.Count(r => r.RiskLevel == RiskLevel.Critical);
+    var high = Model.Count(r => r.RiskLevel == RiskLevel.High);
+    var medium = Model.Count(r => r.RiskLevel == RiskLevel.Medium);
+    var low = Model.Count(r => r.RiskLevel == RiskLevel.Low);
+}
+
+<style>
+    .lt-shell { display: flex; flex-direction: column; gap: .6rem; }
+    .lt-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; }
+    .lt-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .lt-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .lt-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; border: none; }
+    .lt-btn-primary { background: #005B99; color: #fff; } .lt-btn-primary:hover { background: #003d6b; color: #fff; }
+    .lt-btn-outline { background: #fff; color: #005B99; border: 1px solid #cbd5e1; } .lt-btn-outline:hover { background: #f1f5f9; }
+    .lt-select { padding: .4rem .55rem; border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-xs); background: #fff; color: #111827; min-width: 130px; }
+
+    .lt-kpi-strip { display: flex; align-items: stretch; gap: .5rem; padding: .55rem .65rem; background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; flex-wrap: wrap; }
+    .lt-kpi { display: flex; align-items: center; gap: .55rem; padding: .25rem .65rem; flex: 1 1 180px; min-width: 180px; border-inline-end: 1px dashed #e5e7eb; }
+    .lt-kpi:last-child { border-inline-end: none; }
+    .lt-kpi-icon { width: 34px; height: 34px; border-radius: .375rem; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .lt-kpi-icon.kpi-red    { background: #fef2f2; color: #dc2626; }
+    .lt-kpi-icon.kpi-orange { background: #fff7ed; color: #c2410c; }
+    .lt-kpi-icon.kpi-yellow { background: #fefce8; color: #a16207; }
+    .lt-kpi-icon.kpi-green  { background: #ecfdf5; color: #047857; }
+    .lt-kpi-num { font-size: var(--fs-base); font-weight: 700; color: #111827; line-height: 1; }
+    .lt-kpi-label { font-size: var(--fs-xs); color: #6b7280; margin-top: .15rem; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+    @@media (max-width: 768px) { .lt-kpi { flex: 1 1 45%; border-inline-end: none; } }
+
+    .lt-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; display: flex; flex-direction: column; overflow: hidden; }
+    .lt-card-h { display: flex; align-items: center; gap: .5rem; padding: .65rem .85rem; border-bottom: 1px solid #f1f5f9; }
+    .lt-card-h h2 { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .45rem; }
+    .lt-card-h .lt-card-sub { font-size: var(--fs-xs); color: #6b7280; margin-inline-start: auto; }
+    .lt-table-wrap { overflow: auto; }
+    .lt-table-wrap table { width: 100%; font-size: var(--fs-sm); border-collapse: collapse; }
+    .lt-table-wrap thead { background: #f8fafc; }
+    .lt-table-wrap th { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; padding: .55rem .75rem; text-align: start; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+    .lt-table-wrap td { padding: .5rem .75rem; border-bottom: 1px solid #f3f4f6; color: #374151; vertical-align: middle; }
+    .lt-table-wrap tbody tr:hover td { background: #f9fafb; }
+    .lt-link { color: #005B99; font-weight: 600; text-decoration: none; }
+    .lt-link:hover { text-decoration: underline; color: #003d6b; }
+
+    .lt-grid-2 { display: grid; grid-template-columns: 2fr 1fr; gap: .6rem; align-items: start; }
+    @@media (max-width: 992px) { .lt-grid-2 { grid-template-columns: 1fr; } }
+
+    .lt-heatmap { padding: .85rem; }
+    .lt-heatmap-row { display: flex; gap: .5rem; align-items: stretch; }
+    .lt-y-axis { display: flex; align-items: center; justify-content: center; width: 28px; }
+    .lt-y-axis span { transform: rotate(-90deg); white-space: nowrap; font-size: var(--fs-xs); font-weight: 600; color: #64748b; }
+    .lt-heatmap-grid { display: grid; grid-template-columns: 28px repeat(5, 1fr); gap: 4px; flex: 1; }
+    .lt-heatmap-cell { padding: .65rem .25rem; border-radius: .25rem; text-align: center; font-size: var(--fs-xs); color: #fff; font-weight: 700; cursor: pointer; transition: transform .12s; line-height: 1.2; }
+    .lt-heatmap-cell:hover { transform: scale(1.04); }
+    .lt-heatmap-cell .cell-num { font-size: var(--fs-base); font-weight: 800; }
+    .lt-heatmap-cell .cell-score { font-size: var(--fs-xs); opacity: .82; margin-top: .15rem; }
+    .lt-hm-axis { font-size: var(--fs-xs); font-weight: 600; color: #64748b; padding: .35rem 0; text-align: center; }
+    .lt-x-axis { font-size: var(--fs-xs); font-weight: 600; color: #64748b; text-align: center; margin-top: .4rem; }
+    .lt-c-low { background: #16a34a; }
+    .lt-c-med { background: #eab308; }
+    .lt-c-high { background: #ea580c; }
+    .lt-c-crit { background: #dc2626; }
+    .lt-hm-legend { display: flex; gap: .85rem; align-items: center; font-size: var(--fs-xs); color: #6b7280; flex-wrap: wrap; }
+    .lt-hm-legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-inline-end: .3rem; }
+
+    .lt-detail-panel { padding: .85rem; }
+    .lt-detail-empty { color: #94a3b8; font-size: var(--fs-xs); text-align: center; padding: 1rem 0; }
+    .lt-detail-item { padding: .55rem .65rem; background: #f8fafc; border-radius: .375rem; margin-bottom: .4rem; }
+    .lt-detail-item:last-child { margin-bottom: 0; }
+    .lt-detail-item a { color: #005B99; font-weight: 700; font-size: var(--fs-sm); text-decoration: none; }
+    .lt-detail-item a:hover { text-decoration: underline; }
+    .lt-detail-item .name { color: #374151; font-size: var(--fs-xs); margin-top: .15rem; }
+    .lt-detail-item .owner { color: #94a3b8; font-size: var(--fs-xs); margin-top: .15rem; }
+</style>
+
+<div class="lt-shell">
+    <div class="lt-header">
+        <div>
+            <h1><i data-lucide="activity" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>@Shared["Title_RiskHeatMap"]</h1>
+            <p>@Shared["Text_InteractiveRiskHeatMap"]</p>
+        </div>
+        <div style="display:flex;gap:.4rem;align-items:center;">
+            <select id="riskTypeFilter" class="lt-select" aria-label="@(isRtl ? "نوع المخاطر" : "Risk type")">
+                <option value="inherent">@Shared["Label_InherentRisk"]</option>
+                <option value="residual">@Shared["Label_ResidualRisk"]</option>
+            </select>
+            <a asp-action="Index" class="lt-btn lt-btn-primary"><i data-lucide="list" class="w-4 h-4" aria-hidden="true"></i>@Shared["Button_ViewList"]</a>
+        </div>
+    </div>
+
+    <div class="lt-kpi-strip">
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-red"><i data-lucide="alert-octagon" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@critical</div><div class="lt-kpi-label">@Shared["Label_Critical"]</div></div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-orange"><i data-lucide="alert-triangle" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@high</div><div class="lt-kpi-label">@Shared["Label_High"]</div></div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-yellow"><i data-lucide="alert-circle" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@medium</div><div class="lt-kpi-label">@Shared["Label_Medium"]</div></div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-green"><i data-lucide="check-circle" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@low</div><div class="lt-kpi-label">@Shared["Label_Low"]</div></div>
+        </div>
+    </div>
+
+    <div class="lt-grid-2">
+        <div class="lt-card">
+            <div class="lt-card-h">
+                <h2><i data-lucide="grid-3x3" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@Shared["Label_RiskMatrix"]</h2>
+                <span class="lt-card-sub">
+                    <span class="lt-hm-legend">
+                        <span><span class="sw lt-c-low"></span>@Shared["Label_Low"] (1-4)</span>
+                        <span><span class="sw lt-c-med"></span>@Shared["Label_Medium"] (5-9)</span>
+                        <span><span class="sw lt-c-high"></span>@Shared["Label_High"] (10-14)</span>
+                        <span><span class="sw lt-c-crit"></span>@Shared["Label_Critical"] (15-25)</span>
+                    </span>
+                </span>
+            </div>
+            <div class="lt-heatmap">
+                <div class="lt-heatmap-row">
+                    <div class="lt-y-axis"><span>@Shared["Label_Likelihood"] →</span></div>
+                    <div style="flex:1;">
+                        <div class="lt-heatmap-grid" id="heatMapGrid">
+                            <div></div>
+                            <div class="lt-hm-axis">1</div><div class="lt-hm-axis">2</div><div class="lt-hm-axis">3</div><div class="lt-hm-axis">4</div><div class="lt-hm-axis">5</div>
+                            @for (int l = 5; l >= 1; l--)
+                            {
+                                <div class="lt-hm-axis">@l</div>
+                                @for (int i = 1; i <= 5; i++)
+                                {
+                                    var score = l * i;
+                                    var bg = score >= 15 ? "lt-c-crit" : score >= 10 ? "lt-c-high" : score >= 5 ? "lt-c-med" : "lt-c-low";
+                                    var tier = score >= 15 ? Shared["Label_Critical"].Value : score >= 10 ? Shared["Label_High"].Value : score >= 5 ? Shared["Label_Medium"].Value : Shared["Label_Low"].Value;
+                                    var inherentCount = Model.Count(r => r.Likelihood == l && r.Impact == i);
+                                    <div class="lt-heatmap-cell heat-cell @bg" data-likelihood="@l" data-impact="@i"
+                                         role="button" tabindex="0"
+                                         aria-label="@tier @(isRtl ? "" : "tier ·") @(isRtl ? "احتمالية" : "likelihood") @l @(isRtl ? "أثر" : "impact") @i @(isRtl ? "•" : "·") @inherentCount @(isRtl ? "مخاطر" : "risks")">
+                                        <div class="cell-num" id="cell-@l-@i">@inherentCount</div>
+                                        <div class="cell-score">@score</div>
+                                    </div>
+                                }
+                            }
+                        </div>
+                        @* Arrow flips with locale — in Arabic the impact axis
+                           grows from right to left visually so the cue should
+                           point left (←) not right (→). *@
+                        <div class="lt-x-axis">@Shared["Label_Impact"] @(isRtl ? "←" : "→")</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="lt-card">
+            <div class="lt-card-h">
+                <h2><i data-lucide="search" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@Shared["Label_SelectedRisks"]</h2>
+            </div>
+            <div class="lt-detail-panel" id="riskDetailsPanel">
+                <div class="lt-detail-empty">@Shared["Text_ClickCellToViewRisks"]</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="lt-card" id="filteredRisksSection" style="display:none;">
+        <div class="lt-card-h">
+            <h2 id="filteredRisksTitle"><i data-lucide="filter" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@Shared["Label_FilteredRisks"]</h2>
+            <button type="button" id="clearFilterBtn" class="lt-card-sub" style="background:none;border:none;cursor:pointer;color:#6b7280;text-decoration:underline;">@Shared["Button_ClearFilter"]</button>
+        </div>
+        <div class="lt-table-wrap">
+            <table id="filteredRisksTable">
+                <thead>
+                    <tr>
+                        <th>@Shared["Column_RiskNumber"]</th>
+                        <th>@Shared["Column_Title"]</th>
+                        <th>@Shared["Column_InherentRisk"]</th>
+                        <th>@Shared["Column_ResidualRisk"]</th>
+                        <th>@Shared["Column_Owner"]</th>
+                        <th style="text-align:end;">@Shared["Column_Actions"]</th>
+                    </tr>
+                </thead>
+                <tbody id="filteredRisksBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script nonce="@Context.CspNonce()">
+    if (window.lucide) lucide.createIcons();
+    const risks = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Select(r => new {
+        id = r.Id,
+        riskNumber = r.RiskNumber,
+        name = isRtl ? r.NameAr : r.NameEn,
+        likelihood = r.Likelihood,
+        impact = r.Impact,
+        inherentScore = r.InherentRiskScore,
+        residualLikelihood = r.ResidualLikelihood,
+        residualImpact = r.ResidualImpact,
+        residualScore = r.ResidualRiskScore,
+        owner = r.Owner != null ? r.Owner.GetLocalizedFullName() : "-"
+    })));
+    const I18N = {
+        owner: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Label_Owner"].Value)),
+        likelihood: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Label_Likelihood"].Value)),
+        impact: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Label_Impact"].Value)),
+        residual: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Label_ResidualRisk"].Value)),
+        risksTitle: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(isRtl ? "المخاطر" : "Risks")),
+        clickToView: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Text_ClickCellToViewRisks"].Value)),
+        noRisksInCell: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(isRtl ? "لا توجد مخاطر في هذه الخلية" : "No risks in this cell"))
+    };
+
+    let currentFilter = 'inherent';
+
+    document.getElementById('riskTypeFilter').addEventListener('change', function (e) {
+        currentFilter = e.target.value;
+        updateHeatMap();
+        updateKpiBand();
+    });
+
+    // Recount each cell and rewrite only the .cell-num child + aria-label.
+    // Previous version used cell.textContent which wiped the .cell-score
+    // sibling and the colored background's child structure when the user
+    // toggled inherent/residual.
+    function updateHeatMap() {
+        const tierName = (score) =>
+            score >= 15 ? @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Label_Critical"].Value)) :
+            score >= 10 ? @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Label_High"].Value)) :
+            score >=  5 ? @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Label_Medium"].Value)) :
+                          @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Label_Low"].Value));
+
+        for (let l = 1; l <= 5; l++) {
+            for (let i = 1; i <= 5; i++) {
+                const numEl = document.getElementById(`cell-${l}-${i}`);
+                if (!numEl) continue;
+                const cell = numEl.closest('.lt-heatmap-cell');
+                const count = currentFilter === 'inherent'
+                    ? risks.filter(r => r.likelihood === l && r.impact === i).length
+                    : risks.filter(r => r.residualLikelihood === l && r.residualImpact === i).length;
+                numEl.textContent = count;
+                if (cell) {
+                    const score = l * i;
+                    cell.setAttribute('aria-label',
+                        `${tierName(score)} · ${I18N.likelihood} ${l} ${I18N.impact} ${i} · ${count} ${I18N.risksTitle}`);
+                }
+            }
+        }
+    }
+
+    // Mirror the cell recount in the headline KPI strip. Inherent uses each
+    // risk's Likelihood/Impact; residual uses ResidualLikelihood/Impact and
+    // SKIPS risks that don't have residual values populated (the count of
+    // those is exposed below the strip so it doesn't silently disappear).
+    function updateKpiBand() {
+        const tally = { Critical: 0, High: 0, Medium: 0, Low: 0, MissingResidual: 0 };
+        risks.forEach(r => {
+            let score;
+            if (currentFilter === 'inherent') {
+                score = (r.likelihood || 0) * (r.impact || 0);
+            } else {
+                if (r.residualLikelihood == null || r.residualImpact == null) {
+                    tally.MissingResidual++;
+                    return;
+                }
+                score = r.residualLikelihood * r.residualImpact;
+            }
+            if (score >= 15) tally.Critical++;
+            else if (score >= 10) tally.High++;
+            else if (score >= 5) tally.Medium++;
+            else tally.Low++;
+        });
+
+        const set = (sel, n) => { const el = document.querySelector(sel); if (el) el.textContent = n; };
+        set('.lt-kpi-icon.kpi-red    + div .lt-kpi-num', tally.Critical);
+        set('.lt-kpi-icon.kpi-orange + div .lt-kpi-num', tally.High);
+        set('.lt-kpi-icon.kpi-yellow + div .lt-kpi-num', tally.Medium);
+        set('.lt-kpi-icon.kpi-green  + div .lt-kpi-num', tally.Low);
+
+        // Residual-only annotation: warn the user how many risks lack residual
+        // data and are therefore not represented on the map / in the KPIs.
+        let note = document.getElementById('residualMissingNote');
+        if (currentFilter === 'residual' && tally.MissingResidual > 0) {
+            if (!note) {
+                note = document.createElement('div');
+                note.id = 'residualMissingNote';
+                note.style.cssText = 'padding:.4rem .6rem;background:#fffbeb;border:1px solid #fcd34d;color:#92400e;border-radius:.375rem;font-size:var(--fs-xs);margin-top:.4rem;display:flex;align-items:center;gap:.4rem;';
+                const strip = document.querySelector('.lt-kpi-strip');
+                strip.parentNode.insertBefore(note, strip.nextSibling);
+            }
+            const msg = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(isRtl ? "خطر بدون بيانات مخاطر متبقية" : "risks have no residual data yet"));
+            note.innerHTML = `<i data-lucide="info" class="w-4 h-4" aria-hidden="true"></i><strong>${tally.MissingResidual}</strong> ${msg}`;
+            if (window.lucide) lucide.createIcons();
+        } else if (note) {
+            note.remove();
+        }
+    }
+
+    function showRisksInCell(l, i) {
+        const filtered = currentFilter === 'inherent'
+            ? risks.filter(r => r.likelihood === l && r.impact === i)
+            : risks.filter(r => r.residualLikelihood === l && r.residualImpact === i);
+        const panel = document.getElementById('riskDetailsPanel');
+        const section = document.getElementById('filteredRisksSection');
+        const tbody = document.getElementById('filteredRisksBody');
+        const title = document.getElementById('filteredRisksTitle');
+
+        if (filtered.length === 0) {
+            panel.innerHTML = `<div class="lt-detail-empty">${I18N.noRisksInCell}</div>`;
+            section.style.display = 'none';
+            return;
+        }
+        panel.innerHTML = filtered.map(r => `
+            <div class="lt-detail-item">
+                <a href="${window.SP_PATHBASE || ''}/EnterpriseRisks/Details/${r.id}">${r.riskNumber}</a>
+                <div class="name">${r.name}</div>
+                <div class="owner">${I18N.owner}: ${r.owner}</div>
+            </div>
+        `).join('');
+        const labelL = currentFilter === 'inherent' ? I18N.likelihood : I18N.residual;
+        title.innerHTML = `<i data-lucide="filter" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>${I18N.risksTitle} (${labelL} ${l} × ${I18N.impact} ${i})`;
+        tbody.innerHTML = filtered.map(r => `
+            <tr>
+                <td><a href="${window.SP_PATHBASE || ''}/EnterpriseRisks/Details/${r.id}" class="lt-link">${r.riskNumber}</a></td>
+                <td style="font-weight:600;color:#111827;">${r.name}</td>
+                <td style="white-space:nowrap;font-weight:600;">${r.likelihood} × ${r.impact} = ${r.inherentScore}</td>
+                <td style="white-space:nowrap;color:#6b7280;">${r.residualScore ? r.residualLikelihood + ' × ' + r.residualImpact + ' = ' + r.residualScore : '—'}</td>
+                <td style="color:#6b7280;">${r.owner}</td>
+                <td style="text-align:end;"><a href="${window.SP_PATHBASE || ''}/EnterpriseRisks/Details/${r.id}" class="lt-link" aria-label="View"><i data-lucide="eye" class="w-4 h-4" aria-hidden="true"></i></a></td>
+            </tr>
+        `).join('');
+        section.style.display = 'flex';
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function clearFilter() {
+        document.getElementById('riskDetailsPanel').innerHTML = `<div class="lt-detail-empty">${I18N.clickToView}</div>`;
+        document.getElementById('filteredRisksSection').style.display = 'none';
+    }
+
+    document.querySelectorAll('.heat-cell').forEach(c => {
+        c.addEventListener('click', function () {
+            showRisksInCell(parseInt(this.dataset.likelihood), parseInt(this.dataset.impact));
+        });
+    });
+    document.getElementById('clearFilterBtn').addEventListener('click', clearFilter);
+</script>
+}

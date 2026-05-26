@@ -1,0 +1,2207 @@
+﻿@inject Microsoft.Extensions.Configuration.IConfiguration AppConfig
+@{
+    var culture = CultureInfo.CurrentUICulture.Name;
+    var isRtl = culture.StartsWith("ar");
+    var dir = isRtl ? "rtl" : "ltr";
+    var lang = isRtl ? "ar" : "en";
+
+    var isAuthenticated = User?.Identity?.IsAuthenticated == true;
+    // Hide every AI surface (top-bar button, floating bubble, sidebar link)
+    // when AzureOpenAI isn't configured. Buttons that would just 500 on click
+    // are worse than no buttons — confuses users and looks broken on demos.
+    // Treat known-stub values as also-disabled.
+    var aiApiKey = AppConfig["AzureOpenAI:ApiKey"];
+    var aiEnabled = !string.IsNullOrWhiteSpace(aiApiKey)
+        && !string.Equals(aiApiKey, "YOUR_API_KEY_HERE", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(aiApiKey, "REPLACE_ME", StringComparison.OrdinalIgnoreCase);
+    // F-CC-LO-7: expose to child views so includes of _AiAnalysisPanel
+    // (and any other AI-only markup) can short-circuit when AI is unconfigured
+    // instead of shipping dead DOM nodes / dead inline scripts.
+    ViewData["AiEnabled"] = aiEnabled;
+    var displayName = isAuthenticated ? (User.Identity?.Name ?? Shared["Label_User"].Value) : Shared["Label_Guest"].Value;
+    var userEmail = isAuthenticated
+        ? (User.FindFirst(ClaimTypes.Email)?.Value ?? User.Identity?.Name ?? "admin@company.com")
+        : "admin@company.com";
+
+    // Derive 1–2 letter initials for the avatar. Tries (in order):
+    //   1. First letter of GivenName + first letter of Surname (best — e.g. "KA")
+    //   2. First letters of the first two whitespace-separated tokens of
+    //      displayName (handles "Khaled Almiani" or "محمد علي")
+    //   3. First letter of displayName (covers usernames like "admin")
+    //   4. The literal "G" for unauthenticated guests, kept short to fit the circle
+    string ComputeInitials(string source)
+    {
+        if (string.IsNullOrWhiteSpace(source)) return "?";
+        // Strip the email-domain part if a username was actually an email.
+        var at = source.IndexOf('@');
+        if (at > 0) source = source.Substring(0, at);
+        // Replace dots / underscores so "khaled.almiani" → "khaled almiani".
+        var parts = source.Replace('.', ' ').Replace('_', ' ')
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "?";
+        if (parts.Length == 1) return parts[0].Length > 0 ? parts[0].Substring(0, 1).ToUpperInvariant() : "?";
+        return (parts[0].Substring(0, 1) + parts[^1].Substring(0, 1)).ToUpperInvariant();
+    }
+    var givenName = User?.FindFirst(ClaimTypes.GivenName)?.Value;
+    var surname   = User?.FindFirst(ClaimTypes.Surname)?.Value;
+    var userInitials = (!string.IsNullOrWhiteSpace(givenName) && !string.IsNullOrWhiteSpace(surname))
+        ? (givenName.Substring(0, 1) + surname.Substring(0, 1)).ToUpperInvariant()
+        : ComputeInitials(displayName);
+    var roles = isAuthenticated
+        ? string.Join(", ", User.Claims
+            .Where(c => c.Type == ClaimTypes.Role)
+            .Select(c => c.Value)
+            .Distinct())
+        : string.Empty;
+
+    // Avatar initial — prefer the user's display name, fall back to email,
+    // then '?'. Two chars for "First Last", one otherwise.
+    string AvatarInitials()
+    {
+        string Source(string? s) => string.IsNullOrWhiteSpace(s) ? "" : s.Trim();
+        var src = Source(displayName);
+        if (src.Length == 0) src = Source(userEmail);
+        if (src.Length == 0) return "?";
+        var parts = src.Split(new[] { ' ', '.', '_', '@' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2 && parts[0].Length > 0 && parts[1].Length > 0)
+            return (parts[0][0].ToString() + parts[1][0]).ToUpperInvariant();
+        return src.Substring(0, 1).ToUpperInvariant();
+    }
+    var avatarInitial = AvatarInitials();
+
+    var currentController = ViewContext.RouteData.Values["controller"]?.ToString();
+    var currentAction = ViewContext.RouteData.Values["action"]?.ToString();
+	    ViewData["Title"] ??= "Dashboard";
+	    var pageTitle = ViewData["Title"]?.ToString() ?? "Dashboard";
+
+	    // Keep ERM header variables (so we can copy the header markup 1:1)
+	    ViewBag.DisplayName = displayName;
+	    ViewBag.UserRole = roles;
+
+    // ── Sidebar permission gating ──
+    // Read the user's Permission claims into a fast lookup so we can
+    // conditionally disable sidebar sections. Items the user lacks
+    // access to are rendered grayed-out with a lock icon rather than
+    // hidden, per the user's request ("visible but disabled").
+    var userPerms = new HashSet<string>(
+        isAuthenticated
+            ? User.FindAll("Permission").Select(c => c.Value)
+            : Enumerable.Empty<string>(),
+        StringComparer.Ordinal);
+    // Also check legacy ClaimTypes.Role for sessions signed in before
+    // Plan X emitted Permission claims. ADMIN role = full access.
+    var isLegacyAdmin = isAuthenticated && User.IsInRole("ADMIN");
+    bool HasModuleAccess(string perm) =>
+        isLegacyAdmin
+        || userPerms.Contains("*.*")
+        || userPerms.Contains(perm)
+        || (perm.IndexOf('.') is int d && d > 0 && userPerms.Contains(perm[..d] + ".*"));
+
+    var canProcess     = HasModuleAccess("Process.View");
+    var canService     = HasModuleAccess("Service.View");
+    var canAsset       = HasModuleAccess("Asset.View");
+    var canRisk        = HasModuleAccess("Risk.View");
+    var canImprovement = HasModuleAccess("Improvement.View");
+    var canAi          = HasModuleAccess("Ai.View");
+    var canWorkload    = HasModuleAccess("Workload.View");
+    var canAdmin       = HasModuleAccess("Settings.View") || HasModuleAccess("Users.View");
+    var canIncident    = HasModuleAccess("Incident.View");
+    var canProblem     = HasModuleAccess("Problem.View");
+    var canWorkflow    = HasModuleAccess("Workflow.View");
+
+    // F-CC-001: tooltip text for locked sidebar sections names the specific
+    // permission the user is missing, so they can request it from their admin.
+    string LockTitle(string perm) => isRtl
+        ? $"الوصول مقيد — تتطلب صلاحية: {perm}"
+        : $"Access restricted — requires permission: {perm}";
+}
+<!DOCTYPE html>
+<html lang="@lang" dir="@dir">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="path-base" content="@Context.Request.PathBase" />
+    <title>@pageTitle - ESEMS</title>
+		    <link rel="preconnect" href="https://fonts.googleapis.com" />
+		    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Poppins:300,400,500,600,700&display=swap" />
+		    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap" />
+
+	    @* Use the same Skote CSS bundle as ERM so the topbar/header looks identical *@
+	    @if (isRtl)
+	    {
+	        <link rel="stylesheet" href="~/css/skote/bootstrap.min.rtl.css" asp-append-version="true" />
+	        <link href="~/css/skote/icons.min.css" rel="stylesheet" type="text/css" asp-append-version="true" />
+	        <link rel="stylesheet" href="~/css/skote/app.min.rtl.css" asp-append-version="true" />
+	    }
+	    else
+	    {
+	        <link rel="stylesheet" href="~/css/skote/bootstrap.min.css" asp-append-version="true" />
+	        <link href="~/css/skote/icons.min.css" rel="stylesheet" type="text/css" asp-append-version="true" />
+	        <link rel="stylesheet" href="~/css/skote/app.min.css" asp-append-version="true" />
+	    }
+
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    @* FontAwesome + Boxicons removed (FIX-4a) — handful of FA usages
+       migrated to Lucide which is already pervasive; Boxicons had zero
+       usages. No more icon-font CDN runtime calls. *@
+    <!-- Tailwind CDN (must be before config) -->
+    <script src="~/lib/tailwind/tailwind-play.min.js" asp-append-version="true"></script>
+    <script nonce="@Context.CspNonce()">
+        tailwind.config = {
+            // IMPORTANT: disable Tailwind preflight so it doesn't change Bootstrap/Skote header visuals
+            corePlugins: { preflight: false },
+            theme: {
+                extend: {
+                    colors: {
+                        primary: { 50: '#e6f0f7', 100: '#cce1ef', 200: '#99c3df', 300: '#66a5cf', 400: '#3387bf', 500: '#005B99', 600: '#00497a', 700: '#00375c', 800: '#00253d', 900: '#00121f' },
+                        sidebar: '#005B99',
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="~/lib/lucide/lucide.min.js" asp-append-version="true"></script>
+    <!-- Alpine.js for interactive components -->
+    <script defer src="~/lib/alpinejs/alpine.min.js" asp-append-version="true"></script>
+    <script nonce="@Context.CspNonce()">
+        // CSP-safe inline event-handler polyfill (global). The app's strict
+        // script-src has no 'unsafe-inline' / 'unsafe-hashes', so HTML
+        // on*="..." attributes never compile into handlers. Many existing
+        // views still ship those — until they're all migrated to delegated
+        // handlers, this polyfill walks up to the deepest ancestor with
+        // a matching on* attribute on every event and runs its body via
+        // `new Function`, which is permitted by 'unsafe-eval' on script-src.
+        // Covers all common event types (click, change, input, submit, keydown,
+        // keyup, focus, blur). focus/blur use capture phase since they don't bubble.
+        (function () {
+            ['click','change','input','submit','keydown','keyup','focus','blur'].forEach(function (evtName) {
+                var attrName = 'on' + evtName;
+                var useCapture = (evtName === 'focus' || evtName === 'blur');
+                document.addEventListener(evtName, function (e) {
+                    var el = e.target;
+                    while (el && el !== document.body && el.nodeType === 1) {
+                        var code = el.getAttribute && el.getAttribute(attrName);
+                        if (code) {
+                            try { (new Function('event', code)).call(el, e); }
+                            catch (err) { console.error('inline ' + attrName + ' polyfill error:', err, code); }
+                            return;
+                        }
+                        el = el.parentElement;
+                    }
+                }, useCapture);
+            });
+        })();
+    </script>
+    <script nonce="@Context.CspNonce()">
+        // F-CC-014: Global double-submit guard. Disables all submit buttons in
+        // a form for the first 8 seconds after the user submits, AND cancels
+        // any second submit event that fires while a request is still pending.
+        // The 8-second window matches typical p99 server latency under load
+        // (a real submit usually completes much faster). Forms can opt out by
+        // adding the `data-allow-double-submit` attribute (e.g. analytics
+        // beacons that need to fire repeatedly).
+        (function () {
+            const PENDING = new WeakSet();
+            document.addEventListener('submit', function (e) {
+                const form = e.target;
+                if (!(form instanceof HTMLFormElement)) return;
+                if (form.hasAttribute('data-allow-double-submit')) return;
+                if (PENDING.has(form)) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+                PENDING.add(form);
+                const buttons = form.querySelectorAll('button[type="submit"], input[type="submit"]');
+                buttons.forEach(function (b) {
+                    b.dataset._origDisabled = b.disabled ? '1' : '0';
+                    b.disabled = true;
+                    b.classList.add('is-submitting');
+                });
+                setTimeout(function () {
+                    PENDING.delete(form);
+                    buttons.forEach(function (b) {
+                        if (b.dataset._origDisabled !== '1') b.disabled = false;
+                        b.classList.remove('is-submitting');
+                        delete b.dataset._origDisabled;
+                    });
+                }, 8000);
+            }, true);
+        })();
+    </script>
+    <script nonce="@Context.CspNonce()">
+        // UX-014: localized strings for JS-generated UI (search/notification/AI
+        // error messages). Emitted once from the server-side resources so the
+        // inline scripts below render in the user's culture instead of hardcoded
+        // English. Reference as window.ESEMS_I18N.<key>.
+        window.ESEMS_I18N = {
+            searchFailed: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_SearchFailed"].Value)),
+            error: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_Error"].Value)),
+            connectionError: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_ConnectionError"].Value)),
+            failedToAnalyze: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_FailedToAnalyze"].Value))
+        };
+    </script>
+    <!-- DataTables -->
+    <link href="~/lib/datatables/dataTables.bootstrap5.min.css" rel="stylesheet" asp-append-version="true" />
+    <style>
+        /* Print stylesheet — used by `window.print()` and the Export buttons
+           that wire to it. Hides chrome (sidebar, topbar, AI bubble, action
+           buttons) so the printed page shows just the page's content area
+           with no navigation. Also forces a white background and disables
+           sticky positioning so long tables paginate naturally across
+           paper pages. */
+        @@media print {
+            @@page { margin: 12mm; }
+            body { background: #fff !important; overflow: visible !important; }
+            .sidebar, .vertical-menu, #sidebar-menu, .navbar-brand-box,
+            .left-side-menu, .topbar, .topnav, .top-header,
+            .header, header, .navbar-header, .page-header-actions,
+            #vertical-menu-btn, .hamburger-icon,
+            .ai-floating-bubble, [data-ai-bubble], #aiAssistantWidget,
+            #esemsAiBubble, #spAiChat,
+            .lt-toolbar, .lt-actions, .lt-header [class*="lt-btn"],
+            .pc-side, .pc-header [class*="pc-btn"],
+            .esems-page-header-actions,
+            .dataTables_filter, .dataTables_length, .dataTables_paginate,
+            .dataTables_info, .dataTables_wrapper .row:first-child,
+            .no-print, [data-no-print] { display: none !important; }
+            .main-content, .page-content, #layout-wrapper,
+            .lt-shell, .lt-card, .lt-table-wrap,
+            .pc-shell, .pc-card {
+                margin: 0 !important; padding: 0 !important;
+                width: 100% !important; height: auto !important;
+                box-shadow: none !important; border: none !important;
+                overflow: visible !important; max-height: none !important;
+            }
+            .lt-table-wrap thead { position: static !important; }
+            table { page-break-inside: auto !important; }
+            tr, .lt-card { page-break-inside: avoid !important; }
+            a[href]:after { content: ""; }
+        }
+    </style>
+	    <style>
+		        :root {
+	            /* Match ERM/Skote defaults */
+	            --esems-sidebar-width: 220px;
+	            --esems-sidebar-collapsed-width: 64px;
+	            /* JS will update this to match the real 2-row header height */
+		            --esems-topbar-height: 140px;
+	        }
+
+		        body { overflow: hidden; }
+                /* Body font-family is set globally in site.css with the Arabic font stack ahead of Poppins. */
+
+            /* Hide scrollbar on sidebar only */
+            .sidebar nav::-webkit-scrollbar {
+                display: none;
+                width: 0;
+            }
+            .sidebar nav {
+                -ms-overflow-style: none;  /* IE and Edge */
+                scrollbar-width: none;  /* Firefox */
+            }
+		        .app-shell {
+		            margin-top: var(--esems-topbar-height);
+		            height: calc(100vh - var(--esems-topbar-height));
+		        }
+
+	        /* Sidebar styles (location/height/width aligned to ERM layout) */
+	        .sidebar {
+	            width: var(--esems-sidebar-width);
+	            max-width: var(--esems-sidebar-width);
+	            transition: width 0.3s ease;
+	            position: fixed;
+	            top: var(--esems-topbar-height);
+	            bottom: 0;
+		            z-index: 1001;
+		            overflow-x: hidden;
+	        }
+	        html[dir="ltr"] .sidebar { left: 0; right: auto; }
+	        html[dir="rtl"] .sidebar { right: 0; left: auto; }
+
+	        .sidebar.collapsed { width: var(--esems-sidebar-collapsed-width); }
+        .sidebar.collapsed .nav-label { display: none; }
+        .sidebar.collapsed .section-title { display: none; }
+        .sidebar.collapsed .nav-link { justify-content: center; padding-left: 0; padding-right: 0; }
+        .sidebar.collapsed .submenu { display: none !important; }
+
+        /* Nav menu item container */
+        .nav-menu-item {
+            width: 100%;
+            overflow: hidden;
+        }
+        /* Locked sidebar sections: visible but disabled */
+        .nav-menu-item.nav-locked {
+            opacity: 0.45;
+            pointer-events: none;
+            cursor: not-allowed;
+        }
+        .nav-menu-item.nav-locked .lock-badge {
+            display: inline-flex;
+        }
+        .lock-badge { display: none; }
+
+	        /* Main content offset (desktop) */
+	        .main-content-shell {
+	            height: calc(100vh - var(--esems-topbar-height));
+	            transition: margin 0.3s ease;
+	        }
+	        html[dir="ltr"] .main-content-shell { margin-left: var(--esems-sidebar-width); margin-right: 0; }
+	        html[dir="rtl"] .main-content-shell { margin-right: var(--esems-sidebar-width); margin-left: 0; }
+	        html[dir="ltr"] .sidebar.collapsed ~ .main-content-shell { margin-left: var(--esems-sidebar-collapsed-width); }
+	        html[dir="rtl"] .sidebar.collapsed ~ .main-content-shell { margin-right: var(--esems-sidebar-collapsed-width); }
+
+        /* Submenu styles */
+        .submenu {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+            width: 100%;
+        }
+        .submenu.open { max-height: 500px; }
+        .submenu .nav-link {
+            font-size: var(--fs-sm);
+            padding-top: 0.3rem !important;
+            padding-bottom: 0.3rem !important;
+        }
+        .submenu .nav-link i {
+            width: 14px;
+            height: 14px;
+        }
+        /* Sidebar nav labels never wrap. With the 220px sidebar, multi-word
+           labels like 'Process Architecture' would otherwise break to a
+           second line and stretch the row. */
+        .sidebar .nav-link, .sidebar .nav-menu-toggle {
+            white-space: nowrap;
+        }
+        .sidebar .nav-link .nav-label,
+        .sidebar .nav-menu-toggle span {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        /* Tighter horizontal padding on parent items so multi-word labels
+           don't get squeezed against the chevron. */
+        .sidebar > nav .nav-menu-toggle.nav-link {
+            padding-left: 0.85rem !important;
+            padding-right: 0.85rem !important;
+        }
+        .submenu .nav-label {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+        }
+
+        /* M-15 (Tier-3 a11y): the Tailwind text-primary-100/200 classes on
+           sidebar nav items (light-blue text on dark-blue sidebar) measured
+           below 4.5:1 in axe. Pin every nav-label to high-contrast white so
+           every authenticated page clears WCAG 2.1 AA on the sidebar. The
+           active-row state still has its own background, so this only
+           replaces the *resting* color. */
+        .sidebar .nav-label { color: #ffffff !important; }
+        .sidebar .nav-menu-toggle .nav-label,
+        .sidebar .nav-link:not(.active) .nav-label { color: #f1f5f9 !important; }
+
+			        /* Page Header Logos (copied 1:1 from ERM _CustomLayout*.cshtml) */
+			        .header-logo-container {
+			            display: flex;
+			            align-items: center;
+			        }
+			        .page-header-logo {
+			            width: auto;
+			            height: auto;
+			            object-fit: contain;
+			        }
+			        /* L1 - Left Logo */
+			        .page-header-logo.logo-left {
+			            max-height: 50px;
+			            max-width: 180px;
+			        }
+			        /* L2 - Right Logo */
+			        .page-header-logo.logo-right {
+			            max-height: 60px;
+			            max-width: 200px;
+			        }
+			        @("@")media (max-width: 768px) {
+			            .page-header-logo.logo-left {
+			                max-height: 60px;
+			                max-width: 150px;
+			            }
+			            .page-header-logo.logo-right {
+			                max-height: 40px;
+			                max-width: 100px;
+			            }
+			        }
+			        @("@")media (max-width: 576px) {
+			            .page-header-logo.logo-left {
+			                max-height: 50px;
+			                max-width: 120px;
+			            }
+			            .page-header-logo.logo-right {
+			                max-height: 35px;
+			                max-width: 80px;
+			            }
+			        }
+
+	        /* Font size utilities (matching ERM) */
+	        .font-size-16 { font-size: var(--fs-base) !important; }
+	        .font-size-18 { font-size: var(--fs-lg) !important; }
+
+	        /* Waves effect (matching ERM) */
+	        .waves-effect { position: relative; cursor: pointer; display: inline-block; overflow: hidden; user-select: none; transition: all 0.3s ease-out; }
+
+	        /* Overlay (mobile) */
+	        .sidebar-overlay {
+	            display: none;
+	            position: fixed;
+	            top: var(--esems-topbar-height);
+	            left: 0;
+	            right: 0;
+	            bottom: 0;
+	            background: rgba(0,0,0,0.45);
+		            z-index: 1000;
+	        }
+	        .sidebar-overlay.active { display: block; }
+
+	        /* Mobile responsive */
+	        @@media (max-width: 768px) {
+	            .sidebar {
+	                transform: translateX(-100%);
+	                transition: transform 0.3s ease;
+	                width: var(--esems-sidebar-width);
+	            }
+	            html[dir="rtl"] .sidebar { transform: translateX(100%); }
+	            .sidebar.open { transform: translateX(0); }
+	            .main-content-shell { margin-left: 0 !important; margin-right: 0 !important; }
+	            /* Hide user email text on mobile - show avatar only */
+	            #page-header-user-dropdown span { display: none !important; }
+	            #page-header-user-dropdown .fa-chevron-down { display: none !important; }
+	            /* Compact header gaps on mobile */
+	            .erm-topbar-controls-row .d-flex { gap: 0.5rem !important; }
+	            .erm-topbar-controls-row h4 { font-size: var(--fs-sm) !important; }
+	        }
+
+        /* Card styles */
+        .card { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .card-header { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; }
+        .card-body { padding: 20px; }
+
+        /* Badge styles - Using theme colors */
+        .badge-success { background: var(--success-color, #34C38F); color: white; }
+        .badge-warning { background: var(--warning-color, #F1B44C); color: white; }
+        .badge-danger { background: var(--danger-color, #F46A6A); color: white; }
+        .badge-info { background: var(--info-color, #50A5F1); color: white; }
+
+        /* Button styles - Using theme colors */
+        .btn-primary { background: var(--primary-color, #005B99); color: white; border: none; }
+        .btn-primary:hover { background: var(--hover-color, #004a7c); }
+        .btn-secondary { background: white; color: var(--primary-color, #005B99); border: 1px solid var(--primary-color, #005B99); }
+        .btn-secondary:hover { background: var(--esems-color-primary-light, #e6f0f7); }
+    </style>
+    @RenderSection("Styles", required: false)
+	</head>
+		<body data-sidebar="dark" class="erm-topbar-two-rows">
+    <!-- Skip to main content (accessibility) -->
+    <a href="#main-content" class="skip-to-content">@Shared["A11y_SkipToContent"]</a>
+
+    <!-- Sidebar Overlay (Mobile) -->
+    <div id="sidebarOverlay" class="sidebar-overlay"></div>
+
+		    <!-- ========== TOP HEADER BAR ========== -->
+			    <header id="page-topbar" role="banner" style="background: #fff;">
+		        <!-- First Row: Logos Only -->
+		        <div class="navbar-header erm-topbar-logo-row" style="background: #fff;">
+			            @if (isRtl)
+			            {
+			                <div class="d-flex align-items-center justify-content-between w-100 px-3" dir="ltr">
+			                    <!-- Left Logo (L2) -->
+			                    <div class="header-logo-container">
+			                        <img src="~/L2.png" alt="@Shared["Alt_LogoSystem"]" class="page-header-logo logo-left" />
+			                    </div>
+			                    <!-- Right Logo (L1) -->
+			                    <div class="header-logo-container">
+			                        <img src="~/L1.png" alt="@Shared["Alt_LogoEntity"]" class="page-header-logo logo-right" />
+			                    </div>
+			                </div>
+			            }
+			            else
+			            {
+			                <div class="d-flex align-items-center justify-content-between w-100 px-3 py-2">
+		                <!-- Left Logo (L2) -->
+		                <div class="header-logo-container">
+		                    <img src="~/L2.png" alt="@Shared["Alt_LogoSystem"]" class="page-header-logo logo-left" />
+		                </div>
+		
+		                <!-- Right Logo (L1) -->
+		                <div class="header-logo-container">
+		                    <img src="~/L1.png" alt="@Shared["Alt_LogoEntity"]" class="page-header-logo logo-right" />
+		                </div>
+			                </div>
+			            }
+		        </div>
+		
+            <!-- Second Row: Menu/Title on LEFT, User/Language on RIGHT -->
+            <div class="navbar-header erm-topbar-controls-row" style="background: #fff; border-bottom: 1px dashed #dee2e6;">
+                <!-- LEFT SIDE: Hamburger Menu + Page Title -->
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-sm font-size-16 header-item waves-effect btn-touch-44" id="vertical-menu-btn"
+                            aria-label="@(isRtl ? "تبديل القائمة الجانبية" : "Toggle sidebar")">
+                        <i data-lucide="menu" style="width:18px;height:18px;color:var(--theme-color);"></i>
+                    </button>
+                    <h4 class="mb-0 font-size-18" style="color: var(--theme-color); font-weight: 600;">@ViewData["Title"]</h4>
+                </div>
+
+                <!-- RIGHT SIDE: AI + Notifications + Help + User + Language -->
+                <div class="d-flex align-items-center gap-3">
+                    @if (aiEnabled)
+                    {
+                        <!-- AI Assistant Button — only rendered when AzureOpenAI:ApiKey is configured -->
+                        <button type="button" class="btn btn-sm btn-light position-relative" id="spAiAssistantBtn"
+                                title="@(isRtl ? "افتح المساعد الذكي (Alt+I)" : "Open AI Assistant (Alt+I)")"
+                                aria-label="@(isRtl ? "افتح المساعد الذكي" : "Open AI Assistant")"
+                                style="border-radius: 8px; padding: 6px 10px;">
+                            <i data-lucide="bot-message-square" style="width:18px;height:18px;color:var(--theme-color);" aria-hidden="true"></i>
+                        </button>
+                    }
+
+                    <!-- Notification Bell -->
+                    <style>
+                        #notifBellBtn { transition: background-color .15s ease, transform .15s ease; }
+                        #notifBellBtn:hover { background-color: rgba(0,91,153,.08); transform: translateY(-1px); }
+                        #notifBadge.notif-has-unread { animation: esems-badge-pulse 1.8s ease-in-out infinite; box-shadow: 0 0 0 0 rgba(244,106,106,.55); }
+                        @@keyframes esems-badge-pulse {
+                            0% { box-shadow: 0 0 0 0 rgba(244,106,106,.55); }
+                            70% { box-shadow: 0 0 0 7px rgba(244,106,106,0); }
+                            100% { box-shadow: 0 0 0 0 rgba(244,106,106,0); }
+                        }
+                        .notif-bell-shake { animation: esems-bell-shake .7s ease-in-out; transform-origin: top center; }
+                        @@keyframes esems-bell-shake {
+                            0%,100% { transform: rotate(0); }
+                            10%,30%,50% { transform: rotate(-12deg); }
+                            20%,40%,60% { transform: rotate(12deg); }
+                            70% { transform: rotate(-6deg); }
+                            80% { transform: rotate(6deg); }
+                        }
+                        @@media (prefers-reduced-motion: reduce) {
+                            #notifBadge.notif-has-unread, .notif-bell-shake { animation: none !important; }
+                        }
+                    </style>
+                    <div class="dropdown d-inline-block" id="notifDropdownWrap">
+                        <button type="button" class="btn btn-sm btn-light position-relative" id="notifBellBtn"
+                                data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                                style="border-radius: 8px; padding: 6px 10px;">
+                            <i data-lucide="bell" id="notifBellIcon" style="width:18px;height:18px;color:var(--theme-color);display:inline-block;"></i>
+                            <span id="notifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                                  style="font-size: var(--fs-xs);display:none;">0</span>
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-end p-0" style="width:360px;max-height:480px;border-radius:.75rem;box-shadow:0 20px 50px -10px rgba(0,91,153,.18),0 10px 20px -5px rgba(0,0,0,.08);border:1px solid #e5e7eb;overflow:hidden;">
+                            <div class="d-flex justify-content-between align-items-center px-4 py-3" style="background:linear-gradient(135deg,#005B99 0%,#003d6b 100%);color:#fff;">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i data-lucide="bell" style="width:16px;height:16px;"></i>
+                                    <h6 class="fw-semibold mb-0 text-white" style="font-size: var(--fs-sm);">@(isRtl ? "الإشعارات" : "Notifications")</h6>
+                                </div>
+                                <span id="notifCountLabel" class="badge" style="background:rgba(255,255,255,0.2);color:#fff;font-size: var(--fs-xs);border-radius:9999px;padding:.25rem .6rem;">0 @(isRtl ? "جديد" : "New")</span>
+                            </div>
+                            <div id="notifPreviewList" style="max-height:300px;overflow-y:auto;background:#fff;">
+                                <div class="text-center py-5 text-muted small">
+                                    <i data-lucide="bell-off" style="width:32px;height:32px;opacity:.3;" class="mb-2"></i>
+                                    <div>@(isRtl ? "لا توجد إشعارات" : "No notifications")</div>
+                                </div>
+                            </div>
+                            @* Quick-jump strip — gives the user one-click access to the
+                               two batch inboxes most reading-due / approval-due notifications
+                               point at, without having to find the sidebar items. Sits above
+                               the existing 'Mark all as read / View all' row. *@
+                            <div class="d-flex gap-2 px-3 py-2 border-top" style="background:#f9fafb;">
+                                <a class="btn btn-sm btn-light flex-grow-1 d-flex align-items-center gap-1 justify-content-center"
+                                   href="~/Improvements/MyPendingReadings"
+                                   style="font-size:var(--fs-xs);color:#005B99;border:1px solid #e5e7eb;">
+                                    <i data-lucide="inbox" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    @(isRtl ? "قراءاتي المستحقة" : "My Pending Readings")
+                                </a>
+                                <a class="btn btn-sm btn-light flex-grow-1 d-flex align-items-center gap-1 justify-content-center"
+                                   href="~/Workflow/PendingApprovals"
+                                   style="font-size:var(--fs-xs);color:#005B99;border:1px solid #e5e7eb;">
+                                    <i data-lucide="clipboard-check" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    @(isRtl ? "مهام الاعتماد" : "My Approvals")
+                                </a>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top" style="background:#f9fafb;">
+                                <button class="btn btn-sm btn-link text-decoration-none small fw-semibold p-0" style="color:#005B99;"
+                                        onclick="markAllNotificationsRead()">@(isRtl ? "تعيين الكل كمقروء" : "Mark all as read")</button>
+                                <a class="btn btn-sm btn-link text-decoration-none small fw-semibold p-0" style="color:#005B99;" href="~/Workflow/PendingApprovals">@(isRtl ? "عرض الكل" : "View All")</a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- User Dropdown -->
+                    <div class="dropdown d-inline-block">
+                        <button type="button" class="btn header-item waves-effect d-flex align-items-center gap-2 px-2" id="page-header-user-dropdown"
+                                data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false"
+                                aria-label="@userEmail" title="@userEmail">
+                            @* Avatar — user initials in a brand-coloured circle.
+                               Falls back to the first letter of the username for
+                               accounts without GivenName / Surname claims. *@
+                            <div title="@displayName" aria-label="@displayName"
+                                 style="width: 36px; height: 36px; background: var(--esems-primary, #005B99); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: var(--fs-sm); font-weight: 700; letter-spacing: .02em; user-select: none; box-shadow: 0 1px 2px rgba(0,0,0,.12);">
+                                @avatarInitial
+                            </div>
+                            @* Caret placed AFTER the avatar — audit feedback: it
+                               sat at the start of the button and looked like a
+                               separate icon, not a "dropdown" affordance. *@
+                            <i data-lucide="chevron-down" style="width:14px;height:14px;color:#94a3b8;" aria-hidden="true"></i>
+                            @* Email displayed in dropdown header — hidden in trigger to recover header width *@
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-end" style="min-width: 220px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                            <!-- Email Header -->
+                            <div class="px-3 py-2 border-bottom">
+                                <p class="mb-0 fw-semibold" style="color: var(--theme-color);">@userEmail</p>
+                            </div>
+                            <!-- Profile -->
+                            <a class="dropdown-item py-2" asp-controller="Account" asp-action="Profile">
+                                <i data-lucide="user" class="@(isRtl ? "ms-2" : "me-2")" style="width:14px;height:14px;color:#6c757d;vertical-align:-2px;"></i>
+                                <span>@Shared["Label_Profile"]</span>
+                            </a>
+                            <!-- User Manual -->
+                            <a class="dropdown-item py-2" asp-controller="Home" asp-action="UserManual">
+                                <i data-lucide="book" class="@(isRtl ? "ms-2" : "me-2")" style="width:14px;height:14px;color:#6c757d;vertical-align:-2px;"></i>
+                                <span>@Shared["Label_UserManual"]</span>
+                            </a>
+                            <!-- Clear Cache -->
+                            <a class="dropdown-item py-2" href="javascript:void(0);" onclick="ClearClientCache();">
+                                <i data-lucide="refresh-cw" class="@(isRtl ? "ms-2" : "me-2")" style="width:14px;height:14px;color:#6c757d;vertical-align:-2px;"></i>
+                                <span>@Shared["Label_ClearCache"]</span>
+                            </a>
+                            <div class="dropdown-divider"></div>
+                            <!-- Logout -->
+                            <form asp-controller="Account" asp-action="Logout" method="post" class="m-0">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="dropdown-item py-2">
+                                    <i data-lucide="power" class="@(isRtl ? "ms-2" : "me-2")" style="width:14px;height:14px;color:#dc3545;vertical-align:-2px;"></i>
+                                    <span>@Shared["Button_Logout"]</span>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Language Switch (text + flag) -->
+                    <button type="button" class="btn header-item waves-effect d-flex align-items-center gap-2 px-2" id="page-header-lang-toggle"
+                            onclick="SetLanguage('@(isRtl ? "en" : "ar")')">
+                        @if (isRtl)
+                        {
+                            <span style="color: #495057; font-weight: 500;">English</span>
+                            <img src="~/layouts/assets/images/flags/us.jpg" alt="English" height="20" style="border-radius: 2px;">
+                        }
+                        else
+                        {
+                            <span style="color: #495057; font-weight: 500;">العربية</span>
+                            <img src="~/layouts/assets/images/flags/uae.jpg" alt="العربية" height="20" style="border-radius: 2px;">
+                        }
+                    </button>
+                </div>
+            </div>
+        </header>
+
+		    <!-- Hidden antiforgery token for JS POSTs (kept to match ERM header JS) -->
+		    <form id="antiForgeryForm" method="post" style="display:none;">@Html.AntiForgeryToken()</form>
+
+	    <div id="appShell" class="app-shell flex">
+	        <!-- ========== LEFT SIDEBAR (Skote/ERM-style container) ========== -->
+	        <div id="sidebar" class="vertical-menu sidebar bg-primary-500 text-white">
+	            <!-- simplebar-like wrapper (safe even if simplebar lib isn't present) -->
+	            <div data-simplebar class="h-100 flex flex-col">
+	                <!-- Navigation Menu -->
+	                <nav class="flex-1 overflow-y-auto py-4" role="navigation" aria-label="@Shared["A11y_MainNavigation"]">
+                @{
+                    var processControllers = new[] { "Categories", "ProcessGroups", "Processes", "ProcessHierarchy", "StrategicObjectives", "KpiLibrary" };
+                    var serviceControllers = new[] { "Services", "ServiceCategories", "Incidents", "Problems", "SLA" };
+                    var assetControllers = new[] { "AssetCategories", "Assets", "Maintenance" };
+                    var riskControllers = new[] { "EnterpriseRisks" };
+                    var improvementControllers = new[] { "Improvements", "ChangeRequests" };
+                    var adminControllers = new[] { "Users", "RoleGroups", "OrganizationUnits", "Import", "SettingsHub", "AuditLogs" };
+                    var workloadControllers = new[] { "WorkloadAnalysis" };
+                    var helpControllers = new[] { "Home", "Help" };
+
+                    // AI controller is split across submenus by action:
+                    // /AI/Diagrams        → Process Management submenu
+                    // /AI/ProcessAnalyzer → Help submenu
+                    var isAIDiagrams = currentController == "AI" && currentAction == "Diagrams";
+                    var isAIProcessAnalyzer = currentController == "AI" && currentAction == "ProcessAnalyzer";
+
+                    var isProcessActive = processControllers.Contains(currentController) || isAIDiagrams;
+                    var isServiceActive = serviceControllers.Contains(currentController);
+                    var isAssetActive = assetControllers.Contains(currentController);
+                    var isRiskActive = riskControllers.Contains(currentController);
+                    var isImprovementActive = improvementControllers.Contains(currentController);
+                    var isRiskOrImprovementActive = isRiskActive || isImprovementActive;
+                    var isAdminActive = adminControllers.Contains(currentController);
+                    var isWorkloadActive = workloadControllers.Contains(currentController);
+                    var isHelpActive = (helpControllers.Contains(currentController) && currentAction == "UserManual") || currentController == "Help" || isAIProcessAnalyzer;
+
+                    // 'My Workspace' submenu groups every personal inbox under
+                    // a single sidebar entry (per Khaled's request to stop
+                    // top-level menu bloat). Submenu is auto-opened whenever
+                    // the user is on any of its child pages so they don't
+                    // have to re-expand it after every navigation.
+                    var isMyWorkspaceActive = currentController == "MySpace"
+                        || currentController == "Workflow"
+                        || (currentController == "Improvements" && currentAction == "MyPendingReadings");
+                }
+
+                <!-- Dashboard -->
+                <a asp-controller="Dashboard" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors @(currentController == "Dashboard" ? "bg-primary-600 text-white" : "text-primary-100 hover:bg-primary-600 hover:text-white")">
+                    <i data-lucide="layout-dashboard" class="h-5 w-5 flex-shrink-0"></i>
+                    <span class="nav-label">@Shared["Nav_Dashboard"]</span>
+                </a>
+
+                @* My Workspace — single submenu replacing the 3 standalone
+                   personal inbox items (My Space, My Approvals, My Pending
+                   Readings). Auto-expands when the user is on any of the
+                   child pages. Adding new "my X" inboxes later just
+                   appends a child without growing the top-level menu. *@
+                <div class="nav-menu-item mt-2">
+                    <button type="button" class="nav-menu-toggle nav-link flex items-center justify-between w-full px-4 py-2.5 text-sm font-medium transition-colors @(isMyWorkspaceActive ? "bg-primary-600 text-white" : "text-primary-100 hover:bg-primary-600 hover:text-white")" data-menu="myworkspace-menu">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="user" class="h-5 w-5 flex-shrink-0"></i>
+                            <span class="nav-label">@(CultureInfo.CurrentUICulture.Name.StartsWith("ar") ? "مساحة عملي" : "My Workspace")</span>
+                        </div>
+                        <i data-lucide="chevron-down" class="nav-label h-4 w-4 menu-arrow transition-transform @(isMyWorkspaceActive ? "rotate-180" : "")"></i>
+                    </button>
+                    <div id="myworkspace-menu" class="submenu @(isMyWorkspaceActive ? "open" : "") bg-primary-700">
+                        <a asp-controller="MySpace" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "MySpace" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="folder-open" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@(CultureInfo.CurrentUICulture.Name.StartsWith("ar") ? "مساحتي" : "My Space")</span>
+                        </a>
+                        <a asp-controller="Workflow" asp-action="PendingApprovals" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Workflow" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="clipboard-check" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@(CultureInfo.CurrentUICulture.Name.StartsWith("ar") ? "مهام الاعتماد" : "My Approvals")</span>
+                        </a>
+                        <a asp-controller="Improvements" asp-action="MyPendingReadings" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Improvements" && currentAction == "MyPendingReadings" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="inbox" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@(CultureInfo.CurrentUICulture.Name.StartsWith("ar") ? "قراءاتي المستحقة" : "My Pending Readings")</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Process Management Section (Collapsible) -->
+                <div class="nav-menu-item mt-2 @(!canProcess ? "nav-locked" : "")" title="@(!canProcess ? LockTitle("Process.View") : null)">
+                    <button type="button" class="nav-menu-toggle nav-link flex items-center justify-between w-full px-4 py-2.5 text-sm font-medium transition-colors @(isProcessActive ? "bg-primary-600 text-white" : "text-primary-100 hover:bg-primary-600 hover:text-white")" data-menu="process-menu">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="@(!canProcess ? "lock" : "git-branch")" class="h-5 w-5 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Section_ProcessManagement"]</span>
+                        </div>
+                        <i data-lucide="chevron-down" class="nav-label h-4 w-4 menu-arrow transition-transform @(isProcessActive ? "rotate-180" : "")"></i>
+                    </button>
+                    <div id="process-menu" class="submenu @(isProcessActive ? "open" : "") bg-primary-700">
+                        <a asp-controller="Processes" asp-action="Dashboard" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Processes" && currentAction == "Dashboard" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="layout-dashboard" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_ProcessOverview"]</span>
+                        </a>
+                        <a asp-controller="Categories" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Categories" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="layers" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_Categories"]</span>
+                        </a>
+                        <a asp-controller="ProcessGroups" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "ProcessGroups" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="folder-tree" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_ProcessGroups"]</span>
+                        </a>
+                        <a asp-controller="Processes" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Processes" && currentAction == "Index" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="cog" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_Processes"]</span>
+                        </a>
+                        <a asp-controller="ProcessHierarchy" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "ProcessHierarchy" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="network" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Title_ProcessHierarchy"]</span>
+                        </a>
+                        @* Visual divider — separates process-architecture items above from
+                           strategy + measurement catalogs below. *@
+                        <div class="nav-label" style="margin: .35rem 1rem .15rem; padding-inline-start: 2rem; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: rgba(255,255,255,.45); font-weight: 700;">
+                            @(isRtl ? "الاستراتيجية والقياس" : "Strategy & Measurement")
+                        </div>
+                        <a asp-controller="StrategicObjectives" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "StrategicObjectives" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="target" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@(isRtl ? "الأهداف الاستراتيجية" : "Strategic Objectives")</span>
+                        </a>
+                        <a asp-controller="KpiLibrary" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "KpiLibrary" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="library" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@(isRtl ? "مكتبة المؤشرات" : "KPI Library")</span>
+                        </a>
+                        @if (aiEnabled)
+                        {
+                            <a asp-controller="AI" asp-action="Diagrams" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(isAIDiagrams ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white") @(!canAi ? "nav-locked" : "")" style="padding-inline-start: 3rem;" title="@(!canAi ? (isRtl ? "الوصول مقيد" : "Access restricted") : null)">
+                                <i data-lucide="@(!canAi ? "lock" : "git-graph")" class="h-4 w-4 flex-shrink-0"></i>
+                                <span class="nav-label">@Shared["Nav_AIDiagrams"]</span>
+                            </a>
+                        }
+                    </div>
+                </div>
+
+                <!-- Service Management Section (Collapsible) -->
+                <div class="nav-menu-item mt-2 @(!canService ? "nav-locked" : "")" title="@(!canService ? LockTitle("Service.View") : null)">
+                    <button type="button" class="nav-menu-toggle nav-link flex items-center justify-between w-full px-4 py-2.5 text-sm font-medium transition-colors @(isServiceActive ? "bg-primary-600 text-white" : "text-primary-100 hover:bg-primary-600 hover:text-white")" data-menu="service-menu">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="@(!canService ? "lock" : "briefcase")" class="h-5 w-5 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Section_Services"]</span>
+                        </div>
+                        <i data-lucide="chevron-down" class="nav-label h-4 w-4 menu-arrow transition-transform @(isServiceActive ? "rotate-180" : "")"></i>
+                    </button>
+                    <div id="service-menu" class="submenu @(isServiceActive ? "open" : "") bg-primary-700">
+                        <a asp-controller="Services" asp-action="Dashboard" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Services" && currentAction == "Dashboard" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="layout-dashboard" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_ServiceOverview"]</span>
+                        </a>
+                        <a asp-controller="Services" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Services" && currentAction == "Index" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="concierge-bell" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_Services"]</span>
+                        </a>
+                        <a asp-controller="ServiceCategories" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "ServiceCategories" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="folder-tree" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@(System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar") ? "فئات الخدمات" : "Service Categories")</span>
+                        </a>
+                        <a asp-controller="Incidents" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Incidents" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="alert-circle" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_Incidents"]</span>
+                        </a>
+                        <a asp-controller="Problems" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Problems" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="search" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_Problems"]</span>
+                        </a>
+                        <a asp-controller="SLA" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "SLA" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="file-text" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_SLA"]</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Asset Management Section (Collapsible) -->
+                <div class="nav-menu-item mt-2 @(!canAsset ? "nav-locked" : "")" title="@(!canAsset ? LockTitle("Asset.View") : null)">
+                    <button type="button" class="nav-menu-toggle nav-link flex items-center justify-between w-full px-4 py-2.5 text-sm font-medium transition-colors @(isAssetActive ? "bg-primary-600 text-white" : "text-primary-100 hover:bg-primary-600 hover:text-white")" data-menu="asset-menu">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="@(!canAsset ? "lock" : "package")" class="h-5 w-5 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Section_AssetManagement"]</span>
+                        </div>
+                        <i data-lucide="chevron-down" class="nav-label h-4 w-4 menu-arrow transition-transform @(isAssetActive ? "rotate-180" : "")"></i>
+                    </button>
+                    <div id="asset-menu" class="submenu @(isAssetActive ? "open" : "") bg-primary-700">
+                        <a asp-controller="Assets" asp-action="Dashboard" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Assets" && currentAction == "Dashboard" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="layout-dashboard" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_AssetsOverview"]</span>
+                        </a>
+                        <a asp-controller="AssetCategories" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "AssetCategories" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="folder-tree" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_AssetCategories"]</span>
+                        </a>
+                        <a asp-controller="Assets" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Assets" && currentAction == "Index" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="package" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_Assets"]</span>
+                        </a>
+                        <a asp-controller="Maintenance" asp-action="Schedules" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Maintenance" && currentAction == "Schedules" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="calendar-clock" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_MaintenanceSchedules"]</span>
+                        </a>
+                        <a asp-controller="Maintenance" asp-action="Records" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Maintenance" && currentAction == "Records" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="clipboard-list" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_MaintenanceRecords"]</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Risk & Improvement Section (Collapsible) — merged: identify (risk) → treat (improvement) -->
+                @{
+                    var canRiskOrImprovement = canRisk || canImprovement;
+                }
+                <div class="nav-menu-item mt-2 @(!canRiskOrImprovement ? "nav-locked" : "")" title="@(!canRiskOrImprovement ? LockTitle("Risk.View / Improvement.View") : null)">
+                    <button type="button" class="nav-menu-toggle nav-link flex items-center justify-between w-full px-4 py-2.5 text-sm font-medium transition-colors @(isRiskOrImprovementActive ? "bg-primary-600 text-white" : "text-primary-100 hover:bg-primary-600 hover:text-white")" data-menu="risk-improvement-menu">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="@(!canRiskOrImprovement ? "lock" : "target")" class="h-5 w-5 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Section_RiskAndImprovement"]</span>
+                        </div>
+                        <i data-lucide="chevron-down" class="nav-label h-4 w-4 menu-arrow transition-transform @(isRiskOrImprovementActive ? "rotate-180" : "")"></i>
+                    </button>
+                    <div id="risk-improvement-menu" class="submenu @(isRiskOrImprovementActive ? "open" : "") bg-primary-700">
+                        <a asp-controller="EnterpriseRisks" asp-action="Dashboard" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "EnterpriseRisks" && currentAction == "Dashboard" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="layout-dashboard" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_RiskOverview"]</span>
+                        </a>
+                        <a asp-controller="EnterpriseRisks" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "EnterpriseRisks" && currentAction == "Index" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="triangle-alert" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_Risks"]</span>
+                        </a>
+                        <a asp-controller="EnterpriseRisks" asp-action="HeatMap" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "EnterpriseRisks" && currentAction == "HeatMap" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="grid-3x3" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_RiskHeatMap"]</span>
+                        </a>
+                        <a asp-controller="Improvements" asp-action="Dashboard" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Improvements" && currentAction == "Dashboard" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="rocket" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_ImprovementDashboard"]</span>
+                        </a>
+                        <a asp-controller="Improvements" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Improvements" && currentAction == "Index" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="lightbulb" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_Improvements"]</span>
+                        </a>
+                        <a asp-controller="Improvements" asp-action="Kanban" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Improvements" && currentAction == "Kanban" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="kanban" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_Kanban"]</span>
+                        </a>
+                        <a asp-controller="Improvements" asp-action="Roadmap" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Improvements" && currentAction == "Roadmap" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="map" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_Roadmap"]</span>
+                        </a>
+                        <a asp-controller="ChangeRequests" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "ChangeRequests" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="git-pull-request" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_ChangeRequests"]</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Workload Analysis (Collapsible) -->
+                <div class="nav-menu-item mt-2 @(!canWorkload ? "nav-locked" : "")" title="@(!canWorkload ? LockTitle("Workload.View") : null)">
+                    <button type="button" class="nav-menu-toggle nav-link flex items-center justify-between w-full px-4 py-2.5 text-sm font-medium transition-colors @(isWorkloadActive ? "bg-primary-600 text-white" : "text-primary-100 hover:bg-primary-600 hover:text-white")" data-menu="workload-menu">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="@(!canWorkload ? "lock" : "calculator")" class="h-5 w-5 flex-shrink-0"></i>
+                            <span class="nav-label">@(isRtl ? "تحليل حجم العمل" : "Workload Analysis")</span>
+                        </div>
+                        <i data-lucide="chevron-down" class="nav-label h-4 w-4 menu-arrow transition-transform @(isWorkloadActive ? "rotate-180" : "")"></i>
+                    </button>
+                    <div id="workload-menu" class="submenu @(isWorkloadActive ? "open" : "") bg-primary-700">
+                        <a asp-controller="WorkloadAnalysis" asp-action="Dashboard" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "WorkloadAnalysis" && currentAction == "Dashboard" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="bar-chart-3" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@(isRtl ? "نظرة عامة" : "Overview")</span>
+                        </a>
+                        <a asp-controller="WorkloadAnalysis" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "WorkloadAnalysis" && currentAction == "Index" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="file-spreadsheet" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@(isRtl ? "السيناريوهات" : "Scenarios")</span>
+                        </a>
+                        <a asp-controller="WorkloadAnalysis" asp-action="Create" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "WorkloadAnalysis" && currentAction == "Create" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="plus-circle" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@(isRtl ? "سيناريو جديد" : "New Scenario")</span>
+                        </a>
+                        <a asp-controller="WorkloadAnalysis" asp-action="Config" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "WorkloadAnalysis" && currentAction == "Config" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="settings" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@(isRtl ? "الإعدادات" : "Configuration")</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Help Section (Collapsible) -->
+                <div class="nav-menu-item mt-2">
+                    <button type="button" class="nav-menu-toggle nav-link flex items-center justify-between w-full px-4 py-2.5 text-sm font-medium transition-colors @(isHelpActive ? "bg-primary-600 text-white" : "text-primary-100 hover:bg-primary-600 hover:text-white")" data-menu="help-menu">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="circle-help" class="h-5 w-5 flex-shrink-0"></i>
+                            <span class="nav-label">@(isRtl ? "المساعدة" : "Help & Support")</span>
+                        </div>
+                        <i data-lucide="chevron-down" class="nav-label h-4 w-4 menu-arrow transition-transform @(isHelpActive ? "rotate-180" : "")"></i>
+                    </button>
+                    <div id="help-menu" class="submenu @(isHelpActive ? "open" : "") bg-primary-700">
+                        <a asp-controller="Help" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Help" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="help-circle" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_HelpCenter"]</span>
+                        </a>
+                        <a asp-controller="Home" asp-action="UserManual" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Home" && currentAction == "UserManual" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="book-open" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@(isRtl ? "دليل المستخدم" : "User Manual")</span>
+                        </a>
+                        @if (aiEnabled)
+                        {
+                            <a asp-controller="AI" asp-action="ProcessAnalyzer" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "AI" && currentAction == "ProcessAnalyzer" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                                <i data-lucide="bar-chart-3" class="h-4 w-4 flex-shrink-0"></i>
+                                <span class="nav-label">@(isRtl ? "محلل العمليات" : "Process Analyzer")</span>
+                            </a>
+                            <a href="javascript:void(0);" onclick="document.getElementById('spAiAssistantBtn').click();" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors text-primary-200 hover:bg-primary-600 hover:text-white" style="padding-inline-start: 3rem;">
+                                <i data-lucide="bot-message-square" class="h-4 w-4 flex-shrink-0"></i>
+                                <span class="nav-label">@(isRtl ? "المساعد الذكي" : "AI Assistant")</span>
+                            </a>
+                        }
+                    </div>
+                </div>
+
+                <!-- Administration Section (Collapsible) -->
+                <div class="nav-menu-item mt-2 @(!canAdmin ? "nav-locked" : "")" title="@(!canAdmin ? LockTitle("Settings.View / Users.View") : null)">
+                    <button type="button" class="nav-menu-toggle nav-link flex items-center justify-between w-full px-4 py-2.5 text-sm font-medium transition-colors @(isAdminActive ? "bg-primary-600 text-white" : "text-primary-100 hover:bg-primary-600 hover:text-white")" data-menu="admin-menu">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="@(!canAdmin ? "lock" : "settings")" class="h-5 w-5 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Section_Settings"]</span>
+                        </div>
+                        <i data-lucide="chevron-down" class="nav-label h-4 w-4 menu-arrow transition-transform @(isAdminActive ? "rotate-180" : "")"></i>
+                    </button>
+                    <div id="admin-menu" class="submenu @(isAdminActive ? "open" : "") bg-primary-700">
+                        <a asp-controller="SettingsHub" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "SettingsHub" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="settings-2" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_SettingsHub"]</span>
+                        </a>
+                        <a asp-controller="Users" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Users" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="users" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_Users"]</span>
+                        </a>
+                        @* Legacy /Roles page removed — replaced by SettingsHub → Role Groups (preview). *@
+                        <a asp-controller="OrganizationUnits" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "OrganizationUnits" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="building-2" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@Shared["Nav_OrganizationUnits"]</span>
+                        </a>
+                    </div>
+                </div>
+	                </nav>
+
+	                <!-- Sidebar Footer -->
+	                <div class="border-t border-primary-400 p-3">
+	                    <p class="nav-label text-xs text-primary-200 text-center">ESEMS v1.0.0</p>
+	                </div>
+	            </div>
+	        </div>
+
+	        <!-- ========== MAIN WRAPPER ========== -->
+	        <div class="main-content main-content-shell flex-1 flex flex-col">
+	            <!-- ========== CONTENT AREA ========== -->
+	            <main id="main-content" role="main" class="flex-1 overflow-y-auto p-6 bg-gray-50">
+                @* Server-side TempData success/error feedback. Earlier versions
+                   were a static colored banner that pushed page content down on
+                   every save. Now: a centered SweetAlert2 popup matching the
+                   pattern used elsewhere in the app (Improvements wizard, AI
+                   actions, Workload edit). Auto-dismisses (2.5 s success, 4 s
+                   error). The hidden TempDataFeedback inputs let the inline
+                   script read the values without re-emitting the strings as
+                   raw markup. *@
+                @{
+                    var __tdSuccess = TempData["Success"] as string;
+                    var __tdError   = TempData["Error"] as string;
+                }
+                @if (!string.IsNullOrWhiteSpace(__tdSuccess) || !string.IsNullOrWhiteSpace(__tdError))
+                {
+                    <input type="hidden" id="tempDataSuccess" value="@__tdSuccess" />
+                    <input type="hidden" id="tempDataError"   value="@__tdError" />
+                    <script nonce="@Context.CspNonce()">
+                        document.addEventListener('DOMContentLoaded', function () {
+                            if (typeof Swal === 'undefined') return;
+                            var ok = document.getElementById('tempDataSuccess')?.value || '';
+                            var err = document.getElementById('tempDataError')?.value || '';
+                            if (ok) {
+                                Swal.fire({
+                                    icon: 'success',
+                                    title: ok,
+                                    showConfirmButton: false,
+                                    timer: 2500,
+                                    timerProgressBar: true,
+                                    confirmButtonColor: '#005B99'
+                                });
+                            } else if (err) {
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: err,
+                                    confirmButtonText: 'OK',
+                                    confirmButtonColor: '#005B99'
+                                });
+                            }
+                        });
+                    </script>
+                }
+
+                <!-- Breadcrumb Navigation -->
+                @await Html.PartialAsync("_Breadcrumb")
+
+                @RenderBody()
+	            </main>
+	        </div>
+	    </div>
+
+    <!-- Back to Top Button -->
+    <button id="backToTopBtn" class="esems-back-to-top" title="@Shared["A11y_BackToTop"]" aria-label="@Shared["A11y_BackToTop"]">
+        <i data-lucide="chevron-up" class="w-5 h-5"></i>
+    </button>
+
+    <!-- Quick Search Modal (Ctrl+K) -->
+    <div class="modal fade" id="quickSearchModal" tabindex="-1" aria-labelledby="quickSearchModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content" style="border-radius: 12px; overflow: hidden;">
+                <div class="modal-header border-0 pb-0">
+                    <div class="input-group" role="search">
+                        <span class="input-group-text bg-transparent border-0">
+                            <i data-lucide="search" class="h-5 w-5 text-gray-400"></i>
+                        </span>
+                        <input type="text" class="form-control border-0 shadow-none fs-5" id="quickSearchInput"
+                               placeholder="@(isRtl ? "ابحث في العمليات، الخدمات، المخاطر..." : "Search processes, services, risks...")"
+                               aria-label="@(isRtl ? "بحث سريع" : "Quick search")"
+                               autocomplete="off">
+                        <span class="input-group-text bg-transparent border-0 text-muted small">
+                            <kbd class="bg-light px-2 py-1 rounded">ESC</kbd>
+                        </span>
+                    </div>
+                </div>
+                <div class="modal-body pt-2" id="quickSearchResults" style="max-height: 400px; overflow-y: auto;">
+                    <div class="text-center text-muted py-4">
+                        <i data-lucide="command" class="h-8 w-8 mb-2 mx-auto d-block"></i>
+                        <p class="mb-1">@(isRtl ? "اكتب للبحث أو استخدم الاختصارات" : "Type to search or use shortcuts")</p>
+                        <div class="d-flex justify-content-center gap-3 mt-3">
+                            <span><kbd>↑↓</kbd> @(isRtl ? "للتنقل" : "Navigate")</span>
+                            <span><kbd>Enter</kbd> @(isRtl ? "للفتح" : "Open")</span>
+                            <span><kbd>ESC</kbd> @(isRtl ? "للإغلاق" : "Close")</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    <script src="~/js/lt-list-paginate.js" asp-append-version="true"></script>
+    <style>
+        /* List-table client pagination (lt-list-paginate.js): hide paged-out rows
+           via a class so it composes with the search's inline display. Distinct
+           .ltp-* names avoid colliding with pages that ship their own .lt-pager
+           (e.g. Processes/Index). */
+        .ltp-out { display: none !important; }
+        /* Let .lt-* list tables size to their content so there is no nested inner
+           scrollbar inside the card — the page scrolls naturally instead. Overrides
+           the per-view fixed-height (calc(100vh-140px)) + overflow:auto design.
+           The sticky <thead> then sticks to the page, so the header still stays
+           visible while scrolling. Combined with lt-list-paginate.js, long lists
+           are chunked so the page stays short. */
+        .lt-shell { height: auto !important; min-height: 0 !important; }
+        .lt-card { flex: 0 0 auto !important; overflow: visible !important; }
+        .lt-table-wrap { flex: 0 0 auto !important; overflow: visible !important; }
+        /* ── Unified list-table pager skin ──────────────────────────────────
+           One control shared by Processes/Index (#ltPager), the generic
+           lt-list-paginate.js, AND the DataTables footer (.esems-datatable),
+           so every table in the app paginates with the same look: a "showing
+           a–b of n" label, numbered «‹ 1 … ›» buttons, and a rows-per-page
+           select. */
+        .lt-pager { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .55rem .75rem; border-top: 1px solid #f1f5f9; background: #fff; flex-wrap: wrap; flex: 0 0 auto; }
+        .lt-pager-info { font-size: var(--fs-xs); color: #6b7280; }
+        .lt-pager-info b { color: #1f2937; font-weight: 700; }
+        .lt-pager-controls { display: inline-flex; align-items: center; gap: .25rem; }
+        .lt-pager-size { display: inline-flex; align-items: center; gap: .35rem; font-size: var(--fs-xs); color: #6b7280; }
+        .lt-pager-size select { padding: .25rem .5rem; border: 1px solid #d1d5db; border-radius: 5px; font-size: var(--fs-xs); background: #fff; }
+        .lt-pager-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 28px; padding: 0 .55rem; border: 1px solid #e5e7eb; background: #fff; color: #475569; font-size: var(--fs-xs); font-weight: 600; border-radius: 5px; cursor: pointer; }
+        .lt-pager-btn:hover:not(:disabled) { background: #f1f5f9; color: #005B99; border-color: #94a3b8; }
+        .lt-pager-btn[disabled], .lt-pager-btn:disabled { opacity: .4; cursor: not-allowed; }
+        .lt-pager-btn.active { background: #005B99; color: #fff; border-color: #005B99; }
+        .lt-pager-ellipsis { padding: 0 .25rem; color: #94a3b8; font-size: var(--fs-xs); }
+
+        /* Skin the DataTables footer to match .lt-pager. This build uses the
+           Bootstrap-5 pagination integration (<li.page-item><a.page-link>),
+           so style .page-link as standalone rounded buttons with a gap and
+           map .active / .disabled to the .lt-pager-btn look. */
+        .dataTables_wrapper .dataTables_paginate .pagination { display: inline-flex; align-items: center; gap: .25rem; margin: 0; }
+        .dataTables_wrapper .dataTables_paginate .page-item .page-link {
+            display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 28px;
+            padding: 0 .55rem !important; margin: 0 !important; border: 1px solid #e5e7eb !important;
+            background: #fff !important; color: #475569 !important; font-size: var(--fs-xs); font-weight: 600;
+            border-radius: 5px !important; cursor: pointer; box-shadow: none !important; line-height: 1;
+        }
+        .dataTables_wrapper .dataTables_paginate .page-item .page-link:hover { background: #f1f5f9 !important; color: #005B99 !important; border-color: #94a3b8 !important; }
+        .dataTables_wrapper .dataTables_paginate .page-item.active .page-link { background: #005B99 !important; color: #fff !important; border-color: #005B99 !important; }
+        .dataTables_wrapper .dataTables_paginate .page-item.disabled .page-link { opacity: .4; cursor: not-allowed; background: #fff !important; color: #475569 !important; border-color: #e5e7eb !important; }
+        .dataTables_wrapper .dataTables_info { font-size: var(--fs-xs); color: #6b7280; padding-top: 0; margin: 0; }
+        .dataTables_wrapper .dataTables_length { font-size: var(--fs-xs); color: #6b7280; margin: 0; }
+        .dataTables_wrapper .dataTables_length select { min-width: 64px; }
+    </style>
+
+    <script nonce="@Context.CspNonce()">
+        // SEC-007: attach the anti-forgery token to every same-origin mutating
+        // request so the global AutoValidateAntiforgeryToken filter accepts AJAX
+        // (notifications, MySpace DELETE, AI fetches, etc.). Header name is
+        // configured server-side (AntiforgeryOptions.HeaderName).
+        (function () {
+            function csrfToken() {
+                var el = document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]');
+                return el ? el.value : '';
+            }
+            var _fetch = window.fetch;
+            if (_fetch) {
+                window.fetch = function (input, init) {
+                    init = init || {};
+                    var method = (init.method || (input && typeof input !== 'string' && input.method) || 'GET').toUpperCase();
+                    var url = (typeof input === 'string') ? input : (input && input.url) || '';
+                    var external = /^https?:\/\//i.test(url) && url.indexOf(window.location.origin) !== 0;
+                    if (!external && ['POST', 'PUT', 'DELETE', 'PATCH'].indexOf(method) !== -1) {
+                        var h = new Headers(init.headers || (typeof input !== 'string' && input ? input.headers : undefined) || {});
+                        if (!h.has('RequestVerificationToken')) h.set('RequestVerificationToken', csrfToken());
+                        init.headers = h;
+                    }
+                    return _fetch.call(this, input, init);
+                };
+            }
+            if (window.jQuery) {
+                jQuery.ajaxSetup({
+                    beforeSend: function (xhr, settings) {
+                        var m = (settings.type || 'GET').toUpperCase();
+                        if (!settings.crossDomain && ['POST', 'PUT', 'DELETE', 'PATCH'].indexOf(m) !== -1) {
+                            xhr.setRequestHeader('RequestVerificationToken', csrfToken());
+                        }
+                    }
+                });
+            }
+        })();
+    </script>
+
+    <!-- DataTables -->
+    <script src="~/lib/datatables/jquery.dataTables.min.js" asp-append-version="true"></script>
+    <script src="~/lib/datatables/dataTables.bootstrap5.min.js" asp-append-version="true"></script>
+
+    <!-- SweetAlert2 & Chart.js -->
+    <script src="~/lib/sweetalert2/sweetalert2.all.min.js" asp-append-version="true"></script>
+    <script src="~/lib/chartjs/chart.umd.js" asp-append-version="true"></script>
+
+    <!-- Localization Script -->
+    <script nonce="@Context.CspNonce()">
+        // Populate localization object from server
+        window.ESEMS = window.ESEMS || {};
+        window.ESEMS.Localization = {
+            // Confirmation Messages
+            'Confirm_AreYouSure': '@Shared["Confirm_AreYouSure"]',
+            'Confirm_DeleteTextPrefix': '@Shared["Confirm_DeleteTextPrefix"]',
+            'Confirm_YesDelete': '@Shared["Confirm_YesDelete"]',
+            'Button_Cancel': '@Shared["Button_Cancel"]',
+            'Button_Close': '@Shared["Button_Close"]',
+
+            // DataTables
+            'DataTables_Search': '@Shared["DataTables_Search"]',
+            'DataTables_LengthMenu': '@Shared["DataTables_LengthMenu"]',
+            'DataTables_Info': '@Shared["DataTables_Info"]',
+            'DataTables_InfoEmpty': '@Shared["DataTables_InfoEmpty"]',
+            'DataTables_InfoFiltered': '@Shared["DataTables_InfoFiltered"]',
+            'DataTables_ZeroRecords': '@Shared["DataTables_ZeroRecords"]',
+            'DataTables_EmptyTable': '@Shared["DataTables_EmptyTable"]',
+            'DataTables_Paginate_First': '@Shared["DataTables_Paginate_First"]',
+            'DataTables_Paginate_Last': '@Shared["DataTables_Paginate_Last"]',
+            'DataTables_Paginate_Next': '@Shared["DataTables_Paginate_Next"]',
+            'DataTables_Paginate_Previous': '@Shared["DataTables_Paginate_Previous"]',
+
+            // Validation
+            'Validation_Required': '@Shared["Validation_Required"]',
+            'Validation_Email': '@Shared["Validation_Email"]',
+            'Validation_Url': '@Shared["Validation_Url"]',
+            'Validation_Date': '@Shared["Validation_Date"]',
+            'Validation_Number': '@Shared["Validation_Number"]',
+            'Validation_Digits': '@Shared["Validation_Digits"]',
+            'Validation_MinLength': '@Shared["Validation_MinLength"]',
+            'Validation_MaxLength': '@Shared["Validation_MaxLength"]',
+            'Validation_Range': '@Shared["Validation_Range"]',
+
+            // SweetAlert2
+            'SweetAlert_Loading': '@Shared["SweetAlert_Loading"]',
+            'SweetAlert_Success': '@Shared["SweetAlert_Success"]',
+            'SweetAlert_Error': '@Shared["SweetAlert_Error"]',
+            'SweetAlert_Warning': '@Shared["SweetAlert_Warning"]',
+            'SweetAlert_Info': '@Shared["SweetAlert_Info"]',
+
+            // AI Messages
+            'AI_AnalyzingData': '@Shared["AI_AnalyzingData"]',
+            'AI_DashboardAnalysis': '@Shared["AI_DashboardAnalysis"]',
+            'AI_RejectionReason': '@Shared["AI_RejectionReason"]',
+            'AI_TypeReason': '@Shared["AI_TypeReason"]',
+
+            // BPMN
+            'BPMN_Ready': '@Shared["BPMN_Ready"]',
+            'BPMN_InitializationError': '@Shared["BPMN_InitializationError"]'
+        };
+    </script>
+    <script src="~/js/localization.js" asp-append-version="true"></script>
+
+    <script nonce="@Context.CspNonce()">
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            const verticalMenuBtn = document.getElementById('vertical-menu-btn');
+	            const topbar = document.getElementById('page-topbar');
+
+	            function syncTopbarHeight() {
+	                if (!topbar) return;
+	                const h = topbar.offsetHeight || 0;
+	                if (h > 0) {
+	                    document.documentElement.style.setProperty('--esems-topbar-height', h + 'px');
+	                }
+	            }
+
+	            syncTopbarHeight();
+	            window.addEventListener('resize', syncTopbarHeight);
+
+            // Unified sidebar toggle (mobile and desktop)
+            if (verticalMenuBtn) {
+                verticalMenuBtn.addEventListener('click', function() {
+                    // On mobile: toggle sidebar open/close
+                    if (window.innerWidth < 768) {
+                        sidebar.classList.toggle('open');
+                        overlay.classList.toggle('active');
+                    } else {
+	                        // On desktop: toggle sidebar collapsed/expanded (CSS handles content offset)
+                        sidebar.classList.toggle('collapsed');
+                        // Re-initialize icons after collapse
+                        setTimeout(() => lucide.createIcons(), 100);
+                    }
+                });
+            }
+
+            // Close sidebar when clicking overlay (mobile)
+            if (overlay) {
+                overlay.addEventListener('click', function() {
+                    sidebar.classList.remove('open');
+                    overlay.classList.remove('active');
+                });
+            }
+
+            // DataTables initialization with localization
+            if (typeof $.fn.dataTable !== 'undefined' && typeof window.ESEMS.Localization.getDataTablesConfig === 'function') {
+                $('.datatable').DataTable({
+                    language: window.ESEMS.Localization.getDataTablesConfig(),
+                    pagingType: 'full_numbers',
+                    pageLength: 10
+                });
+            }
+
+            // Collapsible sidebar menu functionality
+            const menuToggles = document.querySelectorAll('.nav-menu-toggle');
+            menuToggles.forEach(toggle => {
+                toggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const menuId = this.getAttribute('data-menu');
+                    const submenu = document.getElementById(menuId);
+                    const arrow = this.querySelector('.menu-arrow');
+
+                    if (submenu) {
+                        // Accordion behaviour: opening one section collapses the
+                        // rest. Decide intent first, then close every submenu
+                        // (and reset its arrow), then open the clicked one —
+                        // unless it was already open, in which case it stays
+                        // closed (click-to-toggle preserved).
+                        const willOpen = !submenu.classList.contains('open');
+
+                        menuToggles.forEach(t => {
+                            const sm = document.getElementById(t.getAttribute('data-menu'));
+                            if (sm) sm.classList.remove('open');
+                            const ar = t.querySelector('.menu-arrow');
+                            if (ar) ar.classList.remove('rotate-180');
+                        });
+
+                        if (willOpen) {
+                            submenu.classList.add('open');
+                            if (arrow) arrow.classList.add('rotate-180');
+                        }
+
+                        // Re-initialize icons for newly visible items
+                        setTimeout(() => lucide.createIcons(), 100);
+                    }
+                });
+            });
+
+            // Quick Search (Ctrl+K) functionality
+            document.addEventListener('keydown', function(e) {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                    e.preventDefault();
+                    const searchModal = document.getElementById('quickSearchModal');
+                    if (searchModal) {
+                        const bsModal = new bootstrap.Modal(searchModal);
+                        bsModal.show();
+                        setTimeout(() => {
+                            document.getElementById('quickSearchInput')?.focus();
+                        }, 200);
+                    }
+                }
+            });
+
+            // Toast auto-dismiss after 5 seconds
+            document.querySelectorAll('.esems-toast').forEach(function(toast) {
+                setTimeout(function() {
+                    toast.classList.add('esems-toast-hiding');
+                    setTimeout(function() { toast.remove(); }, 400);
+                }, 5000);
+            });
+
+            // Back to Top button
+            var backToTopBtn = document.getElementById('backToTopBtn');
+            var mainContent = document.getElementById('main-content');
+            if (backToTopBtn && mainContent) {
+                mainContent.addEventListener('scroll', function() {
+                    if (mainContent.scrollTop > 300) {
+                        backToTopBtn.classList.add('visible');
+                    } else {
+                        backToTopBtn.classList.remove('visible');
+                    }
+                });
+                backToTopBtn.addEventListener('click', function() {
+                    mainContent.scrollTo({ top: 0, behavior: 'smooth' });
+                });
+            }
+
+            // Re-create icons for breadcrumb
+            lucide.createIcons();
+        });
+
+	        function lockScreen() { /* no-op (kept for ERM-compatible SetLanguage) */ }
+	        function unLockScreen() { /* no-op (kept for ERM-compatible SetLanguage) */ }
+
+	        function SetLanguage(culture) {
+	            lockScreen();
+	            const tokenEl = document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]');
+	            const antiForgeryToken = tokenEl ? tokenEl.value : '';
+
+	            // F-CC-005: read PathBase from the meta tag so this works under
+	            // sub-app hosting (ejraa360.com/App). Also send the returnUrl
+	            // *without* the PathBase prefix (the server's redirectUrl is
+	            // resolved via the cookie + the same PathBase, so re-prefixing
+	            // it on the client side would double up to /App/App/…).
+	            const pathBaseMeta = document.querySelector('meta[name="path-base"]');
+	            const pathBase = (pathBaseMeta && pathBaseMeta.getAttribute('content')) || '';
+	            const fullPath = window.location.pathname + window.location.search + window.location.hash;
+	            const returnUrl = pathBase && fullPath.indexOf(pathBase) === 0
+	                ? fullPath.substring(pathBase.length) || '/'
+	                : fullPath;
+
+	            fetch(pathBase + '/Base/ChangeLanguage', {
+	                method: 'POST',
+	                headers: {
+	                    'Content-Type': 'application/json',
+	                    // BaseController.ChangeLanguage ignores antiforgery, but keeping the header matches ERM behavior
+	                    'RequestVerificationToken': antiForgeryToken
+	                },
+	                body: JSON.stringify({ culture: culture, returnUrl: returnUrl })
+	            })
+	            .then(r => {
+	                if (!r.ok) throw new Error('HTTP error! Status: ' + r.status);
+	                return r.json();
+	            })
+	            .then(data => {
+	                if (data && data.success) {
+	                    // Server returns a path relative to PathBase; re-prefix so
+	                    // the browser navigates to the right place under /App.
+	                    const target = data.redirectUrl || '/';
+	                    const final = target.startsWith('http')
+	                        ? target
+	                        : pathBase + (target.startsWith('/') ? target : '/' + target);
+	                    window.location.href = final;
+	                }
+	            })
+	            .catch(err => {
+	                console.error('SetLanguage error:', err);
+	                unLockScreen();
+	            });
+	        }
+
+	        // Backward compatibility (older pages call changeLanguage)
+	        function changeLanguage(culture) { SetLanguage(culture); }
+
+	        function ClearClientCache() {
+	            // UX-017: confirm before wiping storage + reloading (destructive,
+	            // previously fired with no warning). Mirrors the SweetAlert
+	            // confirm pattern used by list-page delete actions.
+	            const doClear = () => {
+	                try { localStorage.clear(); } catch (e) { }
+	                try { sessionStorage.clear(); } catch (e) { }
+
+	                const forceReload = () => {
+	                    try {
+	                        const url = new URL(window.location.href);
+	                        url.searchParams.set('_', Date.now().toString());
+	                        window.location.replace(url.toString());
+	                    } catch (e) {
+	                        window.location.reload();
+	                    }
+	                };
+
+	                if (window.caches && caches.keys) {
+	                    caches.keys()
+	                        .then(keys => Promise.all(keys.map(k => caches.delete(k))))
+	                        .finally(forceReload);
+	                } else {
+	                    forceReload();
+	                }
+	            };
+
+	            if (typeof Swal !== 'undefined') {
+	                Swal.fire({
+	                    title: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_ClearCacheTitle"].Value)),
+	                    text: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_ClearCacheText"].Value)),
+	                    icon: 'warning',
+	                    showCancelButton: true,
+	                    confirmButtonColor: '#005B99',
+	                    cancelButtonColor: '#6b7280',
+	                    confirmButtonText: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_ClearCacheConfirm"].Value)),
+	                    cancelButtonText: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Button_Cancel"].Value))
+	                }).then((result) => { if (result.isConfirmed) doClear(); });
+	            } else {
+	                doClear();
+	            }
+	        }
+
+        // Quick Search functionality
+        // Shared HTML-escape used by every spot that interpolates server data
+        // into innerHTML below. Without it the search index becomes a stored-XSS
+        // vector — any user with Create permission could put <script> in a name
+        // and execute on every searcher's page.
+        function spEscapeHtml(v) {
+            if (v == null) return '';
+            return String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+        function spSafeUrl(u) {
+            // Block javascript: / data: / vbscript: scheme injection in href.
+            const s = String(u || '');
+            if (/^\s*(javascript|data|vbscript):/i.test(s)) return '#';
+            return spEscapeHtml(s);
+        }
+        let searchTimeout;
+        const quickSearchInput = document.getElementById('quickSearchInput');
+        const quickSearchResults = document.getElementById('quickSearchResults');
+
+        if (quickSearchInput) {
+            quickSearchInput.addEventListener('input', function() {
+                clearTimeout(searchTimeout);
+                const query = this.value.trim();
+
+                if (query.length < 2) {
+                    quickSearchResults.innerHTML = `
+                        <div class="text-center text-muted py-4">
+                            <i data-lucide="command" class="h-8 w-8 mb-2 mx-auto d-block"></i>
+                            <p class="mb-1">@(isRtl ? "اكتب للبحث أو استخدم الاختصارات" : "Type to search or use shortcuts")</p>
+                        </div>`;
+                    lucide.createIcons();
+                    return;
+                }
+
+                searchTimeout = setTimeout(() => performQuickSearch(query), 300);
+            });
+
+            // Close modal on ESC
+            document.getElementById('quickSearchModal')?.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    bootstrap.Modal.getInstance(this)?.hide();
+                }
+            });
+        }
+
+        async function performQuickSearch(query) {
+            quickSearchResults.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>';
+
+            try {
+                const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+                const data = await response.json();
+
+                if (data.results && data.results.length > 0) {
+                    quickSearchResults.innerHTML = data.results.map((item, index) => `
+                        <a href="${spSafeUrl(item.url)}" class="d-flex align-items-center gap-3 p-3 text-decoration-none text-dark hover-bg-light rounded ${index === 0 ? 'bg-light' : ''}" data-search-item>
+                            <div class="flex-shrink-0">
+                                <span class="badge bg-${item.type === 'Process' ? 'primary' : item.type === 'Service' ? 'success' : item.type === 'Risk' ? 'danger' : 'secondary'}">${spEscapeHtml(item.type)}</span>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="fw-medium">${spEscapeHtml(item.name)}</div>
+                                <small class="text-muted">${spEscapeHtml(item.description || '')}</small>
+                            </div>
+                            <i data-lucide="@(isRtl ? "arrow-left" : "arrow-right")" class="h-4 w-4 text-muted"></i>
+                        </a>
+                    `).join('');
+                } else {
+                    quickSearchResults.innerHTML = `
+                        <div class="text-center text-muted py-4">
+                            <i data-lucide="search-x" class="h-8 w-8 mb-2 mx-auto d-block"></i>
+                            <p>@(isRtl ? "لا توجد نتائج" : "No results found")</p>
+                        </div>`;
+                }
+                lucide.createIcons();
+            } catch (error) {
+                console.error('Search error:', error);
+                quickSearchResults.innerHTML = '<div class="text-center text-danger py-4">' + spEscapeHtml(window.ESEMS_I18N.searchFailed) + '</div>';
+            }
+        }
+    </script>
+    @await RenderSectionAsync("Scripts", required: false)
+    <script nonce="@Context.CspNonce()">
+        // ═══════════════════════════════════════════════════════════════
+        // ESEMS table enhancer (DataTables) — global init for every
+        // .esems-datatable across the app. Provides sortable headers,
+        // client-side search across all columns, pagination, per-page
+        // selector, empty-state, and full Arabic/RTL support.
+        // ═══════════════════════════════════════════════════════════════
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof jQuery === 'undefined' || typeof jQuery.fn.DataTable === 'undefined') return;
+
+            var isRtl = document.documentElement.dir === 'rtl';
+
+            // Full bilingual language pack — every user-visible string.
+            var languageEn = {
+                search: '',
+                searchPlaceholder: 'Search all columns…',
+                lengthMenu: 'Rows per page _MENU_',
+                info: 'Showing _START_–_END_ of _TOTAL_',
+                infoEmpty: 'No records',
+                infoFiltered: '(filtered from _MAX_ total)',
+                zeroRecords: 'No matching records found',
+                emptyTable: 'No data in table',
+                paginate: { first: '«', last: '»', next: '›', previous: '‹' },
+                aria: { sortAscending: ': activate to sort ascending', sortDescending: ': activate to sort descending' }
+            };
+            var languageAr = {
+                search: '',
+                searchPlaceholder: 'ابحث في كل الأعمدة…',
+                lengthMenu: 'صف لكل صفحة _MENU_',
+                info: 'عرض _START_–_END_ من _TOTAL_',
+                infoEmpty: 'لا توجد سجلات',
+                infoFiltered: '(تصفية من _MAX_ إجمالاً)',
+                zeroRecords: 'لم يتم العثور على سجلات مطابقة',
+                emptyTable: 'لا توجد بيانات في الجدول',
+                paginate: { first: '«', last: '»', next: '›', previous: '‹' },
+                aria: { sortAscending: ': تنشيط للفرز تصاعدي', sortDescending: ': تنشيط للفرز تنازلي' }
+            };
+
+            document.querySelectorAll('.esems-datatable').forEach(function(table) {
+                if (jQuery.fn.DataTable.isDataTable(table)) return;
+
+                // Make the Actions column (usually last) non-sortable so the
+                // sort arrows don't appear on a column that can't be sorted.
+                var thCount = table.querySelectorAll('thead th').length;
+                var columnDefs = thCount > 1
+                    ? [{ orderable: false, targets: -1 }]
+                    : [];
+
+                jQuery(table).DataTable({
+                    pageLength: 25,
+                    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, isRtl ? 'الكل' : 'All']],
+                    pagingType: 'full_numbers',
+                    responsive: true,
+                    language: isRtl ? languageAr : languageEn,
+                    // Filter (`f`) stays out of the toolbar — pages that need
+                    // search render their own filter row above the table. The
+                    // footer carries info + numbered pager + rows-per-page so
+                    // every list matches the unified .lt-pager control.
+                    dom: 'rt<"esems-dt-footer d-flex flex-wrap align-items-center justify-content-between gap-3 px-3 py-3 border-top"<"esems-dt-info"i><"esems-dt-paging"p><"esems-dt-length"l>>',
+                    order: [],
+                    columnDefs: columnDefs,
+                    // Initial state callback — inject a search icon + clear
+                    // button once the filter input exists.
+                    initComplete: function() {
+                        var wrapper = this.api().table().container();
+                        var searchInput = wrapper.querySelector('.dataTables_filter input');
+                        if (searchInput) {
+                            searchInput.classList.add('form-control', 'form-control-sm');
+                            searchInput.style.width = '260px';
+                            searchInput.style.paddingInlineStart = '30px';
+                            searchInput.placeholder = isRtl ? 'ابحث في كل الأعمدة…' : 'Search all columns…';
+                            // Search icon overlay
+                            var wrap = searchInput.parentElement;
+                            wrap.style.position = 'relative';
+                            var icon = document.createElement('i');
+                            icon.setAttribute('data-lucide', 'search');
+                            icon.style.cssText = 'position:absolute;top:50%;' + (isRtl ? 'right' : 'left') + ':10px;transform:translateY(-50%);width:14px;height:14px;color:#94a3b8;pointer-events:none;';
+                            wrap.appendChild(icon);
+                            if (window.lucide) window.lucide.createIcons();
+                        }
+                        var lengthSelect = wrapper.querySelector('.dataTables_length select');
+                        if (lengthSelect) {
+                            lengthSelect.classList.add('form-select', 'form-select-sm');
+                            lengthSelect.style.width = 'auto';
+                            lengthSelect.style.display = 'inline-block';
+                        }
+                    }
+                });
+            });
+        });
+    </script>
+
+    <style>
+        /* DataTables visual polish — Design X (ESEMS brand) */
+        table.dataTable thead th {
+            position: relative;
+            padding-inline-end: 28px !important;
+            cursor: pointer;
+            user-select: none;
+        }
+        table.dataTable thead th.sorting:before,
+        table.dataTable thead th.sorting:after,
+        table.dataTable thead th.sorting_asc:before,
+        table.dataTable thead th.sorting_asc:after,
+        table.dataTable thead th.sorting_desc:before,
+        table.dataTable thead th.sorting_desc:after {
+            opacity: 0.85;
+            color: #fff;
+            font-size: 0.7em;
+        }
+        table.dataTable thead th.sorting:hover {
+            background: linear-gradient(135deg, #006bb3 0%, #004d80 100%) !important;
+        }
+        /* Row striping + hover */
+        table.dataTable tbody tr { transition: background-color .15s; }
+        table.dataTable tbody tr:hover { background-color: #f8fafc !important; }
+        /* Toolbar spacing — top bar (length + search) */
+        .esems-dt-toolbar { background: #fff; }
+        .esems-dt-search { flex: 0 0 auto; }
+        .esems-dt-length { flex: 0 0 auto; }
+        .esems-dt-length label { color: #64748b; font-size: var(--fs-sm); margin: 0; display: flex; align-items: center; gap: .5rem; }
+        .esems-dt-search label { color: #64748b; font-size: var(--fs-sm); margin: 0; }
+        /* Footer */
+        .esems-dt-footer { background: #fff; border-color: #f1f5f9 !important; }
+        .esems-dt-info { color: #64748b; font-size: var(--fs-sm); }
+        /* Pagination pill */
+        .dataTables_paginate .paginate_button {
+            padding: .35rem .7rem !important;
+            margin: 0 .15rem !important;
+            border-radius: 6px !important;
+            border: 1px solid #e5e7eb !important;
+            background: #fff !important;
+            color: #475569 !important;
+            font-size: var(--fs-sm) !important;
+            cursor: pointer;
+            transition: all .15s;
+        }
+        .dataTables_paginate .paginate_button:hover:not(.disabled):not(.current) {
+            background: #f1f5f9 !important;
+            border-color: #cbd5e1 !important;
+        }
+        .dataTables_paginate .paginate_button.current {
+            background: #005B99 !important;
+            color: #fff !important;
+            border-color: #005B99 !important;
+        }
+        /* Audit fix: prev/next/first/last buttons used to render as the same
+           bordered chip as numeric pages, so the toolbar read "« ‹ 1 2 3 › »"
+           with no visual hierarchy. De-emphasise the navigation buttons so
+           the numeric pages are clearly the primary control. */
+        .dataTables_paginate .paginate_button.first,
+        .dataTables_paginate .paginate_button.last,
+        .dataTables_paginate .paginate_button.previous,
+        .dataTables_paginate .paginate_button.next {
+            background: transparent !important;
+            border-color: transparent !important;
+            color: #94a3b8 !important;
+            font-weight: 600;
+            padding: .35rem .55rem !important;
+        }
+        .dataTables_paginate .paginate_button.first:hover:not(.disabled),
+        .dataTables_paginate .paginate_button.last:hover:not(.disabled),
+        .dataTables_paginate .paginate_button.previous:hover:not(.disabled),
+        .dataTables_paginate .paginate_button.next:hover:not(.disabled) {
+            background: #f1f5f9 !important;
+            color: #475569 !important;
+        }
+        .dataTables_paginate .paginate_button.disabled { opacity: .4; cursor: not-allowed; }
+        /* Hide the default colon next to "Search:" label */
+        .dataTables_filter label { display: flex; align-items: center; gap: .5rem; }
+        /* Empty state styling */
+        table.dataTable td.dataTables_empty { padding: 2rem !important; color: #94a3b8; font-style: italic; }
+        /* RTL — swap icon padding / arrow positions */
+        html[dir="rtl"] table.dataTable thead th { padding-inline-end: 28px !important; padding-inline-start: 12px !important; }
+        html[dir="rtl"] .dataTables_filter input { padding-inline-start: 30px !important; padding-inline-end: 12px !important; }
+    </style>
+    @* UX-019: the second (weaker) double-submit guard that lived here was
+       removed. The single robust guard (F-CC-014, near the top of <head>)
+       handles all forms — it cancels pending re-submits, supports an opt-out
+       attribute, and styles via .is-submitting without clobbering button HTML. *@
+    @if (isAuthenticated && aiEnabled)
+    {
+        <!-- AI Assistant Floating Bubble (Design X) — hidden when AzureOpenAI is unconfigured -->
+        <style>
+            #esemsAiBubble {
+                position: fixed;
+                /* Raised from 1.5rem so the bubble doesn't sit on top of the
+                   last visible data row's action icons on tables that stretch
+                   to the viewport edge (Workload Scenarios, Incidents, etc.). */
+                bottom: 4rem;
+                @(isRtl ? "left" : "right"): 1.5rem;
+                width: 56px;
+                height: 56px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);
+                border: none;
+                color: #fff;
+                cursor: pointer;
+                /* Lowered from 1040 to 1030 so SweetAlert modals (1050+) and
+                   Bootstrap dropdowns (1000) layer predictably. */
+                z-index: 1030;
+                box-shadow: 0 8px 24px rgba(0,91,153,.35), 0 2px 6px rgba(0,0,0,.12);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: transform .2s ease, box-shadow .2s ease, opacity .2s ease;
+                animation: esems-bubble-pulse 2.4s ease-in-out 1.5s 3;
+            }
+            #esemsAiBubble:hover { transform: scale(1.08); box-shadow: 0 12px 30px rgba(0,91,153,.45), 0 4px 8px rgba(0,0,0,.15); }
+            #esemsAiBubble:active { transform: scale(.96); }
+            #esemsAiBubble:focus-visible { outline: 3px solid rgba(0,91,153,.5); outline-offset: 3px; }
+            #esemsAiBubble.is-chat-open { opacity: 0; transform: scale(.6); pointer-events: none; }
+            #esemsAiBubble .esems-bubble-icon { width: 26px; height: 26px; }
+            /* "Ask AI" hint label — slides in on hover so users discover what
+               the round bot icon does without waiting for the browser tooltip
+               to fire (typically 1s+ delay). Hidden by default, displayed via
+               an absolutely-positioned slate chip beside the bubble. */
+            #esemsAiBubble .esems-bubble-hint {
+                position: absolute;
+                top: 50%;
+                transform: translateY(-50%);
+                @(isRtl ? "left" : "right"): calc(100% + .6rem);
+                background: #1e293b;
+                color: #fff;
+                padding: .35rem .75rem;
+                border-radius: .375rem;
+                font-size: var(--fs-xs);
+                font-weight: 600;
+                white-space: nowrap;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity .15s ease;
+                box-shadow: 0 4px 8px rgba(0,0,0,.15);
+            }
+            #esemsAiBubble:hover .esems-bubble-hint,
+            #esemsAiBubble:focus-visible .esems-bubble-hint { opacity: 1; }
+            #esemsAiBubble .esems-bubble-ping {
+                position: absolute; top: -2px; @(isRtl ? "left" : "right"): -2px;
+                width: 12px; height: 12px; border-radius: 50%;
+                background: #F46A6A; border: 2px solid #fff;
+                display: none;
+            }
+            #esemsAiBubble.has-unread .esems-bubble-ping { display: block; animation: esems-badge-pulse 1.8s ease-in-out infinite; }
+            @@keyframes esems-bubble-pulse {
+                0%, 100% { box-shadow: 0 8px 24px rgba(0,91,153,.35), 0 0 0 0 rgba(0,91,153,.45); }
+                50% { box-shadow: 0 8px 24px rgba(0,91,153,.35), 0 0 0 14px rgba(0,91,153,0); }
+            }
+            @@media (prefers-reduced-motion: reduce) {
+                #esemsAiBubble { animation: none !important; transition: opacity .1s ease; }
+                #esemsAiBubble:hover { transform: none; }
+            }
+            @@media (max-width: 575.98px) {
+                #esemsAiBubble { width: 48px; height: 48px; bottom: 1rem; @(isRtl ? "left" : "right"): 1rem; }
+                #esemsAiBubble .esems-bubble-icon { width: 22px; height: 22px; }
+            }
+        </style>
+        <button type="button" id="esemsAiBubble"
+                aria-label="@(isRtl ? "افتح المساعد الذكي" : "Open AI Assistant")"
+                title="@(isRtl ? "افتح المساعد الذكي · اسأل عن أي مبادرة، خدمة، عملية، أو خطر (Alt+I)" : "Open AI Assistant · Ask about any initiative, service, process or risk (Alt+I)")">
+            <i data-lucide="bot-message-square" class="esems-bubble-icon" aria-hidden="true"></i>
+            <span class="esems-bubble-ping" aria-hidden="true"></span>
+            <span class="esems-bubble-hint" aria-hidden="true">@(isRtl ? "اسأل المساعد" : "Ask AI")</span>
+        </button>
+    }
+
+    <!-- AI Assistant Chat Panel (Design X — PManagement-inspired) -->
+    <div id="spAiChat" style="display:none;position:fixed;bottom:5.5rem;@(isRtl ? "left" : "right"):2rem;width:400px;max-height:560px;z-index:1050;border-radius:14px;background:#fff;box-shadow:0 20px 50px -10px rgba(0,91,153,.25),0 10px 20px -5px rgba(0,0,0,.1);flex-direction:column;overflow:hidden;animation:esems-slide-up .3s ease-out;" role="dialog" aria-label="AI Assistant">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:.85rem 1rem;background:linear-gradient(135deg,#005B99 0%,#003d6b 100%);color:#fff;">
+            <div class="d-flex align-items-center gap-2">
+                <i data-lucide="bot-message-square" style="width:18px;height:18px;"></i>
+                <span class="fw-semibold">@(isRtl ? "المساعد الذكي" : "AI Assistant")</span>
+            </div>
+            <button id="spAiChatClose" style="background:none;border:none;color:#fff;cursor:pointer;padding:4px;">
+                <i data-lucide="x" style="width:16px;height:16px;"></i>
+            </button>
+        </div>
+        <div id="spAiChatBody" style="flex:1;overflow-y:auto;padding:.75rem;display:flex;flex-direction:column;gap:.5rem;max-height:360px;min-height:200px;">
+            <div style="align-self:flex-start;background:#f3f4f6;color:#1f2937;padding:.5rem .75rem;border-radius:12px;border-bottom-@(isRtl ? "right" : "left")-radius:4px;font-size: var(--fs-sm);max-width:85%;">
+                @(isRtl ? "مرحبا! أنا المساعد الذكي لنظام ESEMS. كيف يمكنني مساعدتك؟" : "Hello! I'm the ESEMS AI Assistant. How can I help you?")
+            </div>
+        </div>
+        <div id="spAiSuggestions" style="padding:0 .75rem .5rem;display:flex;flex-wrap:wrap;gap:.35rem;"></div>
+        <div style="display:flex;align-items:center;gap:.5rem;padding:.6rem .75rem;border-top:1px solid #e5e7eb;">
+            <input type="text" id="spAiInput" placeholder="@(isRtl ? "اطرح سؤالك..." : "Ask a question...")"
+                   aria-label="@(isRtl ? "سؤال للمساعد" : "Ask the AI assistant")"
+                   autocomplete="off" style="flex:1;border:1px solid #e5e7eb;border-radius:8px;padding:.4rem .7rem;font-size: var(--fs-sm);outline:none;" />
+            <button id="spAiSendBtn" aria-label="@(isRtl ? "إرسال" : "Send")" style="background:linear-gradient(135deg,#005B99 0%,#003d6b 100%);color:#fff;border:none;border-radius:8px;padding:.4rem .7rem;cursor:pointer;transition:transform .15s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                <i data-lucide="send" style="width:16px;height:16px;" aria-hidden="true"></i>
+            </button>
+        </div>
+    </div>
+
+    <script src="~/lib/microsoft-signalr/signalr.min.js" asp-append-version="true"></script>
+    <script nonce="@Context.CspNonce()">
+    // ── Notification System ──
+    async function loadNotifications() {
+        try {
+            const res = await fetch('/api/notifications?unreadOnly=true&take=5', { credentials: 'include' });
+            if (!res.ok) return;
+            const items = await res.json();
+            const badge = document.getElementById('notifBadge');
+            const countLabel = document.getElementById('notifCountLabel');
+            const list = document.getElementById('notifPreviewList');
+            const count = items.length;
+            if (badge) {
+                if (count > 0) {
+                    badge.textContent = count > 99 ? '99+' : count;
+                    badge.style.display = '';
+                    badge.classList.add('notif-has-unread');
+                } else {
+                    badge.style.display = 'none';
+                    badge.classList.remove('notif-has-unread');
+                }
+            }
+            if (countLabel) countLabel.textContent = count + ' @(isRtl ? "جديد" : "New")';
+            if (list) {
+                if (count === 0) {
+                    list.innerHTML = '<div class="text-center py-5 text-muted small"><i data-lucide="bell-off" style="width:32px;height:32px;opacity:.3;" class="mb-2"></i><div>@(isRtl ? "لا توجد إشعارات جديدة" : "No new notifications")</div></div>';
+                    if (window.lucide) lucide.createIcons();
+                    return;
+                }
+                // PM-style: unread left border + type color + dot indicator
+                function typeColor(type) {
+                    switch ((type || '').toLowerCase()) {
+                        case 'error': case 'danger': return '#F46A6A';
+                        case 'warning': return '#F1B44C';
+                        case 'success': return '#34C38F';
+                        default: return '#005B99';
+                    }
+                }
+                var approveLabel = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(isRtl ? "اعتماد" : "Approve"));
+                list.innerHTML = items.map(n => {
+                    var color = typeColor(n.type);
+                    var unread = !n.isRead;
+                    var bg = unread ? '#f8fafc' : '#fff';
+                    var borderLeft = unread ? `4px solid ${color}` : '4px solid transparent';
+                    var title = @(isRtl ? "n.titleAr || n.titleEn" : "n.titleEn || n.titleAr") || '';
+                    var message = @(isRtl ? "n.messageAr || n.messageEn" : "n.messageEn || n.messageAr") || '';
+                    // UX-016: format with the app culture (from <html lang>) so
+                    // Arabic users get Arabic-locale dates, not the browser locale.
+                    var when = new Date(n.createdAt).toLocaleString(document.documentElement.lang === 'ar' ? 'ar-AE' : 'en-GB');
+                    var canApprove = !!n.approvableWorkflowId;
+                    var approveBtn = canApprove
+                        ? `<button type="button" class="btn btn-sm" style="background:#34C38F;color:#fff;font-size:var(--fs-xs);padding:.2rem .55rem;margin-top:.35rem;border-radius:.25rem;border:none;display:inline-flex;align-items:center;gap:.25rem;" data-notif-approve="${n.id}" title="${approveLabel}"><i data-lucide="check" style="width:12px;height:12px;"></i>${approveLabel}</button>`
+                        : '';
+                    return `<a class="d-flex align-items-start gap-2 px-3 py-3 border-bottom text-decoration-none" style="cursor:pointer;background:${bg};border-left:${borderLeft};color:#111827;transition:background .15s;" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='${bg}'" href="${n.actionUrl || '#'}" onclick="event.stopPropagation();markNotifRead('${n.id}')">
+                        <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;margin-top:6px;"></div>
+                        <div style="flex:1;min-width:0;">
+                            <div class="${unread ? 'fw-bold' : 'fw-medium'}" style="font-size: var(--fs-sm);">${title}</div>
+                            <div class="text-muted text-truncate" style="font-size: var(--fs-xs);">${message}</div>
+                            <div class="text-muted" style="font-size: var(--fs-xs);margin-top:2px;">${when}</div>
+                            ${approveBtn}
+                        </div>
+                    </a>`;
+                }).join('');
+                // Click handler for the dynamically rendered notification rows —
+                // delegated so the inline onclick (which would die under CSP
+                // without 'unsafe-inline') is no longer needed.
+                list.querySelectorAll('a[data-notif-id]').forEach(a => {
+                    a.addEventListener('click', e => {
+                        e.stopPropagation();
+                        markNotifRead(a.getAttribute('data-notif-id'));
+                    });
+                });
+            }
+        } catch(e) { }
+    }
+    async function markNotifRead(id) { await fetch('/api/notifications/'+id+'/read', {method:'POST',credentials:'include'}); loadNotifications(); }
+    async function markAllNotificationsRead() { await fetch('/api/notifications/read-all', {method:'POST',credentials:'include'}); loadNotifications(); }
+
+    // Inline approve from the bell dropdown. Delegated so it survives re-renders.
+    document.addEventListener('click', async function (e) {
+        var btn = e.target.closest('[data-notif-approve]');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var notifId = btn.getAttribute('data-notif-approve');
+        btn.disabled = true;
+        btn.style.opacity = '.65';
+        try {
+            var res = await fetch('/api/notifications/' + notifId + '/approve', { method: 'POST', credentials: 'include' });
+            if (res.ok) {
+                await loadNotifications();
+            } else {
+                btn.disabled = false;
+                btn.style.opacity = '';
+            }
+        } catch (err) {
+            btn.disabled = false;
+            btn.style.opacity = '';
+        }
+    });
+
+    // ── SignalR Real-time ──
+    if (typeof signalR !== 'undefined') {
+        // SignalR connections bypass the fetch wrapper (WebSocket/SSE/long-poll),
+        // so we explicitly prepend SP_PATHBASE for sub-app hosting.
+        const conn = new signalR.HubConnectionBuilder().withUrl((window.SP_PATHBASE || '') + '/hubs/notifications').withAutomaticReconnect().build();
+        conn.on('ReceiveNotification', function(n) {
+            // Per Khaled: real-time notifications must NOT pop up a toast at
+            // the top-right. The bell badge counter + the notification list
+            // are the only signals — users see the message when they choose
+            // to look. Bell-shake animation kept as an unobtrusive cue that
+            // something new arrived.
+            loadNotifications();
+            var bellIcon = document.getElementById('notifBellIcon');
+            if (bellIcon) {
+                bellIcon.classList.remove('notif-bell-shake');
+                void bellIcon.offsetWidth; // force reflow so the animation restarts
+                bellIcon.classList.add('notif-bell-shake');
+                setTimeout(function() { bellIcon.classList.remove('notif-bell-shake'); }, 800);
+            }
+        });
+        conn.start().catch(function(err) { console.log('SignalR connection error:', err); });
+    }
+
+    // ── AI Assistant Chat ──
+    (function() {
+        const chatEl = document.getElementById('spAiChat');
+        const bodyEl = document.getElementById('spAiChatBody');
+        const inputEl = document.getElementById('spAiInput');
+        const sendBtn = document.getElementById('spAiSendBtn');
+        const closeBtn = document.getElementById('spAiChatClose');
+        const suggestionsEl = document.getElementById('spAiSuggestions');
+        const toggleBtn = document.getElementById('spAiAssistantBtn');
+        const bubbleBtn = document.getElementById('esemsAiBubble');
+        let history = [];
+
+        function setChatOpen(open) {
+            chatEl.style.display = open ? 'flex' : 'none';
+            if (bubbleBtn) bubbleBtn.classList.toggle('is-chat-open', open);
+            if (open) inputEl?.focus();
+            if (window.lucide) lucide.createIcons();
+        }
+        function toggleChat() { setChatOpen(chatEl.style.display === 'none'); }
+
+        if (toggleBtn) toggleBtn.addEventListener('click', toggleChat);
+        if (bubbleBtn) bubbleBtn.addEventListener('click', toggleChat);
+        if (closeBtn) closeBtn.addEventListener('click', () => setChatOpen(false));
+        if (sendBtn) sendBtn.addEventListener('click', sendMessage);
+        if (inputEl) inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); sendMessage(); } });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape' && chatEl.style.display === 'flex') setChatOpen(false); });
+
+        function addMsg(text, isUser) {
+            const div = document.createElement('div');
+            div.style.cssText = `align-self:flex-${isUser?'end':'start'};background:${isUser?'#005B99':'#f3f4f6'};color:${isUser?'#fff':'#1f2937'};padding:.55rem .8rem;border-radius:14px;border-bottom-${isUser?'right':'left'}-radius:4px;font-size: var(--fs-sm);max-width:85%;white-space:pre-wrap;box-shadow:0 1px 2px rgba(0,0,0,.05);`;
+            div.textContent = text;
+            bodyEl.appendChild(div);
+            bodyEl.scrollTop = bodyEl.scrollHeight;
+        }
+
+        async function ensureMarkedLoaded() {
+            if (typeof marked !== 'undefined') return;
+            await new Promise(function (r) {
+                var s = document.createElement('script');
+                s.src = (window.SP_PATHBASE || '') + '/lib/marked/marked.min.js';
+                s.onload = r;
+                document.head.appendChild(s);
+            });
+        }
+
+        // FEAT-5: render an assistant reply as HTML (so the markdown links the
+        // server injected for entity codes become clickable) + a chip strip
+        // of the resolved entity references underneath.
+        async function addAiMsg(text, entityLinks) {
+            await ensureMarkedLoaded();
+            const div = document.createElement('div');
+            div.style.cssText = `align-self:flex-start;background:#f3f4f6;color:#1f2937;padding:.55rem .8rem;border-radius:14px;border-bottom-left-radius:4px;font-size: var(--fs-sm);max-width:85%;box-shadow:0 1px 2px rgba(0,0,0,.05);`;
+            div.innerHTML = marked.parse(text || '');
+            // Inline links inside the markdown should open the entity in a new tab
+            // so the chat keeps its context.
+            div.querySelectorAll('a[href^="/"]').forEach(function (a) { a.target = '_blank'; a.rel = 'noopener'; });
+            bodyEl.appendChild(div);
+
+            if (Array.isArray(entityLinks) && entityLinks.length > 0) {
+                const chips = document.createElement('div');
+                chips.style.cssText = 'align-self:flex-start;display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.15rem;max-width:85%;';
+                entityLinks.forEach(function (l) {
+                    const a = document.createElement('a');
+                    a.href = (window.SP_PATHBASE || '') + l.url;
+                    a.target = '_blank';
+                    a.rel = 'noopener';
+                    a.title = l.label || l.code;
+                    a.textContent = l.code;
+                    a.style.cssText = 'font-size:var(--fs-xs);padding:.18rem .55rem;border:1px solid #c4b5fd;border-radius:9999px;background:#f5f3ff;color:#5b21b6;text-decoration:none;';
+                    chips.appendChild(a);
+                });
+                bodyEl.appendChild(chips);
+            }
+            bodyEl.scrollTop = bodyEl.scrollHeight;
+        }
+
+        function showSuggestions(suggestions) {
+            if (!suggestionsEl || !suggestions?.length) return;
+            // Build via DOM rather than string concat — prevents XSS through
+            // server-supplied suggestion text and lets the click handler bind
+            // without an inline onclick (CSP would otherwise need 'unsafe-inline').
+            suggestionsEl.innerHTML = '';
+            suggestions.forEach(s => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.style.cssText = 'font-size: var(--fs-xs);padding:.3rem .65rem;border:1px solid #e5e7eb;border-radius:9999px;background:#fff;color:var(--theme-color);cursor:pointer;';
+                btn.textContent = String(s ?? '');
+                btn.addEventListener('click', () => {
+                    const inp = document.getElementById('spAiInput');
+                    if (inp) inp.value = btn.textContent;
+                    document.getElementById('spAiSendBtn')?.click();
+                });
+                suggestionsEl.appendChild(btn);
+            });
+        }
+
+        async function sendMessage() {
+            const q = inputEl?.value?.trim();
+            if (!q) return;
+            inputEl.value = '';
+            addMsg(q, true);
+            history.push({role:'user', content:q});
+
+            const token = document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]')?.value;
+            addMsg('@(isRtl ? "جاري التفكير..." : "Thinking...")', false);
+
+            try {
+                const res = await fetch('/AI/AskAssistant', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type':'application/json', 'RequestVerificationToken': token },
+                    body: JSON.stringify({ question: q, conversationHistory: history.slice(-8) })
+                });
+                const data = await res.json();
+                bodyEl.lastChild.remove(); // remove "Thinking..."
+                if (data.success) {
+                    await addAiMsg(data.answer, data.entityLinks);
+                    history.push({role:'assistant', content:data.answer});
+                    showSuggestions(data.suggestions);
+                } else {
+                    addMsg(data.error || window.ESEMS_I18N.error, false);
+                }
+            } catch(e) {
+                bodyEl.lastChild.remove();
+                addMsg(window.ESEMS_I18N.connectionError, false);
+            }
+        }
+    })();
+
+    // Load notifications on page load
+    document.addEventListener('DOMContentLoaded', loadNotifications);
+
+    // Global AI Analysis Function
+    async function executeAiAnalysis(endpoint, bodyData, title) {
+        if (typeof marked === 'undefined') {
+            await new Promise(r => { const s = document.createElement('script'); s.src = (window.SP_PATHBASE || '') + '/lib/marked/marked.min.js'; s.onload = r; document.head.appendChild(s); });
+        }
+        const token = document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]')?.value;
+        const analyzingMsg = window.bpmnPageConfig && window.bpmnPageConfig.strings['AI_AnalyzingData']
+            ? window.bpmnPageConfig.strings['AI_AnalyzingData']
+            : ('@(isRtl ? "جاري التحليل الذكي... يرجى الانتظار." : "AI is analyzing... please wait.")');
+        const closeText = '@(isRtl ? "إغلاق" : "Close")';
+
+        Swal.fire({
+            title: `<div class="d-flex align-items-center justify-content-center gap-2"><i data-lucide="sparkles" class="text-primary" style="width:24px;height:24px;"></i> <span style="font-size: var(--fs-lg);">${title}</span></div>`,
+            html: `<div class="text-center py-4"><div class="spinner-border text-primary mb-3" role="status"></div><p class="text-muted mb-0">${analyzingMsg}</p></div>`,
+            showConfirmButton: false,
+            allowOutsideClick: false,
+            didOpen: () => { if (typeof lucide !== 'undefined') lucide.createIcons(); }
+        });
+
+        try {
+            // Check if endpoint contains query params vs bodyData
+            let fetchOpts = {
+                method: 'POST',
+                headers: { 'RequestVerificationToken': token }
+            };
+            if (bodyData) {
+                fetchOpts.headers['Content-Type'] = 'application/json';
+                fetchOpts.body = JSON.stringify(bodyData);
+            }
+
+            const res = await fetch(endpoint, fetchOpts);
+            const data = await res.json();
+
+            if (data.success && (data.analysis || data.suggestions || data.summary)) {
+                const content = data.analysis || data.suggestions || data.summary;
+                Swal.fire({
+                    title: `<div class="d-flex align-items-center justify-content-center gap-2 mb-3"><i data-lucide="sparkles" class="text-primary" style="width:24px;height:24px;"></i> <span style="font-size: var(--fs-lg);">${title}</span></div>`,
+                    html: `<div class="text-start prose prose-sm max-w-none text-gray-800" style="max-height: 60vh; overflow-y: auto; text-align: @(isRtl ? "right" : "left"); direction: @(isRtl ? "rtl" : "ltr");">${marked.parse(content)}</div>`,
+                    width: '800px',
+                    confirmButtonText: closeText,
+                    confirmButtonColor: 'var(--theme-color)',
+                    didOpen: () => { if (typeof lucide !== 'undefined') lucide.createIcons(); }
+                });
+            } else {
+                Swal.fire(window.ESEMS_I18N.error, data.error || window.ESEMS_I18N.failedToAnalyze, 'error');
+            }
+        } catch (e) {
+            Swal.fire(window.ESEMS_I18N.error, e.message, 'error');
+        }
+    }
+    </script>
+</body>
+</html>

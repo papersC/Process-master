@@ -1,0 +1,365 @@
+@model ESEMS.Web.Models.CustomUser
+@{
+    ViewData["Title"] = Shared["Title_Profile"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    var fullName = Model.GetLocalizedFullName();
+    var initials = string.Join("", (fullName ?? "")
+        .Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries)
+        .Take(2)
+        .Select(p => p.Length > 0 ? char.ToUpper(p[0]) : '\0'))
+        .Trim();
+    if (string.IsNullOrEmpty(initials)) initials = "?";
+    var jobTitle = Model.GetLocalizedJobTitle();
+    var department = Model.OrganizationUnit?.Name ?? Model.Department;
+    var roleName = User.FindFirstValue(System.Security.Claims.ClaimTypes.Role) ?? (isRtl ? "مستخدم" : "User");
+    var managerName = Model.Manager?.GetLocalizedFullName();
+    var currentCulture = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar") ? "ar" : "en";
+}
+
+<style>
+    .pf-shell { --b: #005B99; --bd: #e5e7eb; --tx: #111827; --mu: #6b7280; --fs-xs: 11px; --fs-sm: 12px; --fs-base: 13px; --fs-lg: 15px; --fs-xl: 22px; }
+    .pf-hero { background: #fff; border: 1px solid var(--bd); border-radius: 12px; padding: 20px; display: flex; align-items: center; gap: 18px; margin-bottom: 14px; }
+    .pf-avatar { width: 72px; height: 72px; border-radius: 50%; background: linear-gradient(135deg, #005B99 0%, #003d6b 100%); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700; flex: 0 0 72px; box-shadow: 0 4px 10px rgba(0,91,153,.18); letter-spacing: .5px; }
+    .pf-hero-body { flex: 1 1 auto; min-width: 0; }
+    .pf-name { font-size: var(--fs-xl); font-weight: 700; color: var(--tx); margin: 0; line-height: 1.2; }
+    .pf-job { color: var(--mu); font-size: var(--fs-base); margin: 4px 0 0; }
+    .pf-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .pf-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: var(--fs-xs); font-weight: 500; }
+    .pf-chip svg { width: 12px; height: 12px; }
+    .pf-chip-blue { background: rgba(0,91,153,.1); color: var(--b); }
+    .pf-chip-mu { background: #f3f4f6; color: #4b5563; }
+    .pf-chip-green { background: #ecfdf5; color: #047857; }
+    .pf-hero-actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .pf-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 6px; font-size: var(--fs-sm); font-weight: 500; cursor: pointer; transition: all .15s; text-decoration: none; border: 1px solid var(--bd); background: #fff; color: var(--tx); }
+    .pf-btn:hover { border-color: var(--b); color: var(--b); }
+    .pf-btn-primary { background: var(--b); color: #fff; border-color: var(--b); }
+    .pf-btn-primary:hover { background: #00477a; color: #fff; }
+    .pf-btn[disabled] { opacity: .55; cursor: not-allowed; }
+    .pf-btn[disabled]:hover { border-color: var(--bd); color: var(--tx); background: #fff; }
+    .pf-btn svg { width: 14px; height: 14px; }
+
+    .pf-input { width: 100%; padding: 8px 10px; border: 1px solid var(--bd); border-radius: 6px; font-size: var(--fs-base); color: var(--tx); background: #fff; }
+    .pf-input:focus { outline: none; border-color: var(--b); box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .pf-pw-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 4px; }
+    @@media (max-width: 768px) { .pf-pw-grid { grid-template-columns: 1fr; } }
+
+    .pf-tabs { background: #fff; border: 1px solid var(--bd); border-radius: 12px; overflow: hidden; }
+    .pf-tabs-nav { display: flex; gap: 0; border-bottom: 1px solid var(--bd); padding: 0 8px; background: #fafbfc; overflow-x: auto; }
+    .pf-tab { padding: 10px 16px; border: none; background: transparent; cursor: pointer; font-size: var(--fs-base); font-weight: 500; color: var(--mu); border-bottom: 2px solid transparent; transition: all .15s; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .pf-tab:hover { color: var(--tx); }
+    .pf-tab.is-active { color: var(--b); border-bottom-color: var(--b); }
+    .pf-tab svg { width: 14px; height: 14px; }
+    .pf-tab-panel { padding: 18px; display: none; }
+    .pf-tab-panel.is-active { display: block; }
+
+    .pf-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 22px; }
+    .pf-field-label { font-size: var(--fs-xs); color: var(--mu); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 4px; font-weight: 500; }
+    .pf-field-value { font-size: var(--fs-base); color: var(--tx); margin: 0; font-weight: 500; word-break: break-word; }
+    .pf-field-empty { color: #9ca3af; font-weight: 400; }
+    .pf-section-title { font-size: var(--fs-sm); color: var(--mu); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; margin: 0 0 12px; padding-bottom: 6px; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; gap: 6px; }
+    .pf-section-title svg { width: 14px; height: 14px; color: var(--b); }
+    .pf-section + .pf-section { margin-top: 18px; }
+
+    .pf-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f3f4f6; gap: 16px; }
+    .pf-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .pf-row-info { flex: 1 1 auto; min-width: 0; }
+    .pf-row-title { font-size: var(--fs-base); font-weight: 600; color: var(--tx); margin: 0; }
+    .pf-row-desc { font-size: var(--fs-sm); color: var(--mu); margin: 2px 0 0; }
+    .pf-empty { text-align: center; padding: 32px 16px; color: var(--mu); }
+    .pf-empty svg { width: 32px; height: 32px; color: #d1d5db; margin-bottom: 8px; }
+    .pf-empty-title { font-size: var(--fs-base); color: #4b5563; margin: 0; font-weight: 500; }
+    .pf-empty-desc { font-size: var(--fs-sm); color: var(--mu); margin: 4px 0 0; }
+
+    .pf-lang-toggle { display: inline-flex; padding: 3px; background: #f3f4f6; border-radius: 8px; gap: 2px; }
+    .pf-lang-btn { padding: 6px 14px; border: none; background: transparent; border-radius: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--mu); cursor: pointer; transition: all .15s; }
+    .pf-lang-btn.is-active { background: #fff; color: var(--b); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+
+    @@media (max-width: 768px) {
+        .pf-hero { flex-direction: column; align-items: flex-start; }
+        .pf-grid { grid-template-columns: 1fr; }
+    }
+</style>
+
+<div class="pf-shell">
+
+    <div class="pf-hero">
+        <div class="pf-avatar">@initials</div>
+        <div class="pf-hero-body">
+            <h1 class="pf-name">@fullName</h1>
+            <p class="pf-job">@(jobTitle ?? (isRtl ? "—" : "—"))</p>
+            <div class="pf-badges">
+                @if (!string.IsNullOrEmpty(department))
+                {
+                    <span class="pf-chip pf-chip-blue"><i data-lucide="building-2"></i>@department</span>
+                }
+                <span class="pf-chip pf-chip-mu"><i data-lucide="@(roleName.Equals("ADMIN", StringComparison.OrdinalIgnoreCase) ? "shield" : "user")"></i>@roleName</span>
+                @if (!string.IsNullOrEmpty(Model.EmployeeNumber))
+                {
+                    <span class="pf-chip pf-chip-mu"><i data-lucide="hash"></i>@Model.EmployeeNumber</span>
+                }
+                @* F-013: reflect the real account flag instead of a hardcoded
+                   "Active" chip. *@
+                @if (Model.IsActive)
+                {
+                    <span class="pf-chip pf-chip-green"><i data-lucide="circle-check"></i>@(isRtl ? "نشط" : "Active")</span>
+                }
+                else
+                {
+                    <span class="pf-chip pf-chip-mu"><i data-lucide="circle-slash"></i>@(isRtl ? "غير نشط" : "Inactive")</span>
+                }
+            </div>
+        </div>
+        <div class="pf-hero-actions">
+            <button type="button" class="pf-btn" disabled title="@(isRtl ? "قريباً" : "Coming soon")">
+                <i data-lucide="pencil"></i>
+                <span>@(isRtl ? "تعديل" : "Edit")</span>
+            </button>
+            @* F-013: jumps to the Security tab's change-password form (handler
+               in @@section Scripts; CSP-safe — no inline on*). *@
+            <button type="button" class="pf-btn pf-btn-primary" data-goto-tab="security">
+                <i data-lucide="key-round"></i>
+                <span>@(isRtl ? "تغيير كلمة المرور" : "Change password")</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="pf-tabs">
+        @* F-014: full ARIA tab pattern — each tab carries id + aria-selected +
+           aria-controls + roving tabindex; panels below get role=tabpanel +
+           aria-labelledby. Arrow-key navigation is wired in @@section Scripts. *@
+        <div class="pf-tabs-nav" role="tablist" aria-label="@(isRtl ? "أقسام الملف الشخصي" : "Profile sections")">
+            <button type="button" class="pf-tab is-active" data-target="profile" role="tab"
+                    id="pf-tab-profile" aria-controls="pf-panel-profile" aria-selected="true" tabindex="0">
+                <i data-lucide="user"></i>@(isRtl ? "الملف الشخصي" : "Profile")
+            </button>
+            <button type="button" class="pf-tab" data-target="security" role="tab"
+                    id="pf-tab-security" aria-controls="pf-panel-security" aria-selected="false" tabindex="-1">
+                <i data-lucide="shield"></i>@(isRtl ? "الأمان" : "Security")
+            </button>
+            <button type="button" class="pf-tab" data-target="activity" role="tab"
+                    id="pf-tab-activity" aria-controls="pf-panel-activity" aria-selected="false" tabindex="-1">
+                <i data-lucide="activity"></i>@(isRtl ? "النشاط" : "Activity")
+            </button>
+            <button type="button" class="pf-tab" data-target="prefs" role="tab"
+                    id="pf-tab-prefs" aria-controls="pf-panel-prefs" aria-selected="false" tabindex="-1">
+                <i data-lucide="settings-2"></i>@(isRtl ? "التفضيلات" : "Preferences")
+            </button>
+        </div>
+
+        <!-- PROFILE TAB -->
+        <div class="pf-tab-panel is-active" data-panel="profile"
+             id="pf-panel-profile" role="tabpanel" aria-labelledby="pf-tab-profile" tabindex="0">
+            <div class="pf-section">
+                <h3 class="pf-section-title"><i data-lucide="user"></i>@(isRtl ? "المعلومات الأساسية" : "Basic information")</h3>
+                <div class="pf-grid">
+                    <div>
+                        <p class="pf-field-label">@Shared["Label_Username"]</p>
+                        <p class="pf-field-value">@Model.Username</p>
+                    </div>
+                    <div>
+                        <p class="pf-field-label">@Shared["Column_Name"]</p>
+                        <p class="pf-field-value">@fullName</p>
+                    </div>
+                    <div>
+                        <p class="pf-field-label">@Shared["Label_Email"]</p>
+                        <p class="pf-field-value">
+                            @if (!string.IsNullOrEmpty(Model.EmailAddress))
+                            {
+                                <a href="mailto:@Model.EmailAddress" style="color: #005B99; text-decoration: none;">@Model.EmailAddress</a>
+                            }
+                            else
+                            {
+                                <span class="pf-field-empty">—</span>
+                            }
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pf-section">
+                <h3 class="pf-section-title"><i data-lucide="briefcase"></i>@(isRtl ? "الوظيفة والقسم" : "Job & department")</h3>
+                <div class="pf-grid">
+                    <div>
+                        <p class="pf-field-label">@Shared["Label_JobTitle"]</p>
+                        <p class="pf-field-value @(string.IsNullOrEmpty(jobTitle) ? "pf-field-empty" : "")">@(jobTitle ?? "—")</p>
+                    </div>
+                    <div>
+                        <p class="pf-field-label">@Shared["Label_Department"]</p>
+                        <p class="pf-field-value @(string.IsNullOrEmpty(department) ? "pf-field-empty" : "")">@(department ?? "—")</p>
+                    </div>
+                    <div>
+                        <p class="pf-field-label">@Shared["Label_EmployeeNumber"]</p>
+                        <p class="pf-field-value @(string.IsNullOrEmpty(Model.EmployeeNumber) ? "pf-field-empty" : "")">@(Model.EmployeeNumber ?? "—")</p>
+                    </div>
+                    <div>
+                        <p class="pf-field-label">@(isRtl ? "المدير المباشر" : "Direct manager")</p>
+                        <p class="pf-field-value @(string.IsNullOrEmpty(managerName) ? "pf-field-empty" : "")">@(managerName ?? "—")</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECURITY TAB -->
+        <div class="pf-tab-panel" data-panel="security"
+             id="pf-panel-security" role="tabpanel" aria-labelledby="pf-tab-security" tabindex="0">
+            @* F-013: real self-service password change (was a disabled "Coming
+               soon" button + fabricated "Secure / 1 session" rows). Plain form
+               POST to Account/ChangePassword — no inline JS, CSP-safe. Sessions
+               and 2FA remain honestly "not available". *@
+            <div class="alert alert-light border d-flex align-items-start gap-2 mb-3" role="note"
+                 style="font-size: var(--fs-sm); background:#f8fafc; color:#4b5563;">
+                <i data-lucide="info" style="width:16px;height:16px;flex-shrink:0;margin-top:1px;color:#94a3b8;"></i>
+                <span>@(isRtl
+                    ? "يمكنك تغيير كلمة المرور أدناه. إدارة الجلسات والمصادقة الثنائية غير متوفرة بعد في هذا الإصدار."
+                    : "You can change your password below. Session management and two-factor authentication aren't available yet in this version.")</span>
+            </div>
+
+            <div class="pf-section" id="pf-change-password">
+                <h3 class="pf-section-title"><i data-lucide="key-round"></i>@(isRtl ? "تغيير كلمة المرور" : "Change password")</h3>
+                <form asp-controller="Account" asp-action="ChangePassword" method="post" class="pf-pw-form" autocomplete="off">
+                    @Html.AntiForgeryToken()
+                    <div class="pf-pw-grid">
+                        <div>
+                            <label class="pf-field-label" for="curPw">@(isRtl ? "كلمة المرور الحالية" : "Current password")</label>
+                            <input type="password" id="curPw" name="currentPassword" class="pf-input" autocomplete="current-password" required />
+                        </div>
+                        <div>
+                            <label class="pf-field-label" for="newPw">@(isRtl ? "كلمة المرور الجديدة" : "New password")</label>
+                            <input type="password" id="newPw" name="newPassword" class="pf-input" autocomplete="new-password" minlength="8" maxlength="128" required />
+                        </div>
+                        <div>
+                            <label class="pf-field-label" for="confPw">@(isRtl ? "تأكيد كلمة المرور الجديدة" : "Confirm new password")</label>
+                            <input type="password" id="confPw" name="confirmPassword" class="pf-input" autocomplete="new-password" minlength="8" maxlength="128" required />
+                        </div>
+                    </div>
+                    <p class="pf-field-empty" style="margin: 6px 0 10px;">@(isRtl ? "8 أحرف على الأقل، وتختلف عن كلمة المرور الحالية." : "At least 8 characters, and different from your current password.")</p>
+                    <button type="submit" class="pf-btn pf-btn-primary">
+                        <i data-lucide="key-round"></i>
+                        <span>@(isRtl ? "تحديث كلمة المرور" : "Update password")</span>
+                    </button>
+                </form>
+            </div>
+            <div class="pf-row">
+                <div class="pf-row-info">
+                    <p class="pf-row-title">@(isRtl ? "الجلسات النشطة" : "Active sessions")</p>
+                    <p class="pf-row-desc">@(isRtl ? "تتبّع الجلسات غير متوفر" : "Session tracking isn't available")</p>
+                </div>
+                <span class="pf-chip pf-chip-mu">@(isRtl ? "غير متاح" : "Not available")</span>
+            </div>
+            <div class="pf-row">
+                <div class="pf-row-info">
+                    <p class="pf-row-title">@(isRtl ? "المصادقة الثنائية" : "Two-factor authentication")</p>
+                    <p class="pf-row-desc">@(isRtl ? "غير مُهيّأة" : "Not configured")</p>
+                </div>
+                <span class="pf-chip pf-chip-mu">@(isRtl ? "غير متاح" : "Not available")</span>
+            </div>
+        </div>
+
+        <!-- ACTIVITY TAB -->
+        <div class="pf-tab-panel" data-panel="activity"
+             id="pf-panel-activity" role="tabpanel" aria-labelledby="pf-tab-activity" tabindex="0">
+            <div class="pf-empty">
+                <i data-lucide="activity"></i>
+                <p class="pf-empty-title">@(isRtl ? "لا يوجد نشاط حديث" : "No recent activity")</p>
+                <p class="pf-empty-desc">@(isRtl ? "ستظهر هنا الإجراءات التي تقوم بها (إضافة، تعديل، اعتماد)." : "Your actions (create, edit, approve) will appear here.")</p>
+            </div>
+        </div>
+
+        <!-- PREFERENCES TAB -->
+        <div class="pf-tab-panel" data-panel="prefs"
+             id="pf-panel-prefs" role="tabpanel" aria-labelledby="pf-tab-prefs" tabindex="0">
+            <div class="pf-row">
+                <div class="pf-row-info">
+                    <p class="pf-row-title">@(isRtl ? "اللغة" : "Language")</p>
+                    <p class="pf-row-desc">@(isRtl ? "اللغة المعروضة في الواجهة" : "The language used across the interface")</p>
+                </div>
+                <div class="pf-lang-toggle">
+                    <button type="button" class="pf-lang-btn @(currentCulture == "en" ? "is-active" : "")" data-culture="en">English</button>
+                    <button type="button" class="pf-lang-btn @(currentCulture == "ar" ? "is-active" : "")" data-culture="ar">العربية</button>
+                </div>
+            </div>
+            <div class="pf-row">
+                <div class="pf-row-info">
+                    <p class="pf-row-title">@(isRtl ? "الإشعارات" : "Notifications")</p>
+                    <p class="pf-row-desc">@(isRtl ? "الإشعارات داخل التطبيق مفعّلة دائماً" : "In-app notifications are always on")</p>
+                </div>
+                <span class="pf-chip pf-chip-green"><i data-lucide="bell"></i>@(isRtl ? "مفعّلة" : "On")</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        (function () {
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+
+            // Tabs — F-014: maintain the full ARIA tab pattern (aria-selected +
+            // roving tabindex) and support Left/Right/Home/End arrow keys.
+            var tabs = Array.prototype.slice.call(document.querySelectorAll('.pf-tab'));
+            var panels = document.querySelectorAll('.pf-tab-panel');
+            function activateTab(tab, setFocus) {
+                var target = tab.getAttribute('data-target');
+                tabs.forEach(function (t) {
+                    var on = t === tab;
+                    t.classList.toggle('is-active', on);
+                    t.setAttribute('aria-selected', on ? 'true' : 'false');
+                    t.setAttribute('tabindex', on ? '0' : '-1');
+                });
+                panels.forEach(function (p) {
+                    p.classList.toggle('is-active', p.getAttribute('data-panel') === target);
+                });
+                if (setFocus) tab.focus();
+            }
+            tabs.forEach(function (tab, idx) {
+                tab.addEventListener('click', function () { activateTab(tab, false); });
+                tab.addEventListener('keydown', function (e) {
+                    var i = null;
+                    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') i = (idx + 1) % tabs.length;
+                    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') i = (idx - 1 + tabs.length) % tabs.length;
+                    else if (e.key === 'Home') i = 0;
+                    else if (e.key === 'End') i = tabs.length - 1;
+                    if (i !== null) { e.preventDefault(); activateTab(tabs[i], true); }
+                });
+            });
+
+            // F-013: hero "Change password" → jump to the Security tab and focus
+            // the first field of the change-password form.
+            document.querySelectorAll('[data-goto-tab]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var target = btn.getAttribute('data-goto-tab');
+                    var tab = tabs.find(function (t) { return t.getAttribute('data-target') === target; });
+                    if (tab) activateTab(tab, false);
+                    var first = document.getElementById('curPw');
+                    if (first) { first.scrollIntoView({ behavior: 'smooth', block: 'center' }); first.focus(); }
+                });
+            });
+
+            // FU-004: client-side confirm-password match for immediate feedback
+            // (the server still validates). Uses native constraint validation.
+            var pwForm = document.querySelector('.pf-pw-form');
+            if (pwForm) {
+                var newPw = document.getElementById('newPw');
+                var confPw = document.getElementById('confPw');
+                var mismatchMsg = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(isRtl ? "كلمتا المرور غير متطابقتين." : "Passwords do not match."));
+                var checkMatch = function () {
+                    confPw.setCustomValidity(confPw.value && newPw.value !== confPw.value ? mismatchMsg : '');
+                };
+                newPw.addEventListener('input', checkMatch);
+                confPw.addEventListener('input', checkMatch);
+                pwForm.addEventListener('submit', function (e) {
+                    checkMatch();
+                    if (!pwForm.checkValidity()) { e.preventDefault(); pwForm.reportValidity(); }
+                });
+            }
+
+            // Language toggle — uses the global SetLanguage() helper from _Layout
+            document.querySelectorAll('.pf-lang-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var c = btn.getAttribute('data-culture');
+                    if (typeof SetLanguage === 'function') { SetLanguage(c); }
+                });
+            });
+        })();
+    </script>
+}

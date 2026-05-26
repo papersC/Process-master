@@ -1,0 +1,7 @@
+﻿@inject IStringLocalizer<SharedResource> Shared
+@{
+    ViewData["Title"] = Shared["Title_PrivacyPolicy"].Value;
+}
+<h1>@ViewData["Title"]</h1>
+
+<p>@Shared["Text_PrivacyPolicyContent"]</p>

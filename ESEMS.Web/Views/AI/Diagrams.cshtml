@@ -1,0 +1,392 @@
+@using System.Globalization
+@inject IStringLocalizer<SharedResource> Shared
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = Shared["Title_BPMNModeler"].Value;
+}
+
+<!-- bpmn-js CSS -->
+<link rel="stylesheet" href="~/lib/bpmn-js/diagram-js.css">
+<link rel="stylesheet" href="~/lib/bpmn-js/bpmn-js.css">
+<link rel="stylesheet" href="~/lib/bpmn-js/bpmn-embedded.css">
+
+<div id="bpmnPage" class="row">
+    <!-- Side Panel -->
+    <div class="col-lg-3 side-panel">
+        <div class="accordion" id="bpmnSideAccordion">
+            <!-- AI Generator -->
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#panelAI">
+                        <i data-lucide="sparkles" class="h-4 w-4 text-primary @(isRtl ? "ms-2" : "me-2")"></i>
+                        @(isRtl ? "مولد BPMN بالذكاء الاصطناعي" : "AI BPMN Generator")
+                    </button>
+                </h2>
+                <div id="panelAI" class="accordion-collapse collapse show" data-bs-parent="#bpmnSideAccordion">
+                    <div class="accordion-body">
+                        <div class="mb-3">
+                            <label for="processTitle" class="form-label small">@(isRtl ? "اسم العملية" : "Process Name")</label>
+                            <input id="processTitle" type="text" class="form-control form-control-sm" placeholder="@(isRtl ? "مثال: طلب إسكان" : "e.g., Housing Application")" />
+                        </div>
+                        <div class="mb-3">
+                            <label for="processDescription" class="form-label small">@(isRtl ? "الوصف" : "Description")</label>
+                            <textarea id="processDescription" rows="3" class="form-control form-control-sm" placeholder="@(isRtl ? "صف العملية التجارية..." : "Describe the business process...")"></textarea>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button id="btnAiGenerate" class="btn btn-primary btn-sm flex-grow-1">
+                                <i data-lucide="wand-2" class="h-4 w-4 me-1"></i>
+                                @(isRtl ? "توليد BPMN" : "Generate BPMN")
+                            </button>
+                            <button id="btnOptimizePrompt" class="btn btn-warning btn-sm d-flex align-items-center justify-content-center" title="@(isRtl ? "تحسين الوصف" : "Optimize Description")" style="width:34px;padding:0;">
+                                <i data-lucide="wand" class="h-4 w-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Load from Process -->
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#panelLoadProcess">
+                        <i data-lucide="folder-open" class="h-4 w-4 text-purple-600 @(isRtl ? "ms-2" : "me-2")"></i>
+                        @(isRtl ? "تحميل من العمليات" : "Load from Process")
+                    </button>
+                </h2>
+                <div id="panelLoadProcess" class="accordion-collapse collapse" data-bs-parent="#bpmnSideAccordion">
+                    <div class="accordion-body">
+                        <p class="text-muted small mb-2">@(isRtl ? "ابحث عن عملية لتحميل مخطط BPMN الخاص بها" : "Search for a process to load its BPMN diagram")</p>
+                        <div class="mb-3 search-dropdown">
+                            <input type="text" id="searchLoadProcess" class="form-control form-control-sm"
+                                   placeholder="@(isRtl ? "اكتب للبحث بالاسم أو الرمز..." : "Type to search by name or code...")"
+                                   autocomplete="off" />
+                            <input type="hidden" id="selectLoadProcess" />
+                            <div id="loadProcessResults" class="search-results"></div>
+                        </div>
+                        <button id="btnLoadFromProcess" class="btn btn-outline-primary btn-sm w-100">
+                            <i data-lucide="download" class="h-4 w-4 me-1"></i>
+                            @(isRtl ? "تحميل المخطط" : "Load Diagram")
+                        </button>
+                        <div id="loadedProcessInfo" class="mt-2 small text-muted d-none">
+                            <i data-lucide="check-circle" class="h-3 w-3 me-1 text-success"></i>
+                            <span id="loadedProcessName"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Import -->
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#panelImport">
+                        <i data-lucide="upload" class="h-4 w-4 text-info @(isRtl ? "ms-2" : "me-2")"></i>
+                        @(isRtl ? "استيراد" : "Import")
+                    </button>
+                </h2>
+                <div id="panelImport" class="accordion-collapse collapse" data-bs-parent="#bpmnSideAccordion">
+                    <div class="accordion-body">
+                        <button id="btnImportXml" class="btn btn-outline-secondary btn-sm w-100 mb-2">
+                            <i data-lucide="file-code" class="h-4 w-4 me-1"></i>
+                            @(isRtl ? "استيراد BPMN XML" : "Import BPMN XML")
+                        </button>
+                        <input id="importBpmnFile" type="file" class="d-none" accept=".bpmn,.xml" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Canvas -->
+    <div class="col-lg-9">
+        <div class="card">
+            <!-- Toolbar -->
+            <div class="card-header bg-light py-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <div class="btn-group btn-group-sm">
+                        <button id="btnNew" class="btn btn-outline-secondary" title="@(isRtl ? "جديد" : "New")">
+                            <i data-lucide="file-plus" class="h-4 w-4"></i>
+                        </button>
+                    </div>
+                    <div class="btn-group btn-group-sm">
+                        <button id="btnUndo" class="btn btn-outline-secondary" title="@Shared["BPMN_Undo"].Value">
+                            <i data-lucide="undo-2" class="h-4 w-4"></i>
+                        </button>
+                        <button id="btnRedo" class="btn btn-outline-secondary" title="@Shared["BPMN_Redo"].Value">
+                            <i data-lucide="redo-2" class="h-4 w-4"></i>
+                        </button>
+                    </div>
+                    <div class="btn-group btn-group-sm">
+                        <button id="btnZoomIn" class="btn btn-outline-secondary" title="@(isRtl ? "تكبير" : "Zoom In")">
+                            <i data-lucide="zoom-in" class="h-4 w-4"></i>
+                        </button>
+                        <button id="btnZoomOut" class="btn btn-outline-secondary" title="@(isRtl ? "تصغير" : "Zoom Out")">
+                            <i data-lucide="zoom-out" class="h-4 w-4"></i>
+                        </button>
+                        <button id="btnFit" class="btn btn-outline-secondary" title="@(isRtl ? "ملاءمة" : "Fit")">
+                            <i data-lucide="maximize-2" class="h-4 w-4"></i>
+                        </button>
+                    </div>
+                    <!-- Fill Color Picker -->
+                    <div class="dropdown color-dropdown">
+                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle d-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" title="@(isRtl ? "لون التعبئة" : "Fill Color")">
+                            <i data-lucide="paint-bucket" class="h-4 w-4"></i>
+                            <span class="d-none d-xl-inline small">@(isRtl ? "تعبئة" : "Fill")</span>
+                        </button>
+                        <div class="dropdown-menu p-2">
+                            <div class="color-grid mb-2">
+                                <button class="color-swatch" style="background:#dbeafe" data-fill="#dbeafe" data-stroke="#2563eb" title="Blue"></button>
+                                <button class="color-swatch" style="background:#dcfce7" data-fill="#dcfce7" data-stroke="#16a34a" title="Green"></button>
+                                <button class="color-swatch" style="background:#fef9c3" data-fill="#fef9c3" data-stroke="#ca8a04" title="Yellow"></button>
+                                <button class="color-swatch" style="background:#fee2e2" data-fill="#fee2e2" data-stroke="#dc2626" title="Red"></button>
+                                <button class="color-swatch" style="background:#f3e8ff" data-fill="#f3e8ff" data-stroke="#9333ea" title="Purple"></button>
+                                <button class="color-swatch" style="background:#ffedd5" data-fill="#ffedd5" data-stroke="#ea580c" title="Orange"></button>
+                                <button class="color-swatch" style="background:#ccfbf1" data-fill="#ccfbf1" data-stroke="#0d9488" title="Teal"></button>
+                                <button class="color-swatch" style="background:#fce7f3" data-fill="#fce7f3" data-stroke="#db2777" title="Pink"></button>
+                                <button class="color-swatch" style="background:#e2e8f0" data-fill="#e2e8f0" data-stroke="#475569" title="Slate"></button>
+                                <button class="color-swatch" style="background:#ffffff;border-color:#aaa" data-reset="true" title="@(isRtl ? "إزالة اللون" : "Reset")">
+                                    <i data-lucide="x" style="width:14px;height:14px;margin:2px;color:#999"></i>
+                                </button>
+                            </div>
+                            <div class="d-flex align-items-center gap-2 border-top pt-2">
+                                <label class="small text-muted mb-0">@(isRtl ? "مخصص" : "Custom")</label>
+                                <input type="color" id="customFillColor" value="#dbeafe" class="form-control form-control-color p-0 border-0" style="width:28px;height:28px">
+                                <input type="color" id="customStrokeColor" value="#2563eb" class="form-control form-control-color p-0 border-0" style="width:28px;height:28px" title="@(isRtl ? "لون الحد" : "Stroke")">
+                                <button id="btnApplyCustomColor" class="btn btn-sm btn-outline-primary py-0 px-2">
+                                    <i data-lucide="check" class="h-3 w-3"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Font Size Picker -->
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle d-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" title="@(isRtl ? "حجم الخط" : "Font Size")">
+                            <i data-lucide="type" class="h-4 w-4"></i>
+                            <span id="currentFontSizeLabel" class="small">12px</span>
+                        </button>
+                        <ul class="dropdown-menu" style="min-width:100px">
+                            <li><button class="dropdown-item small" data-font-size="10">10px</button></li>
+                            <li><button class="dropdown-item small fw-bold" data-font-size="12">12px @(isRtl ? "(افتراضي)" : "(Default)")</button></li>
+                            <li><button class="dropdown-item small" data-font-size="14">14px</button></li>
+                            <li><button class="dropdown-item small" data-font-size="16">16px</button></li>
+                            <li><button class="dropdown-item small" data-font-size="18">18px</button></li>
+                            <li><button class="dropdown-item small" data-font-size="20">20px</button></li>
+                            <li><button class="dropdown-item small" data-font-size="24">24px</button></li>
+                        </ul>
+                    </div>
+                    <!-- Font Family Picker -->
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle d-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" title="@(isRtl ? "نوع الخط" : "Font Family")">
+                            <i data-lucide="a-large-small" class="h-4 w-4"></i>
+                            <span id="currentFontFamilyLabel" class="small d-none d-xl-inline">Arial</span>
+                        </button>
+                        <ul class="dropdown-menu" style="min-width:160px">
+                            <li><button class="dropdown-item small fw-bold" style="font-family:Arial" data-font-family="Arial, sans-serif" data-font-label="Arial">Arial @(isRtl ? "(افتراضي)" : "(Default)")</button></li>
+                            <li><button class="dropdown-item small" style="font-family:Verdana" data-font-family="Verdana, sans-serif" data-font-label="Verdana">Verdana</button></li>
+                            <li><button class="dropdown-item small" style="font-family:Tahoma" data-font-family="Tahoma, sans-serif" data-font-label="Tahoma">Tahoma</button></li>
+                            <li><button class="dropdown-item small" style="font-family:Calibri" data-font-family="Calibri, sans-serif" data-font-label="Calibri">Calibri</button></li>
+                            <li><button class="dropdown-item small" style="font-family:Georgia" data-font-family="Georgia, serif" data-font-label="Georgia">Georgia</button></li>
+                            <li><button class="dropdown-item small" style="font-family:'Times New Roman'" data-font-family="Times New Roman, serif" data-font-label="Times New Roman">Times New Roman</button></li>
+                            <li><button class="dropdown-item small" style="font-family:'Courier New'" data-font-family="Courier New, monospace" data-font-label="Courier New">Courier New</button></li>
+                            <li><button class="dropdown-item small" style="font-family:'Segoe UI'" data-font-family="Segoe UI, sans-serif" data-font-label="Segoe UI">Segoe UI</button></li>
+                        </ul>
+                    </div>
+                    <button id="btnSaveToProcess" class="btn btn-success btn-sm">
+                        <i data-lucide="save" class="h-4 w-4 me-1"></i>
+                        @(isRtl ? "حفظ للعملية" : "Save to Process")
+                    </button>
+                    <span id="toolbarLinkedBadge" class="linked-process-badge d-none">
+                        <i data-lucide="link" style="width:12px;height:12px"></i>
+                        <span id="toolbarLinkedName"></span>
+                    </span>
+                    <div class="btn-group btn-group-sm @(isRtl ? "me-auto" : "ms-auto")">
+                        <button id="btnExportXml" class="btn btn-outline-primary" title="@(isRtl ? "تصدير XML" : "Export XML")">
+                            <i data-lucide="download" class="h-4 w-4 me-1"></i>XML
+                        </button>
+                        <button id="btnExportSvg" class="btn btn-outline-primary" title="@(isRtl ? "تصدير SVG" : "Export SVG")">
+                            SVG
+                        </button>
+                        <button id="btnExportPng" class="btn btn-outline-primary" title="@(isRtl ? "تصدير PNG" : "Export PNG")">
+                            PNG
+                        </button>
+                    </div>
+                    <button id="btnFocus" class="btn btn-outline-secondary btn-sm" title="@(isRtl ? "وضع التركيز" : "Focus Mode")">
+                        <i data-lucide="expand" class="h-4 w-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Status -->
+            <div class="px-3 py-2 bg-light border-bottom small text-muted d-flex align-items-center gap-2">
+                <i data-lucide="info" class="h-4 w-4"></i>
+                <span id="bpmnStatus">@(isRtl ? "جاهز - اسحب العناصر من اللوحة اليسرى" : "Ready - Drag elements from the left palette")</span>
+            </div>
+
+            <!-- Error -->
+            <div id="bpmnError" class="alert alert-danger m-3 d-none small"></div>
+
+            <!-- Canvas -->
+            <div id="bpmnCanvas" class="position-relative">
+                <div id="loadingOverlay" class="loading-overlay d-none">
+                    <div class="text-center">
+                        <div class="spinner mb-3"></div>
+                        <p class="text-muted fw-medium">@(isRtl ? "جاري التوليد..." : "Generating...")</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Save to Process Modal -->
+<div class="modal fade" id="saveToProcessModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">@(isRtl ? "حفظ المخطط للعملية" : "Save Diagram to Process")</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Currently linked process indicator -->
+                <div id="linkedProcessBanner" class="d-none mb-3 p-2 bg-light rounded border">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div class="small">
+                            <i data-lucide="link" class="h-3 w-3 me-1 text-primary" style="width:14px;height:14px"></i>
+                            <span class="text-muted">@(isRtl ? "مرتبط بـ:" : "Linked to:")</span>
+                            <span id="linkedProcessLabel" class="fw-semibold"></span>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" onclick="unlinkProcess()" title="@(isRtl ? "إلغاء الربط" : "Unlink")">
+                            <i data-lucide="unlink" style="width:12px;height:12px"></i>
+                        </button>
+                    </div>
+                    <div class="small text-muted mt-1">@(isRtl ? "سيتم تحديث المخطط لهذه العملية" : "Diagram will be updated for this process")</div>
+                </div>
+                <!-- Search existing process -->
+                <div id="saveSearchSection">
+                    <div class="mb-3">
+                        <label class="form-label">@(isRtl ? "البحث عن عملية موجودة" : "Search Existing Process")</label>
+                        <div class="search-dropdown">
+                            <input type="text" id="searchSaveProcess" class="form-control form-control-sm"
+                                   placeholder="@(isRtl ? "اكتب للبحث بالاسم أو الرمز..." : "Type to search by name or code...")"
+                                   autocomplete="off" />
+                            <input type="hidden" id="selectProcess" />
+                            <div id="saveProcessResults" class="search-results"></div>
+                        </div>
+                    </div>
+                    <div class="text-center my-3">
+                        <span class="text-muted">@(isRtl ? "أو" : "OR")</span>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">@(isRtl ? "إنشاء عملية جديدة" : "Create New Process")</label>
+                        <input type="text" id="newProcessName" class="form-control" placeholder="@(isRtl ? "اسم العملية" : "Process Name")" />
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">@(isRtl ? "وصف التغيير (اختياري)" : "Change Description (optional)")</label>
+                    <input type="text" id="changeDescription" class="form-control form-control-sm" placeholder="@(isRtl ? "مثال: إضافة خطوة الموافقة" : "e.g., Added approval step")" />
+                </div>
+                <div id="saveError" class="alert alert-danger d-none"></div>
+                <div id="saveSuccess" class="alert alert-success d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">@(isRtl ? "إلغاء" : "Cancel")</button>
+                <button type="button" id="btnConfirmSave" class="btn btn-primary">
+                    <i data-lucide="save" class="h-4 w-4 me-1"></i>
+                    @(isRtl ? "حفظ" : "Save")
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/lib/bpmn-js/bpmn-modeler.production.min.js" asp-append-version="true"></script>
+    <script src="~/js/bpmn-modeler-app.js" asp-append-version="true"></script>
+    @{
+        // Build localized strings dictionary and serialize with Unicode support
+        var bpmnStrings = new Dictionary<string, string> {
+            ["warning"] = Shared["Label_Warning"].Value,
+            ["error"] = isRtl ? "خطأ" : "Error",
+            ["noResults"] = Shared["Text_NoResultsFound"].Value,
+            ["selectProcess"] = isRtl ? "الرجاء البحث واختيار عملية" : "Please search and select a process",
+            ["selectProcedure"] = isRtl ? "الرجاء اختيار إجراء" : "Please select a procedure",
+            ["selectOrCreateProcess"] = isRtl ? "الرجاء اختيار عملية أو إدخال اسم عملية جديدة" : "Please select a process or enter a new process name",
+            ["loadingDiagram"] = isRtl ? "جاري تحميل المخطط..." : "Loading diagram...",
+            ["diagramLoaded"] = isRtl ? "تم تحميل المخطط - جاهز للتحسين" : "Diagram loaded - Ready for refinement",
+            ["loaded"] = isRtl ? "تم التحميل!" : "Loaded!",
+            ["bpmnLoadedSuccess"] = isRtl ? "تم تحميل مخطط BPMN بنجاح." : "BPMN diagram loaded successfully.",
+            ["loadFailed"] = isRtl ? "فشل التحميل" : "Load failed",
+            ["savedSuccessfully"] = isRtl ? "تم الحفظ بنجاح!" : "Saved successfully!",
+            ["procedureDiagramLoaded"] = isRtl ? "تم تحميل مخطط الإجراء" : "Procedure diagram loaded",
+            ["procedureBpmnLoaded"] = isRtl ? "تم تحميل مخطط BPMN الخاص بالإجراء بنجاح." : "Procedure BPMN diagram loaded successfully.",
+            ["enterDescriptionFirst"] = isRtl ? "الرجاء إدخال وصف العملية أولاً" : "Please enter a process description first",
+            ["optimizingDescription"] = isRtl ? "جاري تحسين الوصف..." : "Optimizing description...",
+            ["descriptionOptimized"] = isRtl ? "تم تحسين الوصف بنجاح" : "Description optimized successfully",
+            ["optimized"] = isRtl ? "تم التحسين!" : "Optimized!",
+            ["descriptionOptimizedText"] = isRtl ? "تم تحسين وصف العملية. يمكنك الآن توليد المخطط." : "Process description optimized. You can now generate the diagram.",
+            ["optimizeFailed"] = isRtl ? "فشل تحسين الوصف" : "Description optimization failed",
+            ["errorSaving"] = isRtl ? "حدث خطأ أثناء الحفظ" : "Error saving diagram",
+            ["ready"] = Shared["BPMN_Ready"].Value,
+            ["readyEdit"] = Shared["BPMN_ReadyEdit"].Value,
+            ["movingElement"] = Shared["BPMN_MovingElement"].Value,
+            ["elementMoved"] = Shared["BPMN_ElementMoved"].Value,
+            ["elementCreated"] = Shared["BPMN_ElementCreated"].Value,
+            ["connectionCreated"] = Shared["BPMN_ConnectionCreated"].Value,
+            ["dragToReposition"] = Shared["BPMN_DragToReposition"].Value,
+            ["initError"] = Shared["BPMN_InitializationError"].Value,
+            ["diagramLoadedSuccess"] = Shared["BPMN_DiagramLoaded"].Value,
+            ["importFailed"] = Shared["BPMN_ImportFailed"].Value,
+            ["enterProcessName"] = Shared["BPMN_EnterProcessName"].Value,
+            ["generatingAI"] = Shared["BPMN_GeneratingAI"].Value,
+            ["aiGenerated"] = Shared["BPMN_AIGenerated"].Value,
+            ["generateFailed"] = Shared["BPMN_GenerateFailed"].Value,
+            ["generationFailed"] = Shared["BPMN_GenerationFailed"].Value,
+            ["networkError"] = Shared["BPMN_NetworkError"].Value,
+            ["enterRefinement"] = Shared["BPMN_EnterRefinement"].Value,
+            ["noDiagramToRefine"] = Shared["BPMN_NoDiagramToRefine"].Value,
+            ["refiningAI"] = Shared["BPMN_RefiningAI"].Value,
+            ["diagramRefined"] = Shared["BPMN_DiagramRefined"].Value,
+            ["refineFailed"] = Shared["BPMN_RefineFailed"].Value,
+            ["refinementFailed"] = Shared["BPMN_RefinementFailed"].Value,
+            ["xmlExported"] = Shared["BPMN_XMLExported"].Value,
+            ["svgExported"] = Shared["BPMN_SVGExported"].Value,
+            ["svgExportFailed"] = Shared["BPMN_SVGExportFailed"].Value,
+            ["pngExported"] = Shared["BPMN_PNGExported"].Value,
+            ["pngExportFailed"] = Shared["BPMN_PNGExportFailed"].Value,
+            ["newDiagramConfirm"] = Shared["BPMN_NewDiagramConfirm"].Value,
+            ["newDiagramCreated"] = Shared["BPMN_NewDiagramCreated"].Value,
+            ["exitFocusMode"] = Shared["BPMN_ExitFocusMode"].Value,
+            ["focusMode"] = Shared["BPMN_FocusMode"].Value,
+            ["selectElements"] = Shared["BPMN_SelectElements"].Value,
+            ["colorApplied"] = Shared["BPMN_ColorApplied"].Value,
+            ["colorReset"] = Shared["BPMN_ColorReset"].Value,
+            ["fontUpdated"] = Shared["BPMN_FontUpdated"].Value,
+            ["convertingVisio"] = Shared["BPMN_ConvertingVisio"].Value,
+            ["visioConverted"] = Shared["BPMN_VisioConverted"].Value,
+            ["visioConvertFailed"] = Shared["BPMN_VisioConvertFailed"].Value,
+            ["visioError"] = Shared["BPMN_VisioError"].Value
+        };
+        var jsonOptions = new System.Text.Json.JsonSerializerOptions {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+        };
+        var linkedProcessId = ViewBag.LinkedProcessId as string;
+        var linkedProcessName = isRtl ? (ViewBag.LinkedProcessNameAr as string) : (ViewBag.LinkedProcessName as string);
+        var linkedProcessCode = ViewBag.LinkedProcessCode as string;
+        var linkedProcessXml = ViewBag.LinkedProcessXml as string;
+        var configObj = new {
+            isRtl = isRtl,
+            strings = bpmnStrings,
+            linkedProcess = string.IsNullOrWhiteSpace(linkedProcessId) ? null : new {
+                id = linkedProcessId,
+                name = linkedProcessName,
+                code = linkedProcessCode,
+                xml = linkedProcessXml
+            }
+        };
+        var configJson = System.Text.Json.JsonSerializer.Serialize(configObj, jsonOptions);
+    }
+    <script nonce="@Context.CspNonce()">
+        window.bpmnPageConfig = @Html.Raw(configJson);
+    </script>
+    <script src="~/js/bpmn-page.js" asp-append-version="true"></script>
+}

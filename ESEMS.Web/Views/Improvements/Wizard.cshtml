@@ -1,0 +1,3164 @@
+@model ImprovementInitiative
+@{
+    ViewData["Title"] = Shared["Title_ImprovementWizard"].Value ?? "Improvement Wizard";
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+}
+
+<div class="wiz-shell">
+    <!-- Compact full-width page header: title + step counter + cancel. -->
+    <div class="wiz-pageheader">
+        <div class="wiz-pageheader-title">
+            <i data-lucide="wand-2" class="w-4 h-4" style="color:#005B99" aria-hidden="true"></i>
+            <h1>@ViewData["Title"]</h1>
+        </div>
+        <div class="wiz-pageheader-meta">
+            <span class="wiz-step-counter">
+                <span id="currentStepLabel">@(isRtl ? "الخطوة" : "Step")</span>
+                <span id="currentStep">1</span>
+                <span>@(isRtl ? "من" : "of")</span>
+                <span>3</span>
+            </span>
+            <a asp-action="Index" id="wizardCancelBtn" class="wiz-cancel">
+                <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                @Shared["Button_Cancel"]
+            </a>
+        </div>
+    </div>
+
+    @* KPI summary strip — live counts of what the user has built so far.
+       Sits below the page header so the picture-of-progress is always
+       visible without leaving whatever step you're on. JS updates every
+       chip on input/change/MutationObserver. *@
+    <div class="wiz-kpi-strip" id="wizKpiStrip" aria-label="@(isRtl ? "ملخص مباشر" : "Live summary")">
+        <span class="wiz-kpi" data-kpi="processes" title="@(isRtl ? "العمليات المختارة" : "Selected processes")">
+            <i data-lucide="git-branch" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            <span class="wiz-kpi-num" data-kpi-num="processes">0</span>
+            <span class="wiz-kpi-lbl">@(isRtl ? "عمليات" : "processes")</span>
+        </span>
+        <span class="wiz-kpi" data-kpi="services" title="@(isRtl ? "الخدمات المختارة" : "Selected services")">
+            <i data-lucide="package" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            <span class="wiz-kpi-num" data-kpi-num="services">0</span>
+            <span class="wiz-kpi-lbl">@(isRtl ? "خدمات" : "services")</span>
+        </span>
+        <span class="wiz-kpi" data-kpi="measurements" title="@(isRtl ? "المقاييس المضافة" : "Added measurements")">
+            <i data-lucide="bar-chart-3" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            <span class="wiz-kpi-num" data-kpi-num="measurements">0</span>
+            <span class="wiz-kpi-lbl">@(isRtl ? "مقاييس" : "measurements")</span>
+        </span>
+        <span class="wiz-kpi" data-kpi="team" title="@(isRtl ? "أعضاء الفريق" : "Team members")">
+            <i data-lucide="users" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            <span class="wiz-kpi-num" data-kpi-num="team">0</span>
+            <span class="wiz-kpi-lbl">@(isRtl ? "أعضاء" : "team")</span>
+        </span>
+        <span class="wiz-kpi" data-kpi="actions" title="@(isRtl ? "الإجراءات" : "Action items")">
+            <i data-lucide="list-todo" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            <span class="wiz-kpi-num" data-kpi-num="actions">0</span>
+            <span class="wiz-kpi-lbl">@(isRtl ? "إجراءات" : "actions")</span>
+        </span>
+    </div>
+
+    <!-- Body: vertical-stepper rail (left) + main content (right). -->
+    <div class="wiz-body">
+        <aside class="wiz-rail @(isRtl ? "wiz-rail-rtl" : "")" aria-label="@(isRtl ? "خطوات المعالج" : "Wizard steps")">
+            @* Consolidated 3-step rail (was 7). Each macro step contains the
+               original sub-section panes — those still exist below as
+               wizard-content divs sharing the same data-step value.            *@
+            <ol class="wiz-stepper">
+                <li class="wizard-step active cursor-pointer" data-step="1" title="@(isRtl ? "تعريف" : "Define")">
+                    <div class="step-circle">1</div>
+                    <div class="step-meta">
+                        <div class="step-label">@(isRtl ? "تعريف" : "Define")</div>
+                        <div class="step-subtitle">@(isRtl ? "النطاق والتصنيف" : "Scope & classification")</div>
+                    </div>
+                </li>
+                <li class="wizard-step cursor-pointer" data-step="2" title="@(isRtl ? "القياس والهدف" : "Measure & Target")">
+                    <div class="step-circle">2</div>
+                    <div class="step-meta">
+                        <div class="step-label">@(isRtl ? "القياس والهدف" : "Measure & Target")</div>
+                        <div class="step-subtitle">@(isRtl ? "المقاييس والقيم" : "Metrics + values")</div>
+                    </div>
+                </li>
+                <li class="wizard-step cursor-pointer" data-step="3" title="@(isRtl ? "التقييم والخطة" : "Score & Plan")">
+                    <div class="step-circle">3</div>
+                    <div class="step-meta">
+                        <div class="step-label">@(isRtl ? "التقييم والخطة" : "Score & Plan")</div>
+                        <div class="step-subtitle">@(isRtl ? "الأولوية والفريق والإجراءات" : "Priority + team + actions")</div>
+                    </div>
+                </li>
+            </ol>
+        </aside>
+
+        <main class="wiz-main">
+    <!-- Wizard Form -->
+    <form asp-action="CreateFromWizard" method="post" id="wizardForm" data-once-submit>
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger mb-4"></div>
+	        <div id="clientError" class="alert alert-danger mb-4 hidden"></div>
+
+		        <!-- Keep legacy single FK fields for backward compatibility (set via JS from multi-select) -->
+		        <input asp-for="ProcessId" type="hidden" id="hdnSingleProcessId" />
+		        <input asp-for="ServiceId" type="hidden" id="hdnSingleServiceId" />
+
+        <!-- Status is hidden — brand-new initiatives default to Proposed. -->
+        <input type="hidden" asp-for="Status" value="Proposed" />
+
+        <!-- Step 1 (Scope): just pick what you're improving + the title.
+             4 fields fit comfortably in ~200px. -->
+        <div class="wizard-content bg-white rounded-lg shadow-sm p-4 mb-3" data-step="1">
+            <div class="flex items-center gap-2 mb-3">
+                <i data-lucide="target" class="w-4 h-4" style="color:#005B99"></i>
+                <h3 class="text-base font-semibold text-gray-900">@(isRtl ? "النطاق" : "Scope")</h3>
+            </div>
+            @* Live completion checklist for this macro step. JS sets the
+               .wiz-checklist data state to "ok" / "missing" and rewrites
+               the inner text. Rendered once per step at the top pane. *@
+            <div class="wiz-checklist" data-step-checklist="1" data-state="missing">
+                <i data-lucide="circle-dashed" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                <span class="wiz-checklist-text"></span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                <div>
+                    <label class="form-label text-sm mb-1">@(isRtl ? "العمليات" : "Processes")</label>
+                    <div class="cs-wrap relative" id="csWrap_processes">
+                        <div class="cs-trigger flex flex-wrap items-center gap-1 px-2 py-1 border border-gray-300 rounded-md min-h-[32px] bg-white cursor-pointer" onclick="csToggle('processes')">
+                            <span id="csChips_processes" class="flex flex-wrap gap-1"></span>
+                            <span id="csPh_processes" class="text-xs text-gray-400 truncate">@(isRtl ? "اختر عمليات..." : "Select processes...")</span>
+                            <svg class="w-3.5 h-3.5 text-gray-400 ml-auto shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </div>
+                        <div id="csDrop_processes" class="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg hidden">
+                            <div class="p-2 border-b border-gray-100">
+                                <input type="text" placeholder="@(isRtl ? "بحث..." : "Search...")" class="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none" oninput="csFilter('processes',this.value)">
+                            </div>
+                            <div class="max-h-60 overflow-y-auto">
+                                @{
+                                    var processItems = ViewBag.Processes as IEnumerable<SelectListItem> ?? Array.Empty<SelectListItem>();
+                                }
+                                @foreach (var item in processItems)
+                                {
+                                    <label class="cs-opt flex items-center gap-2 px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs">
+                                        <input type="checkbox" value="@item.Value" class="rounded text-blue-600 cs-chk" data-csid="processes" data-label="@item.Text" onchange="csUpdate('processes')">
+                                        <span class="truncate">@item.Text</span>
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <label class="form-label text-sm mb-1">@(isRtl ? "الخدمات" : "Services")</label>
+                    <div class="cs-wrap relative" id="csWrap_services">
+                        <div class="cs-trigger flex flex-wrap items-center gap-1 px-2 py-1 border border-gray-300 rounded-md min-h-[32px] bg-white cursor-pointer" onclick="csToggle('services')">
+                            <span id="csChips_services" class="flex flex-wrap gap-1"></span>
+                            <span id="csPh_services" class="text-xs text-gray-400 truncate">@(isRtl ? "اختر خدمات..." : "Select services...")</span>
+                            <svg class="w-3.5 h-3.5 text-gray-400 ml-auto shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </div>
+                        <div id="csDrop_services" class="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg hidden">
+                            <div class="p-2 border-b border-gray-100">
+                                <input type="text" placeholder="@(isRtl ? "بحث..." : "Search...")" class="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none" oninput="csFilter('services',this.value)">
+                            </div>
+                            <div class="max-h-60 overflow-y-auto">
+                                @{
+                                    var serviceItems = ViewBag.Services as IEnumerable<SelectListItem> ?? Array.Empty<SelectListItem>();
+                                }
+                                @foreach (var item in serviceItems)
+                                {
+                                    <label class="cs-opt flex items-center gap-2 px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs">
+                                        <input type="checkbox" value="@item.Value" class="rounded text-blue-600 cs-chk" data-csid="services" data-label="@item.Text" onchange="csUpdate('services')">
+                                        <span class="truncate">@item.Text</span>
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                    <label asp-for="TitleEn" class="form-label text-sm mb-1">@(isRtl ? "العنوان (إنجليزي)" : "Title (English)") <span class="text-danger">*</span></label>
+                    <input asp-for="TitleEn" class="form-control form-control-sm" placeholder="@(isRtl ? "مثال: Reduce Processing Time" : "e.g., Reduce Processing Time")" />
+                </div>
+                <div>
+                    <label asp-for="TitleAr" class="form-label text-sm mb-1">@(isRtl ? "العنوان (عربي)" : "Title (Arabic)") <span class="text-danger">*</span></label>
+                    <input asp-for="TitleAr" class="form-control form-control-sm" placeholder="@(isRtl ? "مثال: تقليل وقت المعالجة" : "e.g., تقليل وقت المعالجة")" dir="rtl" />
+                </div>
+            </div>
+            <p class="text-[11px] text-gray-400 mt-2">@(isRtl ? "يمكنك اختيار أكثر من عملية و/أو خدمة." : "You can pick more than one process and/or service.")</p>
+        </div>
+
+        <!-- Step 2 (Details): descriptions + classification (Source / Owner /
+             Innovation Type / Horizon). Kept flat — ~6 small fields. -->
+        @* Was Step 2 — now folded into Step 1 (Define). *@
+        <div class="wizard-content bg-white rounded-lg shadow-sm p-4 mb-3 hidden" data-step="1">
+            <div class="flex items-center gap-2 mb-3">
+                <i data-lucide="file-text" class="w-4 h-4" style="color:#005B99"></i>
+                <h3 class="text-base font-semibold text-gray-900">@(isRtl ? "التفاصيل والتصنيف (اختياري)" : "Details & Classification (optional)")</h3>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                <div>
+                    <label asp-for="DescriptionEn" class="form-label text-sm mb-1">@(isRtl ? "الوصف (إنجليزي)" : "Description (English)")</label>
+                    <textarea asp-for="DescriptionEn" class="form-control form-control-sm" rows="2" placeholder="@(isRtl ? "صف مبادرة التحسين..." : "Describe the improvement initiative...")"></textarea>
+                </div>
+                <div>
+                    <label asp-for="DescriptionAr" class="form-label text-sm mb-1">@(isRtl ? "الوصف (عربي)" : "Description (Arabic)")</label>
+                    <textarea asp-for="DescriptionAr" class="form-control form-control-sm" rows="2" placeholder="@(isRtl ? "وصف مبادرة التحسين..." : "Describe the improvement initiative (Arabic)...")" dir="rtl"></textarea>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                    <label asp-for="Source" class="form-label text-sm mb-1">@Shared["Label_Source"]</label>
+                    <select asp-for="Source" asp-items="@(new SelectList(Enum.GetValues<ChangeRequestSource>().Select(v => new { Value = v.ToString(), Display = Shared[$"ChangeRequestSource_{v}"].Value }), "Value", "Display"))" class="form-select form-select-sm"></select>
+                </div>
+                <div>
+                    <label asp-for="OwnerId" class="form-label text-sm mb-1">@Shared["Label_Owner"]</label>
+                    <select asp-for="OwnerId" asp-items="ViewBag.Users" class="form-select form-select-sm">
+                        <option value="">@(isRtl ? "-- اختر --" : "-- Select --")</option>
+                    </select>
+                </div>
+                <div>
+                    <label asp-for="InnovationType" class="form-label text-sm mb-1">@Shared["Label_InnovationType"]</label>
+                    <select asp-for="InnovationType" asp-items="@(new SelectList(Enum.GetValues<InnovationType>().Select(v => new { Value = v.ToString(), Display = Shared[$"InnovationType_{v}"].Value }), "Value", "Display"))" class="form-select form-select-sm">
+                        <option value="">@(isRtl ? "-- اختر --" : "-- Select --")</option>
+                    </select>
+                </div>
+                <div>
+                    <label asp-for="Horizon" class="form-label text-sm mb-1">@Shared["Label_Horizon"]</label>
+                    <select asp-for="Horizon" asp-items="@(new SelectList(Enum.GetValues<ImprovementHorizon>().Select(v => new { Value = v.ToString(), Display = Shared[$"ImprovementHorizon_{v}"].Value }), "Value", "Display"))" class="form-select form-select-sm">
+                        <option value="">@(isRtl ? "-- اختر --" : "-- Select --")</option>
+                    </select>
+                </div>
+                @* TargetDate moved here from old Step 4 — initiative-level deadline
+                   that defines a planning attribute, so it lives with the other
+                   classification fields. *@
+                <div>
+                    <label asp-for="TargetDate" class="form-label text-sm mb-1">@(isRtl ? "تاريخ الإنجاز المستهدف" : "Target Completion Date")</label>
+                    <input asp-for="TargetDate" type="date" class="form-control form-control-sm" />
+                </div>
+            </div>
+        </div>
+
+        <!-- Hidden fields for measurement data (populated by JS on submit) -->
+        <input type="hidden" name="MeasurementTypes" id="hdnMeasurementTypes" />
+        <input type="hidden" name="MeasurementNames" id="hdnMeasurementNames" />
+        <input type="hidden" name="MeasurementNamesAr" id="hdnMeasurementNamesAr" />
+        <input type="hidden" name="MeasurementUnits" id="hdnMeasurementUnits" />
+        <input type="hidden" name="MeasurementTargets" id="hdnMeasurementTargets" />
+        <input type="hidden" name="MeasurementAsIs" id="hdnMeasurementAsIs" />
+        <input type="hidden" name="MeasurementWeights" id="hdnMeasurementWeights" />
+        <input type="hidden" name="MeasurementAppliesTo" id="hdnMeasurementAppliesTo" />
+        <input type="hidden" name="MeasurementPeriods" id="hdnMeasurementPeriods" />
+        <input type="hidden" name="MeasurementMethods" id="hdnMeasurementMethods" />
+        <input type="hidden" name="MeasurementToBe" id="hdnMeasurementToBe" />
+        <input type="hidden" name="MeasurementBpmn" id="hdnMeasurementBpmn" />
+        <input type="hidden" name="MeasurementPriorities" id="hdnMeasurementPriorities" />
+        <input type="hidden" name="MeasurementDirections" id="hdnMeasurementDirections" />
+        @* New: persists the per-row catalog link so the saved ImprovementMeasurement
+           rows carry KpiDefinitionId. Per-card values are stored in .m-kpi-definition-id
+           hidden inputs and joined with '|' on form submit. *@
+        <input type="hidden" name="MeasurementKpiDefinitionIds" id="hdnMeasurementKpiDefinitionIds" />
+
+        <!-- Was Step 3 (Define Metrics) — now Step 2 (Measure & Target).
+             Per-card Now/Target inputs were inlined inside addMeasurementRow,
+             so the standalone Step-4 pane below has been removed. -->
+        <div class="wizard-content bg-white rounded-lg shadow-sm p-4 mb-3 hidden" data-step="2">
+            <h3 class="text-xl font-semibold text-gray-900 mb-4">
+                <i data-lucide="bar-chart-3" class="w-5 h-5 inline-block text-blue-600"></i>
+                @Shared["Title_Step2"]
+            </h3>
+            <p class="text-gray-600 mb-6">@Shared["Text_Step2Desc"]</p>
+
+            <div class="wiz-checklist" data-step-checklist="2" data-state="missing">
+                <i data-lucide="circle-dashed" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                <span class="wiz-checklist-text"></span>
+            </div>
+
+            <!-- Scope Summary Banner -->
+            <div class="scope-banner-container"></div>
+
+            <div id="measurementRows" class="d-flex flex-column gap-3">
+                <!-- Measurement cards will be added here by JS -->
+            </div>
+
+            @* Compact empty-hint — visible only when there are zero cards.
+               Points down to the Quick Add strip below as the primary path. *@
+            <div id="measurementEmpty" class="text-center py-3 px-4 mt-2 border border-dashed border-gray-300 rounded text-sm text-gray-500">
+                <i data-lucide="info" class="w-3.5 h-3.5 inline-block" style="color:#94a3b8;margin-inline-end:.25rem;"></i>
+                @(isRtl ? "اختر قالبًا أدناه أو أضف مقياسًا فارغًا:" : "Pick a template below, or add a blank measurement:")
+                <button type="button" class="btn btn-link btn-sm p-0 ms-1" style="font-size:var(--fs-sm);" onclick="addMeasurementRow()">
+                    @(isRtl ? "+ إضافة فارغ" : "+ Add blank")
+                </button>
+            </div>
+
+            @* Quick-add row — common KPI shapes pre-fill Type / Direction /
+               Unit. Always visible on step 2, sits below the cards so the
+               user adds new measurements at the end of the existing list. *@
+            <div id="qaTemplates" class="mt-3" style="position:relative;">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <span class="text-xs text-gray-500" style="font-weight:600;">@(isRtl ? "إضافة سريعة:" : "Quick add:")</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary qa-tpl" data-tpl="time">
+                        <i data-lucide="clock" class="w-3.5 h-3.5 inline-block" aria-hidden="true"></i>
+                        @(isRtl ? "وقت" : "Time")
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary qa-tpl" data-tpl="cost">
+                        <i data-lucide="banknote" class="w-3.5 h-3.5 inline-block" aria-hidden="true"></i>
+                        @(isRtl ? "تكلفة" : "Cost")
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary qa-tpl" data-tpl="satisfaction">
+                        <i data-lucide="smile" class="w-3.5 h-3.5 inline-block" aria-hidden="true"></i>
+                        @(isRtl ? "الرضا" : "Satisfaction")
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary qa-tpl" data-tpl="productivity">
+                        <i data-lucide="trending-up" class="w-3.5 h-3.5 inline-block" aria-hidden="true"></i>
+                        @(isRtl ? "إنتاجية" : "Productivity")
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary qa-tpl" data-tpl="errors">
+                        <i data-lucide="alert-triangle" class="w-3.5 h-3.5 inline-block" aria-hidden="true"></i>
+                        @(isRtl ? "نسبة الأخطاء" : "Error rate")
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary qa-tpl" data-tpl="visits">
+                        <i data-lucide="users-2" class="w-3.5 h-3.5 inline-block" aria-hidden="true"></i>
+                        @(isRtl ? "عدد الزيارات" : "Visits")
+                    </button>
+                </div>
+                @* Target picker — shown after the user clicks a template and
+                   2+ scope items are selected. Lets the user choose exactly
+                   which processes / services this measurement should apply
+                   to (default: all selected). *@
+                <div id="qaTargetPicker" class="qa-picker hidden">
+                    <div class="qa-picker-header">
+                        <strong id="qaPickerTitle"></strong>
+                        <button type="button" class="btn btn-sm btn-link p-0 ms-auto" id="qaPickerClose" aria-label="@(isRtl?"إغلاق":"Close")">
+                            <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <div class="qa-picker-body">
+                        <p class="text-xs text-gray-600 mb-2">@(isRtl ? "اختر العناصر التي ينطبق عليها هذا المقياس:" : "Pick which scope items this measurement applies to:")</p>
+                        <div id="qaPickerList" class="d-flex flex-column gap-1"></div>
+                    </div>
+                    <div class="qa-picker-footer">
+                        <button type="button" class="btn btn-sm btn-link" id="qaPickerSelectAll">@(isRtl ? "تحديد الكل" : "Select all")</button>
+                        <button type="button" class="btn btn-sm btn-link" id="qaPickerSelectNone">@(isRtl ? "إلغاء التحديد" : "Clear")</button>
+                        <span style="flex:1"></span>
+                        <button type="button" class="btn btn-sm btn-primary" id="qaPickerApply">@(isRtl ? "تطبيق" : "Apply")</button>
+                    </div>
+                </div>
+            </div>
+
+            <button type="button" id="btnAddMeasurement" class="btn btn-outline-primary btn-sm mt-3 hidden" onclick="addMeasurementRow()">
+                <i data-lucide="plus" class="w-4 h-4 inline-block"></i>
+                @Shared["Button_AddMeasurement"]
+            </button>
+        </div>
+
+        <!-- BPMN Editor Modal -->
+        <div class="modal fade" id="bpmnModal" tabindex="-1" aria-labelledby="bpmnModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-xl modal-dialog-centered" style="max-width:92vw;">
+                <div class="modal-content">
+                    <div class="modal-header py-2" style="background:linear-gradient(135deg,#005B99 0%,#003d6b 100%);color:#fff;">
+                        <h5 class="modal-title" id="bpmnModalLabel">
+                            <i data-lucide="git-branch" class="w-5 h-5 inline-block"></i>
+                            @(isRtl ? "محرر مخطط BPMN" : "BPMN Diagram Editor")
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <!-- Tabs -->
+                    <ul class="nav nav-tabs px-3 pt-2 mb-0" id="bpmnModalTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="bpmnBrowseTab" data-bs-toggle="tab" data-bs-target="#bpmnBrowsePane" type="button" role="tab">
+                                <i data-lucide="folder-search" class="w-4 h-4 inline-block"></i>
+                                @(isRtl ? "تصفح الموجود" : "Browse Existing")
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="bpmnDrawTab" data-bs-toggle="tab" data-bs-target="#bpmnDrawPane" type="button" role="tab">
+                                <i data-lucide="pen-tool" class="w-4 h-4 inline-block"></i>
+                                @(isRtl ? "رسم جديد" : "Draw New")
+                            </button>
+                        </li>
+                    </ul>
+                    <div class="modal-body p-0">
+                        <div class="tab-content">
+                            <!-- Tab 1: Browse Existing -->
+                            <div class="tab-pane fade show active" id="bpmnBrowsePane" role="tabpanel">
+                                <div class="p-3 border-bottom bg-light">
+                                    <div class="d-flex align-items-center gap-3 flex-wrap">
+                                        <label class="text-sm fw-semibold text-nowrap">@(isRtl ? "اختر عملية:" : "Select Process:")</label>
+                                        <select id="bpmnProcessSelect" class="form-select form-select-sm" style="max-width:350px">
+                                            <option value="">@(isRtl ? "-- اختر عملية --" : "-- Select a Process --")</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div id="bpmnBrowseCanvas" style="height:420px;background:#fafafa;background-image:linear-gradient(rgba(0,0,0,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(0,0,0,.04) 1px,transparent 1px);background-size:20px 20px;position:relative;">
+                                    <div id="bpmnModalEmpty" class="d-flex flex-column align-items-center justify-content-center h-100 text-muted">
+                                        <i data-lucide="file-code-2" class="w-12 h-12 mb-3" style="opacity:.4"></i>
+                                        <p class="text-sm">@(isRtl ? "اختر عملية لعرض مخططها" : "Select a process to view its diagram")</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Tab 2: Draw New -->
+                            <div class="tab-pane fade" id="bpmnDrawPane" role="tabpanel">
+                                <div class="p-2 border-bottom bg-light d-flex align-items-center gap-2 flex-wrap">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="bpmnNewBtn" title="@(isRtl?"جديد":"New")" aria-label="@(isRtl?"جديد":"New")"><i data-lucide="file-plus" class="w-4 h-4 inline-block" aria-hidden="true"></i></button>
+                                    <div class="vr"></div>
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="bpmnAiGenBtn"><i data-lucide="sparkles" class="w-4 h-4 inline-block" aria-hidden="true"></i> @(isRtl?"توليد AI":"AI Generate")</button>
+                                    <button type="button" class="btn btn-outline-info btn-sm" id="bpmnAiRefineBtn"><i data-lucide="wand-2" class="w-4 h-4 inline-block" aria-hidden="true"></i> @(isRtl?"تحسين AI":"AI Refine")</button>
+                                    <div class="vr"></div>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="bpmnZoomInBtn" title="@Shared["Button_ZoomIn"]" aria-label="@Shared["Button_ZoomIn"]"><i data-lucide="zoom-in" class="w-4 h-4 inline-block" aria-hidden="true"></i></button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="bpmnZoomOutBtn" title="@Shared["Button_ZoomOut"]" aria-label="@Shared["Button_ZoomOut"]"><i data-lucide="zoom-out" class="w-4 h-4 inline-block" aria-hidden="true"></i></button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="bpmnFitBtn" title="@Shared["Button_Fit"]" aria-label="@Shared["Button_Fit"]"><i data-lucide="maximize-2" class="w-4 h-4 inline-block" aria-hidden="true"></i></button>
+                                    <div class="vr"></div>
+                                    <button type="button" class="btn btn-success btn-sm ms-auto" id="bpmnSaveToProcessBtn"><i data-lucide="save" class="w-4 h-4 inline-block"></i> @(isRtl?"حفظ للعملية":"Save to Process")</button>
+                                </div>
+                                <!-- AI panel -->
+                                <div id="bpmnAiPanel" class="p-3 border-bottom bg-white d-none">
+                                    <div class="row g-2">
+                                        <div class="col-md-4"><input type="text" id="bpmnAiTitle" class="form-control form-control-sm" placeholder="@(isRtl?"اسم العملية":"Process name")"></div>
+                                        <div class="col-md-6"><input type="text" id="bpmnAiDesc" class="form-control form-control-sm" placeholder="@(isRtl?"وصف أو تعليمات":"Description or instructions")"></div>
+                                        <div class="col-md-2"><button type="button" class="btn btn-primary btn-sm w-100" id="bpmnAiGoBtn"><i data-lucide="play" class="w-4 h-4 inline-block"></i> @(isRtl?"تنفيذ":"Go")</button></div>
+                                    </div>
+                                    <div id="bpmnAiStatus" class="text-xs text-muted mt-1 d-none"></div>
+                                </div>
+                                <!-- Save panel -->
+                                <div id="bpmnSavePanel" class="p-3 border-bottom bg-white d-none">
+                                    <div class="row g-2 align-items-end">
+                                        <div class="col-md-5">
+                                            <label class="form-label text-xs mb-1">@(isRtl?"حفظ إلى عملية:":"Save to process:")</label>
+                                            <select id="bpmnSaveProcessSelect" class="form-select form-select-sm"><option value="">@(isRtl?"-- اختر --":"-- Select --")</option></select>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label text-xs mb-1">@(isRtl?"أو اسم جديد:":"Or new name:")</label>
+                                            <input type="text" id="bpmnSaveNewName" class="form-control form-control-sm" placeholder="@(isRtl?"اسم العملية الجديدة":"New process name")">
+                                        </div>
+                                        <div class="col-md-3 d-flex gap-2">
+                                            <button type="button" class="btn btn-success btn-sm flex-grow-1" id="bpmnSaveGoBtn"><i data-lucide="check" class="w-4 h-4 inline-block"></i> @(isRtl?"حفظ":"Save")</button>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm" id="bpmnSaveCancelBtn">@(isRtl?"إلغاء":"Cancel")</button>
+                                        </div>
+                                    </div>
+                                    <div id="bpmnSaveStatus" class="text-xs mt-1 d-none"></div>
+                                </div>
+                                <div id="bpmnDrawCanvas" style="height:420px;background:#fff;position:relative;"></div>
+                            </div>
+                        </div>
+                        <!-- Element info (shared) -->
+                        <div id="bpmnElementInfo" class="p-2 border-top bg-light d-none">
+                            <div class="d-flex align-items-center gap-2">
+                                <i data-lucide="mouse-pointer-click" class="w-4 h-4" style="color:#005B99"></i>
+                                <span class="text-sm">@(isRtl ? "العنصر المحدد:" : "Selected Element:")</span>
+                                <code id="bpmnSelectedElementId" class="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs"></code>
+                                <button type="button" class="btn btn-primary btn-sm ms-auto" id="bpmnUseRefBtn">
+                                    <i data-lucide="check" class="w-4 h-4 inline-block"></i>
+                                    @(isRtl ? "استخدام المرجع" : "Use Reference")
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* Old Step 4 (Target & Current Values) deleted — its inputs live
+           per-card in Step 2 (.m-current / .m-target), and TargetDate moved
+           into Step 1's Classification block. *@
+
+        @{
+            // Slider rendering helper — reused for all 9 scoring sliders on
+            // Steps 5 + 6. Each slider starts "untouched": the range input
+            // sits at mid-point but the hidden input (which the model binder
+            // reads) is empty, and the badge shows "—". Once the user drags,
+            // the hidden value is populated and the badge turns blue.
+            Func<string, string, string, string, Microsoft.AspNetCore.Html.IHtmlContent> renderSlider =
+                (field, label, weight, legend) =>
+            {
+                var encLabel = System.Net.WebUtility.HtmlEncode(label);
+                var encLegend = System.Net.WebUtility.HtmlEncode(legend);
+                return new Microsoft.AspNetCore.Html.HtmlString(
+                    $@"<div class=""score-slider"" data-field=""{field}"">
+                        <div class=""flex items-center justify-between mb-0.5"">
+                            <label class=""text-xs text-gray-700 font-medium"">{encLabel} <span class=""text-gray-400"">({weight})</span></label>
+                            <span class=""score-badge inline-flex items-center justify-center text-xs font-bold text-white rounded px-2 py-0"" style=""background:#9ca3af;min-width:26px;height:18px"">—</span>
+                        </div>
+                        <input type=""range"" min=""1"" max=""10"" value=""5"" class=""form-range score-slider-input"" data-touched=""false"" />
+                        <input type=""hidden"" name=""{field}"" id=""{field}"" value="""" />
+                        <div class=""text-[10px] text-gray-500 italic mt-0.5"">{encLegend}</div>
+                    </div>"
+                );
+            };
+        }
+
+        @* Was Step 5 — now part of Step 3 (Score & Plan).
+           Initiative-level Impact/Effort + Business Readiness sliders. *@
+        <div class="wizard-content bg-white rounded-lg shadow-sm p-4 mb-3 hidden" data-step="3">
+            <div class="flex items-center gap-2 mb-3 flex-wrap">
+                <i data-lucide="target" class="w-4 h-4" style="color:#005B99"></i>
+                <h3 class="text-base font-semibold text-gray-900 mb-0">@(isRtl ? "الربع والجاهزية" : "Quadrant & Readiness")</h3>
+                <button type="button" id="aiSuggestScoring"
+                        class="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border-0 text-white"
+                        style="background:linear-gradient(90deg,#7c3aed 0%,#4f46e5 100%);">
+                    <i data-lucide="sparkles" style="width:12px;height:12px;"></i>
+                    <span id="aiSuggestScoringLabel">@(isRtl ? "اقتراح ذكي للنتيجة" : "Suggest scores with AI")</span>
+                </button>
+            </div>
+            <div id="aiScoringResult" class="hidden mb-3 p-2.5 rounded-md border text-xs" style="background:#f5f3ff;border-color:#ddd6fe;color:#5b21b6;">
+                <div class="flex items-center gap-2 mb-1">
+                    <i data-lucide="sparkles" style="width:12px;height:12px;"></i>
+                    <strong>@(isRtl ? "اقتراح الذكاء الاصطناعي" : "AI suggestion")</strong>
+                    <span id="aiScoringQuadrant" class="px-1.5 py-0.5 rounded text-[10px] font-bold" style="background:#ede9fe;"></span>
+                </div>
+                <div id="aiScoringReasoning"></div>
+            </div>
+
+            <!-- Initiative-level Impact × Effort + live quadrant badge -->
+            <div class="mb-3 p-3 rounded-md border border-gray-200 bg-gray-50">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                    <div class="score-slider" data-field="ImpactScore">
+                        <div class="flex items-center justify-between mb-0.5">
+                            <label class="text-xs text-gray-700 font-medium">@(isRtl ? "التأثير" : "Impact")</label>
+                            <span class="score-badge inline-flex items-center justify-center text-xs font-bold text-white rounded px-2 py-0" id="ImpactScoreBadge" style="background:#005B99;min-width:26px;height:18px">5</span>
+                        </div>
+                        <input type="range" min="1" max="10" value="5" class="form-range impact-effort-slider" data-target="ImpactScore" data-badge="ImpactScoreBadge" />
+                        <input asp-for="ImpactScore" type="hidden" id="ImpactScore" value="5" />
+                        <div class="text-[10px] text-gray-500 italic mt-0.5">@(isRtl ? "10 = تأثير استراتيجي عالٍ جداً" : "10 = very high strategic impact")</div>
+                    </div>
+                    <div class="score-slider" data-field="EffortScore">
+                        <div class="flex items-center justify-between mb-0.5">
+                            <label class="text-xs text-gray-700 font-medium">@(isRtl ? "الجهد" : "Effort")</label>
+                            <span class="score-badge inline-flex items-center justify-center text-xs font-bold text-white rounded px-2 py-0" id="EffortScoreBadge" style="background:#005B99;min-width:26px;height:18px">5</span>
+                        </div>
+                        <input type="range" min="1" max="10" value="5" class="form-range impact-effort-slider" data-target="EffortScore" data-badge="EffortScoreBadge" />
+                        <input asp-for="EffortScore" type="hidden" id="EffortScore" value="5" />
+                        <div class="text-[10px] text-gray-500 italic mt-0.5">@(isRtl ? "10 = جهد تنفيذ كبير جداً" : "10 = very high delivery effort")</div>
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-700 font-medium">@(isRtl ? "الربع" : "Quadrant")</label>
+                        <div id="quadrantBadge" class="mt-0.5 px-3 py-1.5 rounded-md text-center text-sm font-semibold" style="background:#e0f2fe;color:#075985">—</div>
+                        <div class="text-[10px] text-gray-500 italic mt-0.5" id="quadrantHint"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Business Readiness (30%) — 3 sliders -->
+            <div>
+                <h4 class="text-xs font-bold text-gray-900 mb-2 flex items-center gap-2">
+                    <span class="inline-block w-2.5 h-2.5 rounded-full" style="background:#005B99"></span>
+                    @(isRtl ? "الجاهزية المؤسسية (30%)" : "Business Readiness (30%)")
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    @renderSlider("EaseOfImplementation", Shared["Label_EaseOfImplementation"].Value, "10%",
+                        isRtl ? "1 = صعب، 10 = سهل" : "1 = hard, 10 = easy")
+                    @renderSlider("BudgetEstimation", Shared["Label_BudgetEstimation"].Value, "15%",
+                        isRtl ? "1 = لا يوجد تمويل، 10 = الميزانية مؤمّنة" : "1 = no funding, 10 = budget locked in")
+                    @renderSlider("ProjectDependency", Shared["Label_ProjectDependency"].Value, "5%",
+                        isRtl ? "1 = يعتمد على الكثير، 10 = مستقل" : "1 = blocked by deps, 10 = independent")
+                </div>
+            </div>
+        </div>
+
+        @* Was Step 6 — now part of Step 3. 6 weighted criteria driving
+           the 70% half of the composite score. *@
+        <div class="wizard-content bg-white rounded-lg shadow-sm p-4 mb-3 hidden" data-step="3">
+            <div class="flex items-center gap-2 mb-3">
+                <i data-lucide="scale" class="w-4 h-4" style="color:#34C38F"></i>
+                <h3 class="text-base font-semibold text-gray-900">@(isRtl ? "القيمة المؤسسية" : "Business Value")</h3>
+                <span class="text-xs text-gray-400">— @(isRtl ? "70% من النتيجة" : "70% of total score")</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                @renderSlider("StrategicAlignmentScore", Shared["Label_StrategicAlignment"].Value, "15%",
+                    isRtl ? "10 = توافق كامل مع خطة دبي 2033" : "10 = fully aligned with Dubai Plan 2033")
+                @renderSlider("LeadershipDirections", Shared["Label_LeadershipDirections"].Value, "10%",
+                    isRtl ? "10 = توجيه صريح من القيادة" : "10 = explicit leadership mandate")
+                @renderSlider("QualityOfLife", Shared["Label_QualityOfLife"].Value, "15%",
+                    isRtl ? "10 = أثر كبير على جودة الحياة" : "10 = major QoL impact for beneficiaries")
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                @renderSlider("InnovationAndFutureShaping", Shared["Label_InnovationFutureShaping"].Value, "5%",
+                    isRtl ? "10 = ابتكار تحويلي" : "10 = transformational innovation")
+                @renderSlider("FinancialAndEconomicImpact", Shared["Label_FinancialEconomicImpact"].Value, "10%",
+                    isRtl ? "10 = عائد اقتصادي كبير" : "10 = high economic return")
+                @renderSlider("SustainabilityScore", Shared["Label_Sustainability"].Value, "15%",
+                    isRtl ? "10 = يدعم الحياد المناخي 2050" : "10 = supports UAE Net Zero 2050")
+            </div>
+
+            <!-- Compact score preview -->
+            <div class="p-2 rounded-md border text-xs flex items-center justify-between gap-2 flex-wrap" style="background:#f8fafc">
+                <span class="font-medium text-gray-700">@(isRtl ? "النتيجة:" : "Score:")</span>
+                <div class="flex items-center gap-3 flex-wrap">
+                    <span style="color:#005B99"><strong>@(isRtl ? "الجاهزية" : "Readiness")</strong> <span id="readinessScore">—</span></span>
+                    <span style="color:#34C38F"><strong>@(isRtl ? "القيمة" : "Value")</strong> <span id="valueScore">—</span></span>
+                    <span class="px-2 py-0.5 rounded-full text-white font-bold" style="background:linear-gradient(135deg,#005B99,#003d6b)">
+                        @(isRtl ? "الإجمالي" : "Total") <span id="totalScore">—</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        @* Was Step 7 — now part of Step 3. Team members + action plan, tabbed
+           so they no longer stack and double the vertical scroll on Step 3. *@
+        <div class="wizard-content bg-white rounded-lg shadow-sm p-4 mb-3 hidden" data-step="3">
+            <div class="flex items-center gap-2 mb-3">
+                <i data-lucide="users" class="w-4 h-4" style="color:#005B99"></i>
+                <h3 class="text-base font-semibold text-gray-900">@(isRtl ? "الفريق وخطة العمل" : "Team & Action Plan")</h3>
+            </div>
+
+            <!-- Tab strip — tabs sit on the same horizontal axis instead of
+                 stacked panels so users see both at once. Counts on each tab
+                 mirror live row counts so the cost of switching is visible. -->
+            <div class="t3-tabs d-flex gap-2 border-bottom mb-3" role="tablist">
+                <button type="button" class="t3-tab active" data-target="t3pane-team" role="tab" aria-selected="true">
+                    <i data-lucide="user-plus" class="w-3.5 h-3.5 inline-block" aria-hidden="true"></i>
+                    <span>@Shared["Label_TeamMembers"]</span>
+                    <span class="t3-count" id="t3CountTeam">0</span>
+                </button>
+                <button type="button" class="t3-tab" data-target="t3pane-actions" role="tab" aria-selected="false">
+                    <i data-lucide="list-todo" class="w-3.5 h-3.5 inline-block" aria-hidden="true"></i>
+                    <span>@(isRtl ? "خطط العمل" : "Action Plans")</span>
+                    <span class="t3-count" id="t3CountActions">0</span>
+                </button>
+            </div>
+
+            <!-- Team pane -->
+            <div id="t3pane-team" class="t3-pane" role="tabpanel">
+                <div class="flex items-center justify-end mb-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" onclick="addTeamRow()">
+                        <i data-lucide="plus" class="w-3 h-3 inline-block"></i>
+                        @(isRtl ? "إضافة عضو" : "Add Member")
+                    </button>
+                </div>
+                <div id="teamRows" class="space-y-1">
+                    <p class="text-gray-400 text-xs" id="noTeamMsg">@(isRtl ? "أضف أعضاء الفريق" : "Add team members")</p>
+                </div>
+            </div>
+
+            <!-- Actions pane -->
+            <div id="t3pane-actions" class="t3-pane d-none" role="tabpanel">
+                <div class="flex items-center justify-end mb-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" onclick="addActionRow()">
+                        <i data-lucide="plus" class="w-3 h-3 inline-block"></i>
+                        @(isRtl ? "إضافة إجراء" : "Add Action")
+                    </button>
+                </div>
+                <div id="actionRows" class="space-y-1">
+                    <p class="text-gray-400 text-xs" id="noActionMsg">@(isRtl ? "أضف إجراءات التنفيذ" : "Add implementation actions")</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hidden fields for team/action data -->
+        <input type="hidden" name="TeamUserIds" id="hdnTeamUserIds" />
+        <input type="hidden" name="TeamRoles" id="hdnTeamRoles" />
+        <input type="hidden" name="TeamNotes" id="hdnTeamNotes" />
+        <input type="hidden" name="ActionNames" id="hdnActionNames" />
+        <input type="hidden" name="ActionNamesAr" id="hdnActionNamesAr" />
+        <input type="hidden" name="ActionAssignees" id="hdnActionAssignees" />
+        <input type="hidden" name="ActionDueDates" id="hdnActionDueDates" />
+        <!-- Resume marker. Set when wizard hydrates from ?draftId=X so the
+             post-create handler can drop the draft once the initiative is in. -->
+        <input type="hidden" name="DraftId" id="hdnDraftId" value="@(ViewBag.ResumeDraftId ?? "")" />
+
+        <!-- Sticky bottom action bar — Previous (ghost) on the leading
+             edge, Next/Create (primary/success) on the trailing edge.
+             Sticks to viewport bottom inside the main column. -->
+        <div class="wiz-actionbar">
+            <button type="button" id="prevBtn" class="wiz-btn-prev" disabled>
+                <i data-lucide="@(isRtl ? "chevron-right" : "chevron-left")" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                @Shared["Button_Previous"]
+            </button>
+            <button type="button" id="saveDraftBtn" class="btn btn-outline-secondary btn-sm inline-flex items-center gap-1 ms-2" title="@(isRtl?"احفظ الحالة الحالية للعودة لاحقًا (Ctrl+S)":"Save current state to resume later (Ctrl+S)")">
+                <i data-lucide="bookmark" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                <span id="saveDraftLabel">@(isRtl?"احفظ كمسودة":"Save as Draft")</span>
+            </button>
+            <span id="autoSaveStatus" class="text-muted ms-2" style="font-size:var(--fs-xs);min-width:140px;" aria-live="polite"></span>
+            <div class="wiz-actionbar-spacer"></div>
+            <button type="button" id="nextBtn" class="btn btn-primary inline-flex items-center gap-2">
+                @Shared["Button_Next"]
+                <i data-lucide="@(isRtl ? "chevron-left" : "chevron-right")" class="w-4 h-4" aria-hidden="true"></i>
+            </button>
+            <button type="button" id="previewBtn" class="btn btn-outline-primary inline-flex items-center gap-2 hidden me-2" title="@(isRtl?"معاينة قبل الإنشاء":"Preview before creating")">
+                <i data-lucide="eye" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                @(isRtl ? "معاينة" : "Preview")
+            </button>
+            <button type="submit" id="submitBtn" class="btn btn-success inline-flex items-center gap-2 hidden">
+                <i data-lucide="check" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                @Shared["Button_CreateInitiative"]
+            </button>
+        </div>
+    </form>
+
+    @* Preview-before-submit modal — read-only render of everything the
+       user has typed. Visible only on Step 3. Built lazily by JS so we
+       don't pay the DOM cost until the user actually opens it. *@
+    <div id="wizPreviewModal" class="wiz-preview-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="wizPreviewTitle">
+        <div class="wiz-preview-card">
+            <div class="wiz-preview-header">
+                <h3 id="wizPreviewTitle">
+                    <i data-lucide="file-check-2" class="w-4 h-4 inline-block" aria-hidden="true"></i>
+                    @(isRtl ? "معاينة المبادرة قبل الإنشاء" : "Review initiative before creating")
+                </h3>
+                <button type="button" class="btn btn-sm btn-link" id="wizPreviewClose" aria-label="@(isRtl?"إغلاق":"Close")">
+                    <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div class="wiz-preview-body" id="wizPreviewBody">
+                <!-- Populated on open -->
+            </div>
+            <div class="wiz-preview-footer">
+                <button type="button" class="btn btn-outline-secondary" id="wizPreviewEdit">
+                    <i data-lucide="pencil" class="w-3.5 h-3.5 inline-block" aria-hidden="true"></i>
+                    @(isRtl ? "العودة للتحرير" : "Back to editing")
+                </button>
+                <button type="button" class="btn btn-outline-primary" id="wizPreviewPrint">
+                    <i data-lucide="printer" class="w-3.5 h-3.5 inline-block" aria-hidden="true"></i>
+                    @(isRtl ? "طباعة" : "Print")
+                </button>
+                <button type="button" class="btn btn-success" id="wizPreviewConfirm">
+                    <i data-lucide="check" class="w-3.5 h-3.5 inline-block" aria-hidden="true"></i>
+                    @(isRtl ? "تأكيد وإنشاء" : "Confirm & Create")
+                </button>
+            </div>
+        </div>
+    </div>
+        </main>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script nonce="@Context.CspNonce()">
+	        let currentStep = 1;
+	        const totalSteps = 3;  // Consolidated 7→3: Define / Measure & Target / Score & Plan
+        let measurementCounter = 0;
+
+        const measurementTypeOptions = [
+            { value: 'Satisfaction', labelEn: 'Satisfaction', labelAr: 'الرضا' },
+            { value: 'Cost', labelEn: 'Cost', labelAr: 'التكلفة' },
+            { value: 'Time', labelEn: 'Time', labelAr: 'الوقت' },
+            { value: 'Productivity', labelEn: 'Productivity', labelAr: 'الإنتاجية' },
+            { value: 'Capacity', labelEn: 'Capacity', labelAr: 'السعة' },
+            { value: 'NumberOfVisits', labelEn: 'No. of Visits', labelAr: 'عدد الزيارات' },
+            { value: 'NumberOfDocuments', labelEn: 'No. of Documents', labelAr: 'عدد المستندات' },
+            { value: 'Custom', labelEn: 'Custom', labelAr: 'مخصص' }
+        ];
+        const periodOptions = [
+            { value: 'Daily', labelEn: 'Daily', labelAr: 'يومي' },
+            { value: 'Weekly', labelEn: 'Weekly', labelAr: 'أسبوعي' },
+            { value: 'Monthly', labelEn: 'Monthly', labelAr: 'شهري' },
+            { value: 'Quarterly', labelEn: 'Quarterly', labelAr: 'ربع سنوي' },
+            { value: 'Annually', labelEn: 'Annually', labelAr: 'سنوي' },
+            { value: 'Custom', labelEn: 'Custom', labelAr: 'مخصص' }
+        ];
+        const methodOptions = [
+            { value: 'Survey', labelEn: 'Survey', labelAr: 'استبيان' },
+            { value: 'SystemReport', labelEn: 'System Report', labelAr: 'تقرير النظام' },
+            { value: 'ManualCount', labelEn: 'Manual Count', labelAr: 'عد يدوي' },
+            { value: 'Automated', labelEn: 'Automated', labelAr: 'آلي' },
+            { value: 'Observation', labelEn: 'Observation', labelAr: 'ملاحظة' },
+            { value: 'Audit', labelEn: 'Audit', labelAr: 'تدقيق' },
+            { value: 'Custom', labelEn: 'Custom', labelAr: 'مخصص' }
+        ];
+        const priorityOptions = [
+            { value: 'H1', labelEn: 'H1', labelAr: 'H1', color: '#dc2626', bg: '#fee2e2' },
+            { value: 'H2', labelEn: 'H2', labelAr: 'H2', color: '#ea580c', bg: '#ffedd5' },
+            { value: 'H3', labelEn: 'H3', labelAr: 'H3', color: '#16a34a', bg: '#dcfce7' }
+        ];
+        const priorityOrder = { H1: 1, H2: 2, H3: 3 };
+        // Impact × Effort → Priority Matrix (Lean Six Sigma best practice)
+        // High impact + Low effort = H1 (Quick Win), High+Med = H1, Med+Low = H1
+        // High+High = H2, Med+Med = H2, Low+Low = H2
+        // Low+Med = H3, Low+High = H3, Med+High = H3 (Deprioritise)
+        const impactEffortMatrix = {
+            'High:Low': 'H1', 'High:Medium': 'H1', 'Medium:Low': 'H1',
+            'High:High': 'H2', 'Medium:Medium': 'H2', 'Low:Low': 'H2',
+            'Low:Medium': 'H3', 'Low:High': 'H3', 'Medium:High': 'H3'
+        };
+        function calcPriority(impact, effort) {
+            return impactEffortMatrix[impact + ':' + effort] || 'H2';
+        }
+        const isRtl = @(isRtl ? "true" : "false");
+
+        function getAppliesToOptions() {
+            const pChks = document.querySelectorAll('.cs-chk[data-csid="processes"]:checked');
+            const sChks = document.querySelectorAll('.cs-chk[data-csid="services"]:checked');
+            let o = '<option value="">' + (isRtl ? '-- اختر --' : '-- Select --') + '</option>';
+            pChks.forEach(c => { o += '<option value="process:' + c.value + '">' + (isRtl ? 'عملية: ' : 'Process: ') + labelFor(c) + '</option>'; });
+            sChks.forEach(c => { o += '<option value="service:' + c.value + '">' + (isRtl ? 'خدمة: ' : 'Service: ') + labelFor(c) + '</option>'; });
+            return o;
+        }
+        function getAppliesToLabel(val) {
+            if (!val) return isRtl ? 'غير محدد' : 'Unassigned';
+            const parts = val.split(':'); const type = parts[0]; const id = parts.slice(1).join(':');
+            if (type === 'process') { const c = document.querySelector('.cs-chk[data-csid="processes"][value="' + id + '"]'); return (isRtl ? 'عملية: ' : 'Process: ') + (c ? labelFor(c) : id); }
+            if (type === 'service') { const c = document.querySelector('.cs-chk[data-csid="services"][value="' + id + '"]'); return (isRtl ? 'خدمة: ' : 'Service: ') + (c ? labelFor(c) : id); }
+            return val;
+        }
+        function refreshAppliesToDropdowns() {
+            const opts = getAppliesToOptions();
+            document.querySelectorAll('.m-applies').forEach(sel => { const v = sel.value; sel.innerHTML = opts; if (v) sel.value = v; });
+        }
+        // Always prefer the human-readable label. Falls back through:
+        //   1. data-label attribute (set at render time)
+        //   2. sibling span textContent (rendered by Razor)
+        //   3. raw value (last resort)
+        function labelFor(chk) {
+            const attr = chk.getAttribute('data-label');
+            if (attr && attr.trim()) return attr.trim();
+            const span = chk.closest('label')?.querySelector('span');
+            if (span && span.textContent.trim()) return span.textContent.trim();
+            return chk.value;
+        }
+
+        function buildScopeBanner() {
+            const pChks = document.querySelectorAll('.cs-chk[data-csid="processes"]:checked');
+            const sChks = document.querySelectorAll('.cs-chk[data-csid="services"]:checked');
+            if (!pChks.length && !sChks.length) return '';
+            let chips = '';
+            pChks.forEach(c => { chips += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-100 text-blue-800 text-xs"><i data-lucide="git-branch" class="w-3 h-3"></i>' + labelFor(c) + '</span>'; });
+            sChks.forEach(c => { chips += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-100 text-green-800 text-xs"><i data-lucide="briefcase" class="w-3 h-3"></i>' + labelFor(c) + '</span>'; });
+            return '<div class="p-3 mb-4 rounded-lg border" style="background:linear-gradient(135deg,#f0f7ff,#e8f4f8);border-color:#b3d4fc"><div class="d-flex align-items-center gap-2 mb-2"><i data-lucide="layers" class="w-4 h-4" style="color:#005B99"></i><strong class="text-sm" style="color:#005B99">' + (isRtl ? 'النطاق المحدد' : 'Selected Scope') + '</strong></div><div class="flex flex-wrap gap-1">' + chips + '</div></div>';
+        }
+
+        // Build a measurement card with grouped sections:
+        //   1. "What" (Name EN/AR, Type, Unit, Direction)
+        //   2. "Scope" (Applies To)
+        //   3. "Advanced" collapsible (Weight %, Period, Method, BPMN)
+        //
+        // Impact/Effort moved out of the card entirely — they now live on
+        // Step 4 at the initiative level, which is the correct level of
+        // abstraction. Per-measurement priority is no longer a thing.
+        function addMeasurementRow() {
+            measurementCounter++;
+            const container = document.getElementById('measurementRows');
+            const card = document.createElement('div');
+            card.id = 'mRow_' + measurementCounter;
+            card.className = 'measurement-card border rounded-lg shadow-sm';
+            let typeOpts = measurementTypeOptions.map(o => '<option value="' + o.value + '">' + (isRtl ? o.labelAr : o.labelEn) + '</option>').join('');
+            let periodOpts = '<option value="">' + (isRtl ? '-- اختر --' : '-- Select --') + '</option>' + periodOptions.map(o => '<option value="' + o.value + '">' + (isRtl ? o.labelAr : o.labelEn) + '</option>').join('');
+            let methodOpts = '<option value="">' + (isRtl ? '-- اختر --' : '-- Select --') + '</option>' + methodOptions.map(o => '<option value="' + o.value + '">' + (isRtl ? o.labelAr : o.labelEn) + '</option>').join('');
+            let appliesOpts = getAppliesToOptions();
+            const lblWhat     = isRtl ? 'المعلومات الأساسية' : 'Basic info';
+            const lblScope    = isRtl ? 'النطاق' : 'Scope';
+            const lblAdvanced = isRtl ? 'إعدادات متقدمة' : 'Advanced settings';
+            const lblDirection = isRtl ? 'اتجاه التحسين' : 'Direction of improvement';
+            const tipDirection = isRtl
+                ? 'اختر "أعلى أفضل" للرضا / الإنتاجية، و"أقل أفضل" للوقت / التكلفة / معدل الأخطاء'
+                : 'Use "Higher is better" for satisfaction / throughput, "Lower is better" for time / cost / error rate';
+
+            const lblKpiLink     = isRtl ? 'الربط بمؤشر' : 'KPI catalog link';
+            const lblKpiLinkBtn  = isRtl ? 'اربط بمؤشر من المكتبة' : 'Link to KPI from catalog';
+            const lblKpiSearch   = isRtl ? 'ابحث بالكود أو الاسم…' : 'Search by code or name…';
+            const lblKpiUnlink   = isRtl ? 'إلغاء الربط' : 'Unlink';
+            const lblKpiNoResult = isRtl ? 'لا توجد نتائج' : 'No matches';
+
+            card.innerHTML =
+                '<div class="card-header d-flex align-items-center gap-2 py-2 px-3" style="background:linear-gradient(135deg,#005B99 0%,#003d6b 100%)">' +
+                    '<span class="text-white fw-semibold" style="font-size: var(--fs-sm)">' + (isRtl ? 'مقياس' : 'Measurement') + ' #' + measurementCounter + '</span>' +
+                    '<button type="button" class="btn btn-sm ms-auto px-2 py-0" style="color:#ffcdd2;border:1px solid rgba(255,255,255,.3)" onclick="removeMeasurementRow(' + measurementCounter + ')" title="Delete" aria-label="Delete"><i data-lucide="trash-2" class="w-3.5 h-3.5" aria-hidden="true"></i></button>' +
+                '</div>' +
+                '<div class="card-body p-3">' +
+                    // KPI link block — when linked, shows a chip with code+name and "Unlink".
+                    // When unlinked, shows "Link to KPI" button that reveals an inline search box.
+                    // Picking a KPI pre-fills name-en, name-ar, unit, direction, type.
+                    '<div class="m-kpi-block mb-3" data-counter="' + measurementCounter + '">' +
+                        '<input type="hidden" class="m-kpi-definition-id" value="" />' +
+                        '<div class="m-kpi-empty d-flex align-items-center gap-2">' +
+                            '<button type="button" class="btn btn-sm btn-outline-primary" onclick="toggleKpiPicker(this, true)">' +
+                                '<i data-lucide="link" class="w-3.5 h-3.5 inline-block"></i> ' + lblKpiLinkBtn +
+                            '</button>' +
+                            '<span class="text-xs text-gray-500">' + (isRtl ? 'أو املأ يدوياً أدناه' : 'or fill the fields below manually') + '</span>' +
+                        '</div>' +
+                        '<div class="m-kpi-linked d-none align-items-center gap-2 px-2 py-1 rounded" style="background:#eff6ff;border:1px solid #bfdbfe">' +
+                            '<i data-lucide="link-2" class="w-4 h-4" style="color:#005B99"></i>' +
+                            '<span class="text-xs text-gray-600">' + lblKpiLink + ':</span>' +
+                            '<span class="m-kpi-label fw-semibold" style="color:#005B99;font-size: var(--fs-sm)"></span>' +
+                            '<button type="button" class="btn btn-sm btn-link p-0 ms-auto" style="font-size: var(--fs-xs);color:#dc2626" onclick="unlinkKpi(this)">' +
+                                '<i data-lucide="x" class="w-3 h-3 inline-block"></i> ' + lblKpiUnlink +
+                            '</button>' +
+                        '</div>' +
+                        '<div class="m-kpi-picker d-none mt-2 p-2 rounded" style="background:#f8fafc;border:1px solid #e5e7eb">' +
+                            '<input type="text" class="form-control form-control-sm m-kpi-search" placeholder="' + lblKpiSearch + '" oninput="onKpiSearchInput(this)" />' +
+                            '<div class="m-kpi-results mt-2" style="max-height:240px;overflow-y:auto"></div>' +
+                        '</div>' +
+                    '</div>' +
+                    // Section 1 — What (Name + Type + Unit + Direction)
+                    '<div class="mb-3">' +
+                        '<div class="text-xs font-semibold text-gray-500 uppercase mb-2 flex items-center gap-1"><i data-lucide="info" class="w-3 h-3"></i>' + lblWhat + '</div>' +
+                        '<div class="row g-2 mb-2">' +
+                            '<div class="col-md-6"><label class="form-label mb-0 text-xs text-gray-600">' + (isRtl ? 'الاسم بالإنجليزية' : 'Name (English)') + '</label>' +
+                                '<input type="text" class="form-control form-control-sm m-name-en" placeholder="' + (isRtl ? 'الاسم بالإنجليزية' : 'English name') + '" /></div>' +
+                            '<div class="col-md-6"><label class="form-label mb-0 text-xs text-gray-600">' + (isRtl ? 'الاسم بالعربية' : 'Name (Arabic)') + '</label>' +
+                                '<input type="text" class="form-control form-control-sm m-name-ar" dir="rtl" placeholder="' + (isRtl ? 'الاسم بالعربية' : 'Arabic name') + '" /></div>' +
+                        '</div>' +
+                        '<div class="row g-2 mb-2">' +
+                            '<div class="col-md-8"><label class="form-label mb-0 text-xs text-gray-600">' + (isRtl ? 'النوع' : 'Type') + '</label>' +
+                                '<select class="form-select form-select-sm m-type">' + typeOpts + '</select></div>' +
+                            '<div class="col-md-4"><label class="form-label mb-0 text-xs text-gray-600">' + (isRtl ? 'الوحدة' : 'Unit') + '</label>' +
+                                '<input type="text" class="form-control form-control-sm m-unit" placeholder="%" /></div>' +
+                        '</div>' +
+                        // Direction-of-improvement segmented toggle (defaults to HigherBetter)
+                        '<div class="mt-2">' +
+                            '<label class="form-label mb-1 text-xs text-gray-600 flex items-center gap-1">' + lblDirection +
+                            '<span title="' + tipDirection + '" style="cursor:help"><i data-lucide="help-circle" class="w-3 h-3 text-gray-400"></i></span></label>' +
+                            '<input type="hidden" class="m-direction" value="HigherBetter" />' +
+                            '<div class="btn-group btn-group-sm" role="group">' +
+                                '<button type="button" class="btn btn-outline-primary dir-btn active" data-dir="HigherBetter" onclick="setDirection(this)">' +
+                                    '<i data-lucide="arrow-up" class="w-3 h-3 inline-block"></i> ' + (isRtl ? 'أعلى أفضل' : 'Higher is better') +
+                                '</button>' +
+                                '<button type="button" class="btn btn-outline-primary dir-btn" data-dir="LowerBetter" onclick="setDirection(this)">' +
+                                    '<i data-lucide="arrow-down" class="w-3 h-3 inline-block"></i> ' + (isRtl ? 'أقل أفضل' : 'Lower is better') +
+                                '</button>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    // Section 2 — Scope
+                    '<div class="mb-3">' +
+                        '<div class="text-xs font-semibold text-gray-500 uppercase mb-2 flex items-center gap-1"><i data-lucide="layers" class="w-3 h-3"></i>' + lblScope + '</div>' +
+                        '<label class="form-label mb-0 text-xs text-gray-600">' + (isRtl ? 'ينطبق على' : 'Applies To') + '</label>' +
+                        '<select class="form-select form-select-sm m-applies">' + appliesOpts + '</select>' +
+                    '</div>' +
+                    // Section 3 — Advanced (collapsible: Period, Method, BPMN)
+                    '<details class="mt-2">' +
+                        '<summary class="text-xs font-semibold text-gray-500 uppercase cursor-pointer select-none flex items-center gap-1 py-1"><i data-lucide="sliders-horizontal" class="w-3 h-3"></i>' + lblAdvanced + '</summary>' +
+                        '<div class="mt-2 pt-2 border-top">' +
+                            '<div class="row g-2">' +
+                                '<div class="col-md-4"><label class="form-label mb-0 text-xs text-gray-600">' + (isRtl ? 'فترة القياس' : 'Period') + '</label>' +
+                                    '<select class="form-select form-select-sm m-period">' + periodOpts + '</select></div>' +
+                                '<div class="col-md-4"><label class="form-label mb-0 text-xs text-gray-600">' + (isRtl ? 'طريقة القياس' : 'Method') + '</label>' +
+                                    '<select class="form-select form-select-sm m-method">' + methodOpts + '</select></div>' +
+                                '<div class="col-md-4"><label class="form-label mb-0 text-xs text-gray-600">BPMN</label>' +
+                                    '<div class="input-group input-group-sm"><input type="text" class="form-control form-control-sm m-bpmn" placeholder="' + (isRtl ? 'مرجع' : 'Ref') + '" readonly style="cursor:pointer" />' +
+                                    '<button type="button" class="btn btn-outline-primary" onclick="openBpmnModal(this)" title="Browse BPMN" aria-label="Browse BPMN"><i data-lucide="search" class="w-3.5 h-3.5" aria-hidden="true"></i></button></div></div>' +
+                            '</div>' +
+                        '</div>' +
+                    '</details>' +
+                    // Section 4 — Now → Target (was Step 4 before consolidation; inlined here)
+                    '<div class="mt-3 pt-3 border-top">' +
+                        '<div class="text-xs font-semibold text-gray-500 uppercase mb-2 flex items-center gap-1"><i data-lucide="target" class="w-3 h-3"></i>' + (isRtl ? 'القيم الحالية والمستهدفة' : 'Now → Target') + '</div>' +
+                        '<div class="row g-2">' +
+                            '<div class="col-md-6"><label class="form-label mb-0 text-xs text-gray-600">' + (isRtl ? 'القيمة الحالية (الآن)' : 'Current value (now)') + '</label>' +
+                                '<input type="number" step="any" class="form-control form-control-sm m-current" placeholder="' + (isRtl ? 'الآن' : 'Now') + '" oninput="checkInlineSanity(this)" /></div>' +
+                            '<div class="col-md-6"><label class="form-label mb-0 text-xs text-gray-600">' + (isRtl ? 'القيمة المستهدفة' : 'Target value') + '</label>' +
+                                '<input type="number" step="any" class="form-control form-control-sm m-target" placeholder="' + (isRtl ? 'الهدف' : 'Goal') + '" oninput="checkInlineSanity(this)" />' +
+                                '<div class="m-target-sanity hidden text-xs mt-1" style="color:#b45309"></div></div>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
+            container.appendChild(card);
+            toggleEmptyState();
+            updateWeightTotal();
+            lucide.createIcons();
+        }
+
+        // Segmented-toggle helper for the direction buttons. Writes the
+        // selected value into the hidden .m-direction input on the card.
+        function setDirection(btn) {
+            const card = btn.closest('.measurement-card');
+            if (!card) return;
+            card.querySelectorAll('.dir-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const hidden = card.querySelector('.m-direction');
+            if (hidden) hidden.value = btn.dataset.dir || 'HigherBetter';
+        }
+
+        // ─── KPI catalog picker ─────────────────────────────────────────
+        // The "Link to KPI" button on each measurement card opens an inline
+        // typeahead. Picking a KPI pre-fills name-en, name-ar, unit, type,
+        // direction and stores the catalog Id in .m-kpi-definition-id so the
+        // saved row carries KpiDefinitionId for cross-improvement aggregation.
+        function toggleKpiPicker(btn, show) {
+            const block = btn.closest('.m-kpi-block');
+            if (!block) return;
+            const picker = block.querySelector('.m-kpi-picker');
+            picker.classList.toggle('d-none', !show);
+            if (show) {
+                const input = picker.querySelector('.m-kpi-search');
+                input.focus();
+                // Pre-load top suggestions on open (empty query).
+                fetchKpiResults('', picker.querySelector('.m-kpi-results'));
+            }
+        }
+
+        let _kpiSearchTimer = null;
+        function onKpiSearchInput(input) {
+            const block = input.closest('.m-kpi-block');
+            const out = block.querySelector('.m-kpi-results');
+            clearTimeout(_kpiSearchTimer);
+            _kpiSearchTimer = setTimeout(() => fetchKpiResults(input.value, out), 200);
+        }
+
+        async function fetchKpiResults(q, outEl) {
+            try {
+                const r = await fetch('/KpiLibrary/Search?q=' + encodeURIComponent(q || ''));
+                if (!r.ok) { outEl.innerHTML = ''; return; }
+                const rows = await r.json();
+                if (!rows || rows.length === 0) {
+                    outEl.innerHTML = '<div class="text-xs text-gray-500 px-2 py-2">' +
+                        (isRtl ? 'لا توجد نتائج' : 'No matches') + '</div>';
+                    return;
+                }
+                outEl.innerHTML = rows.map(k => {
+                    const name = isRtl ? (k.nameAr || k.nameEn) : (k.nameEn || k.nameAr);
+                    return '<button type="button" class="d-flex align-items-center gap-2 w-100 text-start px-2 py-1 rounded border-0 bg-transparent kpi-result" ' +
+                        'data-id="' + k.id + '" data-code="' + (k.code||'') + '" data-name-en="' + (k.nameEn||'').replace(/"/g,'&quot;') +
+                        '" data-name-ar="' + (k.nameAr||'').replace(/"/g,'&quot;') + '" data-unit="' + (k.unit||'') +
+                        '" data-direction="' + (k.direction||'') + '" data-default-type="' + (k.defaultType||'Custom') + '" ' +
+                        'onclick="pickKpi(this)" onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\'transparent\'">' +
+                        '<code style="font-size:var(--fs-xs);color:#005B99;font-weight:700">' + (k.code||'') + '</code>' +
+                        '<span class="text-sm">' + (name||'') + '</span>' +
+                        '<span class="text-xs text-gray-500 ms-auto">' + (k.unit||'') + '</span>' +
+                        '</button>';
+                }).join('');
+            } catch (e) {
+                outEl.innerHTML = '<div class="text-xs text-gray-400 px-2 py-2">' + (isRtl ? 'تعذّر البحث' : 'Search failed') + '</div>';
+            }
+        }
+
+        function pickKpi(btn) {
+            const block = btn.closest('.m-kpi-block');
+            const card  = btn.closest('.measurement-card');
+            const id    = btn.dataset.id;
+            const code  = btn.dataset.code;
+            const ne    = btn.dataset.nameEn;
+            const na    = btn.dataset.nameAr;
+            const unit  = btn.dataset.unit;
+            const dir   = btn.dataset.direction;
+            const dtype = btn.dataset.defaultType;
+
+            // Persist link
+            block.querySelector('.m-kpi-definition-id').value = id;
+            const display = code + ' — ' + (isRtl ? (na || ne) : (ne || na));
+            block.querySelector('.m-kpi-label').textContent = display;
+            block.querySelector('.m-kpi-empty').classList.add('d-none');
+            block.querySelector('.m-kpi-picker').classList.add('d-none');
+            block.querySelector('.m-kpi-linked').classList.remove('d-none');
+            block.querySelector('.m-kpi-linked').classList.add('d-flex');
+
+            // Pre-fill name + unit (always overwrite for consistency with the catalog)
+            const setVal = (sel, v) => { const el = card.querySelector(sel); if (el) el.value = v || ''; };
+            setVal('.m-name-en', ne);
+            setVal('.m-name-ar', na);
+            setVal('.m-unit', unit);
+
+            // Direction toggle — flip to whatever the catalog says
+            if (dir) {
+                card.querySelectorAll('.dir-btn').forEach(b => {
+                    const isMatch = (b.dataset.dir === dir);
+                    b.classList.toggle('active', isMatch);
+                    if (isMatch) {
+                        const hidden = card.querySelector('.m-direction');
+                        if (hidden) hidden.value = dir;
+                    }
+                });
+            }
+
+            // Type — KpiDefinition.DefaultType maps onto the measurement type select
+            if (dtype) {
+                const typeSel = card.querySelector('.m-type');
+                if (typeSel) {
+                    const opt = Array.from(typeSel.options).find(o => o.value === dtype);
+                    if (opt) typeSel.value = dtype;
+                }
+            }
+
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function unlinkKpi(btn) {
+            const block = btn.closest('.m-kpi-block');
+            block.querySelector('.m-kpi-definition-id').value = '';
+            block.querySelector('.m-kpi-label').textContent = '';
+            block.querySelector('.m-kpi-linked').classList.add('d-none');
+            block.querySelector('.m-kpi-linked').classList.remove('d-flex');
+            block.querySelector('.m-kpi-empty').classList.remove('d-none');
+        }
+
+        // Switch between the big empty-state CTA and the compact "+ Add Measurement"
+        // button depending on whether any cards exist.
+        function toggleEmptyState() {
+            const hasRows = document.querySelectorAll('#measurementRows .measurement-card').length > 0;
+            document.getElementById('measurementEmpty')?.classList.toggle('hidden', hasRows);
+            document.getElementById('btnAddMeasurement')?.classList.toggle('hidden', !hasRows);
+            // qaTemplates stays visible always — users should be able to
+            // pick a template for the very first measurement, not just
+            // subsequent ones.
+        }
+
+        // No-op stub. Weight was dropped from the wizard UI, but old call
+        // sites remain in the file (and may be in cached drafts). Keeping
+        // this as an empty function avoids ReferenceError without forcing
+        // a hunt-and-remove pass.
+        function updateWeightTotal() {}
+        function removeMeasurementRow(idx) {
+            const row = document.getElementById('mRow_' + idx);
+            if (row) row.remove();
+            toggleEmptyState();
+            updateWeightTotal();
+        }
+
+        function getMeasurements() {
+            const rows = document.querySelectorAll('#measurementRows .measurement-card');
+            let items = [];
+            rows.forEach(row => {
+                items.push({
+                    type: row.querySelector('.m-type')?.value || 'Custom',
+                    nameEn: row.querySelector('.m-name-en')?.value || '',
+                    nameAr: row.querySelector('.m-name-ar')?.value || '',
+                    unit: row.querySelector('.m-unit')?.value || '',
+                    weight: row.querySelector('.m-weight')?.value || '0',
+                    appliesTo: row.querySelector('.m-applies')?.value || '',
+                    period: row.querySelector('.m-period')?.value || '',
+                    method: row.querySelector('.m-method')?.value || '',
+                    bpmn: row.querySelector('.m-bpmn')?.value || '',
+                    direction: row.querySelector('.m-direction')?.value || 'HigherBetter',
+                    kpiDefinitionId: row.querySelector('.m-kpi-definition-id')?.value || '',
+                    // Inlined Now → Target (was rendered separately on the old Step 4).
+                    current: row.querySelector('.m-current')?.value || '',
+                    target:  row.querySelector('.m-target')?.value  || ''
+                });
+            });
+            return items;
+        }
+
+        // mkey() and the renderTargetInputs() function were removed during the
+        // 7→3 step consolidation — Now/Target inputs live directly inside each
+        // measurement card now, so there's no separate render step or per-row
+        // grid-by-AppliesTo grouping. checkTargetSanity (the older standalone
+        // helper) was replaced with checkInlineSanity below, which reads from
+        // .m-current / .m-target inside the card itself.
+
+        // Inline sanity check — runs on every input of .m-current / .m-target inside
+        // a measurement card. Mirrors checkTargetSanity below but reads directly
+        // from the card instead of from the (now-removed) per-row data-idx grid.
+        function checkInlineSanity(inp) {
+            const card = inp.closest('.measurement-card');
+            if (!card) return;
+            const dir = card.querySelector('.m-direction')?.value || 'HigherBetter';
+            const cur = parseFloat(card.querySelector('.m-current')?.value);
+            const tgt = parseFloat(card.querySelector('.m-target')?.value);
+            const sanity = card.querySelector('.m-target-sanity');
+            if (!sanity) return;
+            if (isNaN(cur) || isNaN(tgt) || cur === tgt) {
+                sanity.classList.add('hidden');
+                return;
+            }
+            let warn = null;
+            if (dir === 'HigherBetter' && tgt < cur) {
+                warn = isRtl
+                    ? 'قيمة الهدف أقل من القيمة الحالية لمقياس "أعلى أفضل"'
+                    : 'Target is lower than Current for a "Higher is better" metric.';
+            } else if (dir === 'LowerBetter' && tgt > cur) {
+                warn = isRtl
+                    ? 'قيمة الهدف أعلى من القيمة الحالية لمقياس "أقل أفضل"'
+                    : 'Target is higher than Current for a "Lower is better" metric.';
+            }
+            if (warn) {
+                sanity.textContent = '⚠ ' + warn;
+                sanity.classList.remove('hidden');
+            } else {
+                sanity.classList.add('hidden');
+            }
+        }
+
+        // Sanity check: warn when the user's target contradicts the direction-
+        // of-improvement they picked on Step 2. Non-blocking, advisory only.
+        function checkTargetSanity(inp) {
+            const row = inp.closest('.target-row');
+            if (!row) return;
+            const dir = row.dataset.direction || 'HigherBetter';
+            const asIsEl = row.querySelector('.asis-val');
+            const tgtEl  = row.querySelector('.target-val');
+            const sanity = row.querySelector('.target-sanity');
+            if (!asIsEl || !tgtEl || !sanity) return;
+
+            const asIs = parseFloat(asIsEl.value);
+            const tgt  = parseFloat(tgtEl.value);
+            // Only warn when both values are present and non-equal
+            if (isNaN(asIs) || isNaN(tgt) || asIs === tgt) {
+                sanity.classList.add('hidden');
+                return;
+            }
+            let warn = null;
+            if (dir === 'HigherBetter' && tgt < asIs) {
+                warn = isRtl
+                    ? 'قيمة الهدف أقل من القيمة الحالية لمقياس "أعلى أفضل". هل هذا مقصود؟'
+                    : 'Target is lower than Current for a "Higher is better" metric. Is that intentional?';
+            } else if (dir === 'LowerBetter' && tgt > asIs) {
+                warn = isRtl
+                    ? 'قيمة الهدف أعلى من القيمة الحالية لمقياس "أقل أفضل". هل هذا مقصود؟'
+                    : 'Target is higher than Current for a "Lower is better" metric. Is that intentional?';
+            }
+            if (warn) {
+                sanity.textContent = '⚠ ' + warn;
+                sanity.classList.remove('hidden');
+            } else {
+                sanity.classList.add('hidden');
+            }
+        }
+
+        function syncHiddenFields() {
+            // getMeasurements() preserves the insertion order of the cards,
+            // which is what Step 3's merged target+as-is view also uses (via
+            // data-idx). Priority is no longer per-measurement; all rows get
+            // the same priority derived from the initiative-level quadrant.
+            const items = getMeasurements();
+            const initiativePriority = getInitiativePriority();
+            let types=[], names=[], namesAr=[], units=[], targets=[], asIs=[], toBe=[], weights=[];
+            let appliesArr=[], periodsArr=[], methodsArr=[], bpmnArr=[], prioritiesArr=[], directionsArr=[], kpiIdsArr=[];
+            items.forEach((m, i) => {
+                prioritiesArr.push(initiativePriority);
+                types.push(m.type);
+                names.push(m.nameEn);
+                namesAr.push(m.nameAr);
+                units.push(m.unit);
+                weights.push(m.weight);
+                appliesArr.push(m.appliesTo);
+                periodsArr.push(m.period);
+                methodsArr.push(m.method);
+                bpmnArr.push(m.bpmn);
+                directionsArr.push(m.direction || 'HigherBetter');
+                kpiIdsArr.push(m.kpiDefinitionId || '');
+                // After 7→3 step consolidation: target / current values now live
+                // inside each measurement card (.m-current / .m-target). The old
+                // standalone Step-4 render (.target-val[data-idx]) is gone.
+                targets.push(m.target || '');
+                asIs.push(m.current || '');
+                toBe.push(m.target || ''); // To-Be defaults to Target
+            });
+            document.getElementById('hdnMeasurementTypes').value = types.join(',');
+            document.getElementById('hdnMeasurementNames').value = names.join('|');
+            document.getElementById('hdnMeasurementNamesAr').value = namesAr.join('|');
+            document.getElementById('hdnMeasurementUnits').value = units.join('|');
+            document.getElementById('hdnMeasurementTargets').value = targets.join(',');
+            document.getElementById('hdnMeasurementAsIs').value = asIs.join(',');
+            document.getElementById('hdnMeasurementToBe').value = toBe.join(',');
+            document.getElementById('hdnMeasurementWeights').value = weights.join(',');
+            document.getElementById('hdnMeasurementAppliesTo').value = appliesArr.join('|');
+            document.getElementById('hdnMeasurementPeriods').value = periodsArr.join('|');
+            document.getElementById('hdnMeasurementMethods').value = methodsArr.join('|');
+            document.getElementById('hdnMeasurementBpmn').value = bpmnArr.join('|');
+            document.getElementById('hdnMeasurementPriorities').value = prioritiesArr.join('|');
+            document.getElementById('hdnMeasurementDirections').value = directionsArr.join('|');
+            document.getElementById('hdnMeasurementKpiDefinitionIds').value = kpiIdsArr.join('|');
+
+            // Sync team/action hidden fields
+            syncTeamAndActionFields();
+        }
+
+        // Initiative-level priority (H1/H2/H3) derived from Step 4 Impact × Effort.
+        // Kept as a helper so syncHiddenFields and calcScores can both read it.
+        function getInitiativePriority() {
+            const impact = parseInt(document.getElementById('ImpactScore')?.value || '', 10);
+            const effort = parseInt(document.getElementById('EffortScore')?.value || '', 10);
+            if (!impact || !effort) return 'H2';
+            const hi = impact >= 6, hiEff = effort >= 6;
+            // Quick Win (high impact, low effort) = H1
+            // Major Project (high impact, high effort) = H2
+            // Fill-In (low impact, low effort) = H2
+            // Thankless Task (low impact, high effort) = H3
+            if (hi && !hiEff) return 'H1';
+            if (!hi && hiEff) return 'H3';
+            return 'H2';
+        }
+
+        // ── Team Members ────────────────────────────────────────
+        let teamCounter = 0;
+        function addTeamRow() {
+            teamCounter++;
+            document.getElementById('noTeamMsg')?.remove();
+            const container = document.getElementById('teamRows');
+            const row = document.createElement('div');
+            row.id = 'teamRow_' + teamCounter;
+            row.className = 'p-3 border rounded-lg bg-gray-50';
+            const userItems = @Html.Raw(Json.Serialize((ViewBag.Users as SelectList)?.Select(i => new { value = i.Value, text = i.Text }) ?? Enumerable.Empty<object>()));
+            let userOpts = '<option value="">' + (isRtl ? '-- اختر --' : '-- Select --') + '</option>';
+            if (Array.isArray(userItems)) userItems.forEach(u => { userOpts += '<option value="' + u.value + '">' + u.text + '</option>'; });
+            const roleOptions = [
+                { value: 'Identifier', en: 'Identifier', ar: 'معرّف' },
+                { value: 'Analyst', en: 'Analyst', ar: 'محلل' },
+                { value: 'Planner', en: 'Planner', ar: 'مخطط' },
+                { value: 'Executor', en: 'Executor', ar: 'منفذ' },
+                { value: 'Monitor', en: 'Monitor', ar: 'مراقب' },
+                { value: 'ProcessOwner', en: 'Process Owner', ar: 'مالك العملية' },
+                { value: 'QualityGovernance', en: 'Quality Governance', ar: 'حوكمة الجودة' }
+            ];
+            let roleOpts = roleOptions.map(r => '<option value="' + r.value + '">' + (isRtl ? r.ar : r.en) + '</option>').join('');
+            row.innerHTML =
+                '<div class="row g-2 align-items-end">' +
+                    '<div class="col-md-4"><label class="form-label text-xs mb-0">' + (isRtl ? 'العضو' : 'Member') + '</label>' +
+                        '<select class="form-select form-select-sm tm-user">' + userOpts + '</select></div>' +
+                    '<div class="col-md-3"><label class="form-label text-xs mb-0">' + (isRtl ? 'الدور' : 'Role') + '</label>' +
+                        '<select class="form-select form-select-sm tm-role">' + roleOpts + '</select></div>' +
+                    '<div class="col-md-4"><label class="form-label text-xs mb-0">' + (isRtl ? 'ملاحظات' : 'Notes') + '</label>' +
+                        '<input type="text" class="form-control form-control-sm tm-notes" placeholder="' + (isRtl ? 'ملاحظات...' : 'Notes...') + '" /></div>' +
+                    '<div class="col-md-1 text-end"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest(\'.p-3\').remove()" title="Remove" aria-label="Remove"><i data-lucide="trash-2" class="w-3.5 h-3.5" aria-hidden="true"></i></button></div>' +
+                '</div>';
+            container.appendChild(row);
+            lucide.createIcons();
+        }
+
+        // ── Action Plans ────────────────────────────────────────
+        let actionCounter = 0;
+        function addActionRow() {
+            actionCounter++;
+            document.getElementById('noActionMsg')?.remove();
+            const container = document.getElementById('actionRows');
+            const row = document.createElement('div');
+            row.id = 'actionRow_' + actionCounter;
+            row.className = 'p-3 border rounded-lg bg-gray-50';
+            const userItems = @Html.Raw(Json.Serialize((ViewBag.Users as SelectList)?.Select(i => new { value = i.Value, text = i.Text }) ?? Enumerable.Empty<object>()));
+            let userOpts = '<option value="">' + (isRtl ? '-- اختر --' : '-- Select --') + '</option>';
+            if (Array.isArray(userItems)) userItems.forEach(u => { userOpts += '<option value="' + u.value + '">' + u.text + '</option>'; });
+            row.innerHTML =
+                '<div class="row g-2 align-items-end">' +
+                    '<div class="col-md-3"><label class="form-label text-xs mb-0">' + (isRtl ? 'الإجراء (إنجليزي)' : 'Action (English)') + '</label>' +
+                        '<input type="text" class="form-control form-control-sm ac-name" placeholder="' + (isRtl ? 'الإجراء' : 'Action name') + '" /></div>' +
+                    '<div class="col-md-3"><label class="form-label text-xs mb-0">' + (isRtl ? 'الإجراء (عربي)' : 'Action (Arabic)') + '</label>' +
+                        '<input type="text" class="form-control form-control-sm ac-name-ar" dir="rtl" placeholder="' + (isRtl ? 'الإجراء بالعربي' : 'Arabic name') + '" /></div>' +
+                    '<div class="col-md-3"><label class="form-label text-xs mb-0">' + (isRtl ? 'المسؤول' : 'Assignee') + '</label>' +
+                        '<select class="form-select form-select-sm ac-assignee">' + userOpts + '</select></div>' +
+                    '<div class="col-md-2"><label class="form-label text-xs mb-0">' + (isRtl ? 'تاريخ الاستحقاق' : 'Due Date') + '</label>' +
+                        '<input type="date" class="form-control form-control-sm ac-due" /></div>' +
+                    '<div class="col-md-1 text-end"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest(\'.p-3\').remove()" title="Remove" aria-label="Remove"><i data-lucide="trash-2" class="w-3.5 h-3.5" aria-hidden="true"></i></button></div>' +
+                '</div>';
+            container.appendChild(row);
+            lucide.createIcons();
+        }
+
+        function syncTeamAndActionFields() {
+            // Team members
+            let tUsers=[], tRoles=[], tNotes=[];
+            document.querySelectorAll('#teamRows .p-3').forEach(row => {
+                const u = row.querySelector('.tm-user')?.value;
+                if (u) {
+                    tUsers.push(u);
+                    tRoles.push(row.querySelector('.tm-role')?.value || '');
+                    tNotes.push(row.querySelector('.tm-notes')?.value || '');
+                }
+            });
+            document.getElementById('hdnTeamUserIds').value = tUsers.join('|');
+            document.getElementById('hdnTeamRoles').value = tRoles.join('|');
+            document.getElementById('hdnTeamNotes').value = tNotes.join('|');
+
+            // Action plans
+            let aNames=[], aNamesAr=[], aAssignees=[], aDueDates=[];
+            document.querySelectorAll('#actionRows .p-3').forEach(row => {
+                const n = row.querySelector('.ac-name')?.value;
+                if (n) {
+                    aNames.push(n);
+                    aNamesAr.push(row.querySelector('.ac-name-ar')?.value || '');
+                    aAssignees.push(row.querySelector('.ac-assignee')?.value || '');
+                    aDueDates.push(row.querySelector('.ac-due')?.value || '');
+                }
+            });
+            document.getElementById('hdnActionNames').value = aNames.join('|');
+            document.getElementById('hdnActionNamesAr').value = aNamesAr.join('|');
+            document.getElementById('hdnActionAssignees').value = aAssignees.join('|');
+            document.getElementById('hdnActionDueDates').value = aDueDates.join('|');
+        }
+
+        // ── Live Prioritization Score ───────────────────────────
+        // Only reads values from the *hidden* inputs (which are empty until
+        // the user has dragged each slider). This guarantees the composite
+        // Total stays "—" for un-scored initiatives — no more synthetic 5.0
+        // contaminating the portfolio average.
+        function calcScores() {
+            const get = id => { const el = document.getElementById(id); return el && el.value !== '' ? parseFloat(el.value) : null; };
+            const ease = get('EaseOfImplementation'), budget = get('BudgetEstimation'), dep = get('ProjectDependency');
+            const strat = get('StrategicAlignmentScore'), lead = get('LeadershipDirections'), qol = get('QualityOfLife');
+            const innov = get('InnovationAndFutureShaping'), fin = get('FinancialAndEconomicImpact'), sust = get('SustainabilityScore');
+
+            let readiness = '—', value = '—', total = '—';
+            if (ease !== null && budget !== null && dep !== null) {
+                readiness = ((ease * 10 + budget * 15 + dep * 5) / 30).toFixed(1);
+            }
+            if (strat !== null && lead !== null && qol !== null && innov !== null && fin !== null && sust !== null) {
+                value = ((strat * 15 + lead * 10 + qol * 15 + innov * 5 + fin * 10 + sust * 15) / 70).toFixed(1);
+            }
+            if (readiness !== '—' && value !== '—') {
+                total = (parseFloat(readiness) * 0.30 + parseFloat(value) * 0.70).toFixed(2);
+            }
+            document.getElementById('readinessScore').textContent = readiness;
+            document.getElementById('valueScore').textContent = value;
+            document.getElementById('totalScore').textContent = total;
+        }
+
+        // Recompute the Impact×Effort quadrant badge on Step 4 and drive
+        // the downstream initiative priority that syncHiddenFields uses.
+        function updateQuadrantBadge() {
+            const impact = parseInt(document.getElementById('ImpactScore')?.value || '', 10);
+            const effort = parseInt(document.getElementById('EffortScore')?.value || '', 10);
+            const badge = document.getElementById('quadrantBadge');
+            const hint  = document.getElementById('quadrantHint');
+            if (!badge || !hint) return;
+            if (!impact || !effort) {
+                badge.textContent = '—';
+                badge.style.background = '#e5e7eb';
+                badge.style.color = '#6b7280';
+                hint.textContent = '';
+                return;
+            }
+            const hi = impact >= 6, hiE = effort >= 6;
+            let label, bg, color, tip;
+            if (hi && !hiE) {
+                label = isRtl ? 'فوز سريع (H1)' : 'Quick Win (H1)';
+                bg = '#dcfce7'; color = '#166534';
+                tip = isRtl ? 'تأثير عالٍ، جهد منخفض — نفّذه الآن' : 'High impact, low effort — execute now';
+            } else if (hi && hiE) {
+                label = isRtl ? 'مشروع كبير (H2)' : 'Major Project (H2)';
+                bg = '#dbeafe'; color = '#1e40af';
+                tip = isRtl ? 'تأثير عالٍ، جهد عالٍ — خطّط له بعناية' : 'High impact, high effort — plan carefully';
+            } else if (!hi && !hiE) {
+                label = isRtl ? 'إضافة سريعة (H2)' : 'Fill-In (H2)';
+                bg = '#fef3c7'; color = '#92400e';
+                tip = isRtl ? 'تأثير منخفض، جهد منخفض — إذا سمح الوقت' : 'Low impact, low effort — if time permits';
+            } else {
+                label = isRtl ? 'مهمة شاقة (H3)' : 'Thankless Task (H3)';
+                bg = '#fee2e2'; color = '#991b1b';
+                tip = isRtl ? 'تأثير منخفض، جهد عالٍ — أعد النظر' : 'Low impact, high effort — reconsider';
+            }
+            badge.textContent = label;
+            badge.style.background = bg;
+            badge.style.color = color;
+            hint.textContent = tip;
+        }
+
+	        function showClientError(message) {
+	            const el = document.getElementById('clientError');
+	            if (!el) return;
+	            el.textContent = message;
+	            el.classList.remove('hidden');
+	        }
+
+	        function clearClientError() {
+	            const el = document.getElementById('clientError');
+	            if (!el) return;
+	            el.textContent = '';
+	            el.classList.add('hidden');
+	            // Also clear any previously-highlighted fields
+	            document.querySelectorAll('.wizard-invalid').forEach(e => e.classList.remove('wizard-invalid'));
+	        }
+
+	        // Flash-highlight an offending field + scroll it into view.
+	        function markInvalid(el) {
+	            if (!el) return;
+	            el.classList.add('wizard-invalid');
+	            try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch {}
+	            try { el.focus({ preventScroll: true }); } catch {}
+	        }
+
+	        function validateStep(step) {
+	            clearClientError();
+	            const t = (en, ar) => (isRtl ? ar : en);
+
+	            // Step 1 (Define) = scope + title (Description / Source / Owner /
+	            // InnovationType / Horizon / TargetDate are all optional).
+	            if (step === 1) {
+	                const processIds = csGetValues('processes');
+	                const serviceIds = csGetValues('services');
+	                const titleEnEl = document.querySelector('[name="TitleEn"]');
+	                const titleArEl = document.querySelector('[name="TitleAr"]');
+	                const titleEn = titleEnEl?.value || '';
+	                const titleAr = titleArEl?.value || '';
+	                if (!processIds.length && !serviceIds.length) {
+	                    showClientError(t('Please select a Process or a Service for improvement.', 'يرجى اختيار عملية أو خدمة للتحسين.'));
+	                    markInvalid(document.getElementById('csWrap_processes'));
+	                    return false;
+	                }
+	                if (!titleEn.trim() || !titleAr.trim()) {
+	                    showClientError(t('Please enter both English and Arabic titles.', 'يرجى إدخال العنوان باللغتين الإنجليزية والعربية.'));
+	                    markInvalid(!titleEn.trim() ? titleEnEl : titleArEl);
+	                    return false;
+	                }
+	            }
+
+	            // Step 2 (Measure & Target) = at least one measurement card,
+	            // each card must have Unit + Name + AppliesTo + Now + Target.
+	            // Now/Target are inlined inside each card (.m-current / .m-target)
+	            // — the standalone Step-4 grid is gone.
+	            if (step === 2) {
+	                const rows = document.querySelectorAll('#measurementRows .measurement-card');
+	                if (!rows.length) {
+	                    showClientError(t('Please add at least one measurement.', 'يرجى إضافة مقياس واحد على الأقل.'));
+	                    return false;
+	                }
+	                for (const row of rows) {
+	                    const nameEnEl  = row.querySelector('.m-name-en');
+	                    const nameArEl  = row.querySelector('.m-name-ar');
+	                    const unitEl    = row.querySelector('.m-unit');
+	                    const appliesEl = row.querySelector('.m-applies');
+	                    const curEl     = row.querySelector('.m-current');
+	                    const tgtEl     = row.querySelector('.m-target');
+	                    const nameEn = nameEnEl?.value || '';
+	                    const nameAr = nameArEl?.value || '';
+	                    const unit   = unitEl?.value   || '';
+	                    const applies= appliesEl?.value|| '';
+	                    const cur    = curEl?.value    || '';
+	                    const tgt    = tgtEl?.value    || '';
+	                    if (!applies) {
+	                        showClientError(t('Each measurement must specify which process or service it applies to.', 'يجب تحديد العملية أو الخدمة لكل مقياس.'));
+	                        markInvalid(appliesEl);
+	                        return false;
+	                    }
+	                    if (!unit.trim() || (!nameEn.trim() && !nameAr.trim())) {
+	                        showClientError(t('Each measurement must have a Unit and a Name (English or Arabic).', 'يجب أن يحتوي كل مقياس على وحدة قياس واسم (إنجليزي أو عربي).'));
+	                        markInvalid(!unit.trim() ? unitEl : nameEnEl);
+	                        return false;
+	                    }
+	                    if (cur.trim() === '') {
+	                        showClientError(t('Please enter the current (baseline) value for every measurement.', 'يرجى إدخال القيمة الحالية لجميع المقاييس.'));
+	                        markInvalid(curEl);
+	                        return false;
+	                    }
+	                    if (tgt.trim() === '') {
+	                        showClientError(t('Please enter the target value for every measurement.', 'يرجى إدخال القيمة المستهدفة لجميع المقاييس.'));
+	                        markInvalid(tgtEl);
+	                        return false;
+	                    }
+	                }
+	            }
+
+	            // Step 3 (Score & Plan) = no blocking validation. All sliders
+	            // optional; team + action lists optional.
+
+	            return true;
+	        }
+
+        // Track the furthest step the user has reached so the stepper can
+        // allow clicking back into it without re-validating everything.
+        let maxVisitedStep = 1;
+
+        function showStep(step) {
+            // After 7→3 consolidation: a macro step can contain MULTIPLE panes
+            // sharing the same data-step value. Reveal them all together.
+            document.querySelectorAll('.wizard-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.wizard-step').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.wizard-content[data-step="' + step + '"]').forEach(el => el.classList.remove('hidden'));
+            document.querySelector('.wizard-step[data-step="' + step + '"]').classList.add('active');
+            document.getElementById('currentStep').textContent = step;
+            // Progress bar was removed from the chrome (stepper is the progress bar now)
+            document.getElementById('progressBar')?.style?.setProperty('width', ((step / totalSteps) * 100) + '%');
+            document.getElementById('prevBtn').disabled = step === 1;
+            document.getElementById('nextBtn').classList.toggle('hidden', step === totalSteps);
+            document.getElementById('submitBtn').classList.toggle('hidden', step !== totalSteps);
+            document.getElementById('previewBtn')?.classList.toggle('hidden', step !== totalSteps);
+
+            if (step > maxVisitedStep) maxVisitedStep = step;
+
+            // Mark prior steps with a completed class so CSS can render a check
+            document.querySelectorAll('.wizard-step').forEach(el => {
+                const n = parseInt(el.dataset.step, 10);
+                el.classList.toggle('completed', n < step);
+            });
+
+            // Macro-step 2 = Measure & Target. Show scope banner, refresh
+            // process/service dropdowns inside measurement cards, and re-paint
+            // weight total / empty state.
+            if (step === 2) {
+                const banner = buildScopeBanner();
+                document.querySelectorAll('.scope-banner-container').forEach(el => { el.innerHTML = banner; });
+                refreshAppliesToDropdowns();
+                toggleEmptyState();
+                updateWeightTotal();
+                // Re-evaluate inline sanity warnings for any cards already filled.
+                document.querySelectorAll('.measurement-card .m-target').forEach(inp => checkInlineSanity(inp));
+            }
+
+            // Macro-step 3 = Score & Plan. Recompute composite score so the
+            // mini Readiness/Value/Total banner reflects current inputs.
+            if (step === 3) calcScores();
+
+            // Scroll to top so the user always sees the new step's title
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            lucide.createIcons();
+        }
+
+        // Make stepper circles clickable — can jump to any already-visited step.
+        document.querySelectorAll('.wizard-step').forEach(el => {
+            el.addEventListener('click', () => {
+                const target = parseInt(el.dataset.step, 10);
+                if (!target) return;
+                if (target <= maxVisitedStep && target !== currentStep) {
+                    currentStep = target;
+                    showStep(target);
+                }
+            });
+        });
+
+	        document.getElementById('nextBtn').addEventListener('click', () => {
+	            if (!validateStep(currentStep)) return;
+	            if (currentStep < totalSteps) {
+	                currentStep++;
+	                showStep(currentStep);
+	            }
+	        });
+	        // Chip-select (multi-select) helpers
+	        let openCS = null;
+	        function csToggle(id) {
+	            const drop = document.getElementById('csDrop_' + id);
+	            if (!drop) return;
+	            if (openCS && openCS !== id) document.getElementById('csDrop_' + openCS)?.classList.add('hidden');
+	            drop.classList.toggle('hidden');
+	            openCS = drop.classList.contains('hidden') ? null : id;
+	        }
+	        function csFilter(id, query) {
+	            const q = (query || '').toLowerCase();
+	            document.querySelectorAll('.cs-opt input.cs-chk[data-csid="' + id + '"]').forEach(chk => {
+	                const label = (chk.getAttribute('data-label') || '').toLowerCase();
+	                chk.closest('label')?.classList.toggle('hidden', q && !label.includes(q));
+	            });
+	        }
+	        function csGetValues(id) {
+	            return Array.from(document.querySelectorAll('.cs-chk[data-csid="' + id + '"]:checked')).map(c => c.value);
+	        }
+	        function csUpdate(id) {
+	            const chips = document.getElementById('csChips_' + id);
+	            const ph = document.getElementById('csPh_' + id);
+	            if (!chips || !ph) return;
+	            chips.innerHTML = '';
+	            const selected = Array.from(document.querySelectorAll('.cs-chk[data-csid="' + id + '"]:checked'));
+	            selected.forEach(chk => {
+	                const span = document.createElement('span');
+	                span.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs border border-blue-100';
+	                span.innerHTML = '<span class="truncate max-w-[180px]">' + labelFor(chk) + '</span><button type="button" class="ml-1" onclick="csRemove(\'' + id + '\',\'' + chk.value + '\')">×</button>';
+	                chips.appendChild(span);
+	            });
+	            ph.classList.toggle('hidden', selected.length > 0);
+	        }
+	        function csRemove(id, val) {
+	            const chk = document.querySelector('.cs-chk[data-csid="' + id + '"][value="' + val.replace(/"/g, '\\"') + '"]');
+	            if (chk) chk.checked = false;
+	            csUpdate(id);
+	        }
+	        function addCSHidden(form, csId, inputName) {
+	            form.querySelectorAll('input[type="hidden"][data-cs-hidden="' + csId + '"]').forEach(e => e.remove());
+	            csGetValues(csId).forEach(v => {
+	                const inp = document.createElement('input');
+	                inp.type = 'hidden';
+	                inp.name = inputName;
+	                inp.value = v;
+	                inp.setAttribute('data-cs-hidden', csId);
+	                form.appendChild(inp);
+	            });
+	        }
+	        document.addEventListener('click', (e) => {
+	            if (!openCS) return;
+	            const wrap = document.getElementById('csWrap_' + openCS);
+	            if (wrap && !wrap.contains(e.target)) {
+	                document.getElementById('csDrop_' + openCS)?.classList.add('hidden');
+	                openCS = null;
+	            }
+	        });
+
+	        document.getElementById('prevBtn').addEventListener('click', () => { if (currentStep > 1) { currentStep--; showStep(currentStep); } });
+	        document.getElementById('wizardForm').addEventListener('submit', function(e) {
+	            // Validate all steps forward, navigate to first failing step
+	            for (let s = 1; s <= totalSteps; s++) {
+	                if (!validateStep(s)) {
+	                    e.preventDefault();
+	                    currentStep = s;
+	                    showStep(s);
+	                    return;
+	                }
+	            }
+		            // Multi-select process/service -> hidden arrays for model binding
+		            addCSHidden(this, 'processes', 'SelectedProcessIds');
+		            addCSHidden(this, 'services', 'SelectedServiceIds');
+		            // Legacy single FK fields (first selected), to keep older parts of the app working
+		            document.getElementById('hdnSingleProcessId').value = (csGetValues('processes')[0] || '');
+		            document.getElementById('hdnSingleServiceId').value = (csGetValues('services')[0] || '');
+	            // Now/Target inputs live inside each measurement card after the
+	            // 7→3 step consolidation — no separate render step required.
+	            syncHiddenFields();
+	        });
+
+	        // Cancel confirmation — don't lose work silently. Swal is async so
+	        // we have to preventDefault synchronously and navigate manually on
+	        // confirm.
+	        document.getElementById('wizardCancelBtn')?.addEventListener('click', function(e) {
+	            const hasWork = document.querySelector('[name="TitleEn"]')?.value?.trim() ||
+	                document.querySelector('[name="TitleAr"]')?.value?.trim() ||
+	                document.querySelectorAll('#measurementRows .measurement-card').length > 0 ||
+	                csGetValues('processes').length > 0 ||
+	                csGetValues('services').length > 0;
+	            if (!hasWork) return;
+	            e.preventDefault();
+	            const href = this.getAttribute('href') || this.dataset.href || '/Improvements';
+	            Swal.fire({
+	                icon: 'warning',
+	                title: isRtl ? 'إلغاء المعالج؟' : 'Cancel wizard?',
+	                text:  isRtl ? 'ستفقد كل ما أدخلته.' : 'You will lose everything you entered.',
+	                showCancelButton: true,
+	                confirmButtonText: isRtl ? 'نعم، ألغِ' : 'Yes, cancel',
+	                cancelButtonText:  isRtl ? 'العودة للتحرير' : 'Keep editing',
+	                confirmButtonColor: '#dc2626',
+	                cancelButtonColor:  '#64748b'
+	            }).then(r => { if (r.isConfirmed) { window.__wizardSubmitting = true; window.location.href = href; } });
+	        });
+
+	        // Score slider wiring: on first interaction, mark the slider touched,
+	        // write the value into the hidden input (so it gets posted), flip
+	        // the badge from grey/"—" to blue/value, then recalculate.
+	        document.querySelectorAll('.score-slider-input').forEach(range => {
+	            const wrap = range.closest('.score-slider');
+	            const field = wrap?.dataset?.field;
+	            const hidden = field ? document.getElementById(field) : null;
+	            const badge = wrap?.querySelector('.score-badge');
+	            range.addEventListener('input', () => {
+	                range.dataset.touched = 'true';
+	                if (hidden) hidden.value = range.value;
+	                if (badge) {
+	                    badge.textContent = range.value;
+	                    badge.style.background = '#005B99';
+	                }
+	                calcScores();
+	            });
+	        });
+
+	        // Initiative-level Impact / Effort sliders drive the quadrant badge
+	        // and the hidden ImpactScore / EffortScore inputs that the model
+	        // binder uses. These always have a value (default 5) because
+	        // CalculateQuadrant() runs server-side unconditionally.
+	        document.querySelectorAll('.impact-effort-slider').forEach(range => {
+	            const targetId = range.dataset.target;
+	            const badgeId  = range.dataset.badge;
+	            const hidden = targetId ? document.getElementById(targetId) : null;
+	            const badge  = badgeId ? document.getElementById(badgeId) : null;
+	            const update = () => {
+	                if (hidden) hidden.value = range.value;
+	                if (badge)  badge.textContent = range.value;
+	                updateQuadrantBadge();
+	            };
+	            update();
+	            range.addEventListener('input', update);
+	        });
+
+	        // ── AI Scoring Suggestion ─────────────────────────────
+	        // Pulls Title/Description from earlier steps + the first checked
+	        // linked process (if any), POSTs to /AI/SuggestInitiativeScoring,
+	        // then writes the returned Impact/Effort onto the sliders so the
+	        // hidden inputs stay in sync and the quadrant badge updates.
+	        (function () {
+	            const aiBtn = document.getElementById('aiSuggestScoring');
+	            const aiLabel = document.getElementById('aiSuggestScoringLabel');
+	            const aiPanel = document.getElementById('aiScoringResult');
+	            const aiQuad  = document.getElementById('aiScoringQuadrant');
+	            const aiReason = document.getElementById('aiScoringReasoning');
+	            if (!aiBtn) return;
+
+	            function setSlider(targetId, value) {
+	                const slider = document.querySelector('.impact-effort-slider[data-target="' + targetId + '"]');
+	                if (!slider) return;
+	                slider.value = String(value);
+	                slider.dispatchEvent(new Event('input', { bubbles: true }));
+	            }
+
+	            function firstCheckedProcessLabel() {
+	                const c = document.querySelector('.cs-chk[data-csid="processes"]:checked');
+	                return c ? (c.getAttribute('data-label') || '') : '';
+	            }
+
+	            aiBtn.addEventListener('click', async function () {
+	                const titleEn = (document.getElementById('TitleEn') || {}).value || '';
+	                const titleAr = (document.getElementById('TitleAr') || {}).value || '';
+	                if (!titleEn.trim() && !titleAr.trim()) {
+	                    Swal.fire({
+	                        icon: 'info',
+	                        text: isRtl ? 'يرجى إدخال العنوان أولاً.' : 'Please enter a title first.',
+	                        confirmButtonColor: '#005B99'
+	                    });
+	                    return;
+	                }
+
+	                aiBtn.disabled = true;
+	                const originalLabel = aiLabel.textContent;
+	                aiLabel.textContent = isRtl ? 'جاري التحليل...' : 'Analyzing...';
+
+	                try {
+	                    const token = (document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]') || {}).value;
+	                    const res = await fetch('/AI/SuggestInitiativeScoring', {
+	                        method: 'POST',
+	                        headers: {
+	                            'Content-Type': 'application/json',
+	                            'RequestVerificationToken': token || ''
+	                        },
+	                        body: JSON.stringify({
+	                            titleEn: titleEn,
+	                            titleAr: titleAr,
+	                            descriptionEn: (document.getElementById('DescriptionEn') || {}).value || '',
+	                            descriptionAr: (document.getElementById('DescriptionAr') || {}).value || '',
+	                            processName: firstCheckedProcessLabel(),
+	                            scope: ''
+	                        })
+	                    });
+	                    const data = await res.json();
+	                    if (data && data.success) {
+	                        setSlider('ImpactScore', data.impact);
+	                        setSlider('EffortScore', data.effort);
+	                        const quadLabels = {
+	                            'QuickWin': isRtl ? 'فوز سريع' : 'Quick Win',
+	                            'BigBet': isRtl ? 'رهان كبير' : 'Big Bet',
+	                            'Fill-In': isRtl ? 'مهمة ثانوية' : 'Fill-In',
+	                            'ThanklessTask': isRtl ? 'مهمة مرهقة' : 'Thankless Task'
+	                        };
+	                        aiQuad.textContent = quadLabels[data.quadrant] || data.quadrant || '';
+	                        aiReason.textContent = data.reasoning || '';
+	                        aiPanel.classList.remove('hidden');
+	                    } else {
+	                        Swal.fire({
+	                            icon: 'error',
+	                            text: (data && data.error) || (isRtl ? 'فشل الاقتراح' : 'Suggestion failed'),
+	                            confirmButtonColor: '#005B99'
+	                        });
+	                    }
+	                } catch (e) {
+	                    Swal.fire({
+	                        icon: 'error',
+	                        text: e.message || (isRtl ? 'خطأ في الشبكة' : 'Network error'),
+	                        confirmButtonColor: '#005B99'
+	                    });
+	                } finally {
+	                    aiBtn.disabled = false;
+	                    aiLabel.textContent = originalLabel;
+	                }
+	            });
+	        })();
+
+        // ── BPMN Modal ──────────────────────────────────────────
+        let bpmnBrowseViewer = null;
+        let bpmnDrawModeler = null;
+        let bpmnCurrentRow = null;
+        let bpmnAiMode = null;
+        const BPMN_EMPTY = '<?xml version="1.0" encoding="UTF-8"?><bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn"><bpmn:process id="Process_1" isExecutable="false"><bpmn:startEvent id="StartEvent_1"/></bpmn:process><bpmndi:BPMNDiagram id="BPMNDiagram_1"><bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1"><bpmndi:BPMNShape id="_BPMNShape_StartEvent_1" bpmnElement="StartEvent_1"><dc:Bounds x="173" y="203" width="36" height="36"/></bpmndi:BPMNShape></bpmndi:BPMNPlane></bpmndi:BPMNDiagram></bpmn:definitions>';
+
+        function attachElementClick(inst) {
+            inst.get('eventBus').on('element.click', function(ev) {
+                const el = ev.element;
+                if (el && el.id && el.type !== 'bpmn:Process' && el.type !== 'bpmn:Collaboration') {
+                    document.getElementById('bpmnSelectedElementId').textContent = el.id + (el.businessObject?.name ? ' (' + el.businessObject.name + ')' : '');
+                    document.getElementById('bpmnSelectedElementId').setAttribute('data-ref', el.id);
+                    document.getElementById('bpmnElementInfo').classList.remove('d-none');
+                }
+            });
+        }
+
+        function populateBpmnDropdown(sel) {
+            sel.innerHTML = '<option value="">' + (isRtl ? '-- اختر عملية --' : '-- Select a Process --') + '</option>';
+            document.querySelectorAll('.cs-chk[data-csid="processes"]:checked').forEach(c => {
+                const opt = document.createElement('option'); opt.value = c.value;
+                opt.textContent = c.getAttribute('data-label') || c.value; sel.appendChild(opt);
+            });
+            fetch('/AI/GetProcessesWithBPMN').then(r => r.json()).then(data => {
+                if (data && data.length) {
+                    const existing = new Set(Array.from(sel.options).map(o => o.value));
+                    data.forEach(p => { if (!existing.has(p.id)) { const o = document.createElement('option'); o.value = p.id; o.textContent = (isRtl ? p.nameAr : p.nameEn) || p.code || p.id; sel.appendChild(o); } });
+                }
+            }).catch(() => {});
+        }
+
+        function openBpmnModal(btn) {
+            bpmnCurrentRow = btn.closest('.measurement-card');
+            const modal = new bootstrap.Modal(document.getElementById('bpmnModal'));
+            populateBpmnDropdown(document.getElementById('bpmnProcessSelect'));
+            document.getElementById('bpmnModalEmpty').classList.remove('d-none');
+            document.getElementById('bpmnModalEmpty').innerHTML = '<div class="d-flex flex-column align-items-center justify-content-center h-100 text-muted"><i data-lucide="file-code-2" class="w-12 h-12 mb-3" style="opacity:.4"></i><p class="text-sm">' + (isRtl ? 'اختر عملية لعرض مخططها' : 'Select a process to view its diagram') + '</p></div>';
+            document.getElementById('bpmnElementInfo').classList.add('d-none');
+            document.getElementById('bpmnAiPanel').classList.add('d-none');
+            document.getElementById('bpmnSavePanel').classList.add('d-none');
+            if (bpmnBrowseViewer) { try { bpmnBrowseViewer.destroy(); } catch(e){} bpmnBrowseViewer = null; }
+            modal.show(); lucide.createIcons();
+        }
+
+        // Init draw modeler on tab show
+        document.getElementById('bpmnDrawTab')?.addEventListener('shown.bs.tab', async function() {
+            if (!bpmnDrawModeler && typeof BpmnJS !== 'undefined') {
+                bpmnDrawModeler = new BpmnJS({ container: document.getElementById('bpmnDrawCanvas'), keyboard: { bindTo: document } });
+                await bpmnDrawModeler.importXML(BPMN_EMPTY);
+                bpmnDrawModeler.get('canvas').zoom('fit-viewport');
+                attachElementClick(bpmnDrawModeler);
+            }
+            lucide.createIcons();
+        });
+
+        // Browse: load process
+        document.getElementById('bpmnProcessSelect')?.addEventListener('change', function() {
+            const pid = this.value;
+            if (!pid) { document.getElementById('bpmnModalEmpty').classList.remove('d-none'); document.getElementById('bpmnElementInfo').classList.add('d-none'); return; }
+            document.getElementById('bpmnModalEmpty').innerHTML = '<div class="d-flex align-items-center justify-content-center h-100"><div class="spinner-border text-primary"></div></div>';
+            document.getElementById('bpmnModalEmpty').classList.remove('d-none');
+            fetch('/AI/LoadProcessBPMN?id=' + encodeURIComponent(pid)).then(r => r.json()).then(data => {
+                if (data.success && data.bpmnXml) {
+                    document.getElementById('bpmnModalEmpty').classList.add('d-none');
+                    if (bpmnBrowseViewer) { try { bpmnBrowseViewer.destroy(); } catch(e){} }
+                    bpmnBrowseViewer = new BpmnJS({ container: document.getElementById('bpmnBrowseCanvas') });
+                    bpmnBrowseViewer.importXML(data.bpmnXml).then(() => { bpmnBrowseViewer.get('canvas').zoom('fit-viewport'); attachElementClick(bpmnBrowseViewer); });
+                } else {
+                    document.getElementById('bpmnModalEmpty').innerHTML = '<div class="d-flex flex-column align-items-center justify-content-center h-100 text-muted"><p class="text-sm">' + (isRtl ? 'لا يوجد مخطط' : 'No diagram found') + '</p></div>';
+                }
+            }).catch(() => { document.getElementById('bpmnModalEmpty').innerHTML = '<div class="text-center text-danger p-4">Error loading diagram</div>'; });
+        });
+
+        // Draw toolbar
+        document.getElementById('bpmnNewBtn')?.addEventListener('click', async () => { if (bpmnDrawModeler) { await bpmnDrawModeler.importXML(BPMN_EMPTY); bpmnDrawModeler.get('canvas').zoom('fit-viewport'); } });
+        document.getElementById('bpmnZoomInBtn')?.addEventListener('click', () => { if (bpmnDrawModeler) bpmnDrawModeler.get('canvas').zoom(bpmnDrawModeler.get('canvas').zoom() * 1.2); });
+        document.getElementById('bpmnZoomOutBtn')?.addEventListener('click', () => { if (bpmnDrawModeler) bpmnDrawModeler.get('canvas').zoom(bpmnDrawModeler.get('canvas').zoom() / 1.2); });
+        document.getElementById('bpmnFitBtn')?.addEventListener('click', () => { if (bpmnDrawModeler) bpmnDrawModeler.get('canvas').zoom('fit-viewport'); });
+
+        // AI Generate / Refine
+        document.getElementById('bpmnAiGenBtn')?.addEventListener('click', () => { bpmnAiMode = 'generate'; document.getElementById('bpmnAiPanel').classList.toggle('d-none'); document.getElementById('bpmnSavePanel').classList.add('d-none'); document.getElementById('bpmnAiTitle').placeholder = isRtl ? 'اسم العملية' : 'Process name'; document.getElementById('bpmnAiDesc').placeholder = isRtl ? 'وصف العملية' : 'Description'; });
+        document.getElementById('bpmnAiRefineBtn')?.addEventListener('click', () => { bpmnAiMode = 'refine'; document.getElementById('bpmnAiPanel').classList.toggle('d-none'); document.getElementById('bpmnSavePanel').classList.add('d-none'); document.getElementById('bpmnAiTitle').placeholder = isRtl ? 'عنوان (اختياري)' : 'Title (optional)'; document.getElementById('bpmnAiDesc').placeholder = isRtl ? 'تعليمات التحسين' : 'Refinement instructions'; });
+
+        document.getElementById('bpmnAiGoBtn')?.addEventListener('click', async () => {
+            const title = document.getElementById('bpmnAiTitle').value.trim();
+            const desc = document.getElementById('bpmnAiDesc').value.trim();
+            const st = document.getElementById('bpmnAiStatus'); st.classList.remove('d-none'); st.className = 'text-xs text-primary mt-1'; st.textContent = isRtl ? 'جاري التوليد...' : 'Generating...';
+            try {
+                if (bpmnAiMode === 'generate') {
+                    if (!title) { st.textContent = isRtl ? 'أدخل اسم العملية' : 'Enter process name'; st.className = 'text-xs text-danger mt-1'; return; }
+                    const j = await (await fetch('/AI/GenerateBPMN', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({title, description: desc||title}) })).json();
+                    if (!j.success) throw new Error(j.error);
+                    await bpmnDrawModeler.importXML(j.bpmnXml); bpmnDrawModeler.get('canvas').zoom('fit-viewport');
+                } else {
+                    if (!desc) { st.textContent = isRtl ? 'أدخل تعليمات' : 'Enter instructions'; st.className = 'text-xs text-danger mt-1'; return; }
+                    const {xml} = await bpmnDrawModeler.saveXML({format:true});
+                    const j = await (await fetch('/AI/RefineBPMN', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({currentBpmnXml:xml, instructions:desc}) })).json();
+                    if (!j.success) throw new Error(j.error);
+                    await bpmnDrawModeler.importXML(j.bpmnXml); bpmnDrawModeler.get('canvas').zoom('fit-viewport');
+                }
+                attachElementClick(bpmnDrawModeler); st.textContent = isRtl ? 'تم بنجاح!' : 'Done!'; st.className = 'text-xs text-success mt-1';
+            } catch(e) { st.textContent = e.message; st.className = 'text-xs text-danger mt-1'; }
+        });
+
+        // Save to Process
+        document.getElementById('bpmnSaveToProcessBtn')?.addEventListener('click', () => {
+            const sp = document.getElementById('bpmnSavePanel'); sp.classList.toggle('d-none'); document.getElementById('bpmnAiPanel').classList.add('d-none');
+            const sel = document.getElementById('bpmnSaveProcessSelect');
+            sel.innerHTML = '<option value="">' + (isRtl ? '-- اختر --' : '-- Select --') + '</option>';
+            document.querySelectorAll('.cs-chk[data-csid="processes"]:checked').forEach(c => { const o = document.createElement('option'); o.value = c.value; o.textContent = c.getAttribute('data-label') || c.value; sel.appendChild(o); });
+            fetch('/AI/GetProcesses').then(r=>r.json()).then(d => { if(d.success && d.processes) { const ex = new Set(Array.from(sel.options).map(o=>o.value)); d.processes.forEach(p => { if(!ex.has(p.id)){const o=document.createElement('option');o.value=p.id;o.textContent=p.code+' - '+(isRtl?p.nameAr:p.nameEn);sel.appendChild(o);}}); } }).catch(()=>{});
+        });
+        document.getElementById('bpmnSaveCancelBtn')?.addEventListener('click', () => document.getElementById('bpmnSavePanel').classList.add('d-none'));
+        document.getElementById('bpmnSaveGoBtn')?.addEventListener('click', async () => {
+            const pid = document.getElementById('bpmnSaveProcessSelect').value;
+            const newName = document.getElementById('bpmnSaveNewName').value.trim();
+            const st = document.getElementById('bpmnSaveStatus'); st.classList.remove('d-none');
+            if (!pid && !newName) { st.textContent = isRtl ? 'اختر عملية أو أدخل اسم جديد' : 'Select a process or enter a new name'; st.className = 'text-xs text-danger mt-1'; return; }
+            st.textContent = isRtl ? 'جاري الحفظ...' : 'Saving...'; st.className = 'text-xs text-primary mt-1';
+            try {
+                const {xml} = await bpmnDrawModeler.saveXML({format:true});
+                const j = await (await fetch('/AI/SaveBPMNToProcess', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({processId:pid||null, processName:newName||null, bpmnXml:xml}) })).json();
+                if (!j.success) throw new Error(j.error);
+                st.textContent = j.message || (isRtl ? 'تم الحفظ!' : 'Saved!'); st.className = 'text-xs text-success mt-1';
+            } catch(e) { st.textContent = e.message; st.className = 'text-xs text-danger mt-1'; }
+        });
+
+        // Use Reference
+        document.getElementById('bpmnUseRefBtn')?.addEventListener('click', function() {
+            const ref = document.getElementById('bpmnSelectedElementId')?.getAttribute('data-ref');
+            if (ref && bpmnCurrentRow) { const inp = bpmnCurrentRow.querySelector('.m-bpmn'); if (inp) inp.value = ref; }
+            bootstrap.Modal.getInstance(document.getElementById('bpmnModal'))?.hide();
+        });
+
+        // ─── Step 3 tabs (Team / Actions) ─────────────────────────────────
+        // Tabs replace the stacked panels so users see both options at once
+        // instead of having to scroll past Team to find Actions. Counts are
+        // wired via MutationObserver so they stay in sync with add/remove
+        // without touching the existing addTeamRow / addActionRow helpers.
+        function t3RefreshCounts() {
+            const teamCount = document.querySelectorAll('#teamRows .p-3').length;
+            const actionCount = document.querySelectorAll('#actionRows .p-3').length;
+            const tCount = document.getElementById('t3CountTeam');
+            const aCount = document.getElementById('t3CountActions');
+            if (tCount) tCount.textContent = teamCount;
+            if (aCount) aCount.textContent = actionCount;
+        }
+        document.querySelectorAll('.t3-tab').forEach(tab => {
+            tab.addEventListener('click', function () {
+                document.querySelectorAll('.t3-tab').forEach(t => {
+                    t.classList.remove('active');
+                    t.setAttribute('aria-selected', 'false');
+                });
+                this.classList.add('active');
+                this.setAttribute('aria-selected', 'true');
+                document.querySelectorAll('.t3-pane').forEach(p => p.classList.add('d-none'));
+                document.getElementById(this.dataset.target)?.classList.remove('d-none');
+            });
+        });
+        ['teamRows', 'actionRows'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            new MutationObserver(t3RefreshCounts).observe(el, { childList: true });
+        });
+
+        // ─── Quick-add measurement templates ───────────────────────────────
+        // Each template is { type, direction, unit, nameEn, nameAr } that
+        // gets applied to a freshly added card. Saves the user from
+        // re-picking the same Type/Direction/Unit combo every time.
+        const qaTemplates = {
+            time:         { type: 'Time',         direction: 'LowerBetter',  unit: (isRtl ? 'دقائق' : 'minutes'),
+                            nameEn: 'Processing time',          nameAr: 'وقت المعالجة' },
+            cost:         { type: 'Cost',         direction: 'LowerBetter',  unit: 'AED',
+                            nameEn: 'Cost per transaction',     nameAr: 'تكلفة كل معاملة' },
+            satisfaction: { type: 'Satisfaction', direction: 'HigherBetter', unit: '%',
+                            nameEn: 'Customer satisfaction',    nameAr: 'رضا المتعاملين' },
+            productivity: { type: 'Productivity', direction: 'HigherBetter', unit: (isRtl ? 'لكل يوم' : 'per day'),
+                            nameEn: 'Throughput',               nameAr: 'الإنتاجية اليومية' },
+            errors:       { type: 'Custom',       direction: 'LowerBetter',  unit: '%',
+                            nameEn: 'Error rate',               nameAr: 'نسبة الأخطاء' },
+            visits:       { type: 'NumberOfVisits', direction: 'LowerBetter', unit: (isRtl ? 'لكل متعامل' : 'per customer'),
+                            nameEn: 'Visits per customer',      nameAr: 'عدد الزيارات لكل متعامل' }
+        };
+        // Build a measurement card from a template and target value.
+        function applyTemplateToTarget(tpl, targetVal) {
+            addMeasurementRow();
+            const card = document.querySelector('#measurementRows .measurement-card:last-child');
+            if (!card) return;
+            const setOn = (sel, val) => {
+                const el = card.querySelector(sel);
+                if (!el) return;
+                el.value = val;
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            };
+            setOn('.m-type',      tpl.type);
+            setOn('.m-direction', tpl.direction);
+            setOn('.m-unit',      tpl.unit);
+            setOn('.m-name-en',   tpl.nameEn);
+            setOn('.m-name-ar',   tpl.nameAr);
+            if (targetVal) setOn('.m-applies', targetVal);
+            card.querySelectorAll('.dir-btn').forEach(b => b.classList.toggle('active', b.dataset.dir === tpl.direction));
+        }
+
+        // Picker state — which template the user just clicked.
+        let __qaPendingTpl = null;
+        function openTargetPicker(tpl, anchorBtn) {
+            __qaPendingTpl = tpl;
+            const procIds = (typeof csGetValues === 'function') ? csGetValues('processes') : [];
+            const svcIds  = (typeof csGetValues === 'function') ? csGetValues('services')  : [];
+            // Build list with labels pulled off the chip checkboxes
+            const items = [];
+            procIds.forEach(id => {
+                const c = document.querySelector('.cs-chk[data-csid="processes"][value="' + id + '"]');
+                items.push({ value: 'process:' + id, label: (isRtl ? 'عملية: ' : 'Process: ') + (c?.getAttribute('data-label') || id) });
+            });
+            svcIds.forEach(id => {
+                const c = document.querySelector('.cs-chk[data-csid="services"][value="' + id + '"]');
+                items.push({ value: 'service:' + id, label: (isRtl ? 'خدمة: ' : 'Service: ') + (c?.getAttribute('data-label') || id) });
+            });
+
+            const list = document.getElementById('qaPickerList');
+            const title = document.getElementById('qaPickerTitle');
+            title.textContent = (isRtl ? 'تطبيق على — ' : 'Apply to — ') + (isRtl ? tpl.nameAr : tpl.nameEn);
+            list.innerHTML = items.map(it =>
+                '<label><input type="checkbox" class="qa-pick-chk" value="' +
+                it.value.replace(/"/g, '&quot;') + '" checked /> <span>' +
+                it.label.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) +
+                '</span></label>'
+            ).join('');
+            const picker = document.getElementById('qaTargetPicker');
+            picker.classList.remove('hidden');
+            if (window.lucide) lucide.createIcons();
+        }
+        function closeTargetPicker() {
+            __qaPendingTpl = null;
+            document.getElementById('qaTargetPicker')?.classList.add('hidden');
+        }
+
+        document.querySelectorAll('.qa-tpl').forEach(btn => {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                const tpl = qaTemplates[this.dataset.tpl];
+                if (!tpl) return;
+                const procIds = (typeof csGetValues === 'function') ? csGetValues('processes') : [];
+                const svcIds  = (typeof csGetValues === 'function') ? csGetValues('services')  : [];
+                const totalScope = procIds.length + svcIds.length;
+                if (totalScope <= 1) {
+                    // 0 scope items → blank-applies card so the template still
+                    // works on a fresh wizard. 1 scope item → no point asking,
+                    // just create it pre-pointed.
+                    const onlyTarget = procIds.length === 1 ? 'process:' + procIds[0]
+                                     : svcIds.length === 1 ? 'service:' + svcIds[0]
+                                     : '';
+                    applyTemplateToTarget(tpl, onlyTarget);
+                    if (typeof updateStepChecklist === 'function') updateStepChecklist();
+                    return;
+                }
+                openTargetPicker(tpl, this);
+            });
+        });
+
+        document.getElementById('qaPickerClose')?.addEventListener('click', closeTargetPicker);
+        document.getElementById('qaPickerSelectAll')?.addEventListener('click', () => {
+            document.querySelectorAll('#qaPickerList .qa-pick-chk').forEach(c => { c.checked = true; });
+        });
+        document.getElementById('qaPickerSelectNone')?.addEventListener('click', () => {
+            document.querySelectorAll('#qaPickerList .qa-pick-chk').forEach(c => { c.checked = false; });
+        });
+        document.getElementById('qaPickerApply')?.addEventListener('click', () => {
+            if (!__qaPendingTpl) return closeTargetPicker();
+            const picked = Array.from(document.querySelectorAll('#qaPickerList .qa-pick-chk:checked')).map(c => c.value);
+            const tpl = __qaPendingTpl;
+            // 0 picked = create one blank-applies card so the template still
+            // lands somewhere. Otherwise one card per checked target.
+            const list = picked.length === 0 ? [''] : picked;
+            list.forEach(t => applyTemplateToTarget(tpl, t));
+            if (typeof updateStepChecklist === 'function') updateStepChecklist();
+            if (list.length > 1 && typeof setAutoSaveStatus === 'function') {
+                setAutoSaveStatus(isRtl ? 'تم إنشاء ' + list.length + ' مقاييس' : 'Created ' + list.length + ' measurements');
+                setTimeout(() => { try { setAutoSaveStatus(''); } catch(e) {} }, 2200);
+            }
+            closeTargetPicker();
+        });
+        // Click outside closes the picker
+        document.addEventListener('click', function (e) {
+            const picker = document.getElementById('qaTargetPicker');
+            if (!picker || picker.classList.contains('hidden')) return;
+            if (e.target.closest('#qaTargetPicker') || e.target.closest('.qa-tpl')) return;
+            closeTargetPicker();
+        });
+
+        // ─── Live KPI strip ────────────────────────────────────────────────
+        // Updates the chip counts under the wizard header on any form change.
+        // Adds a brief 'kpi-bump' class when a value changes so the user
+        // sees the feedback even if their eyes are on a different field.
+        function updateWizKpiStrip() {
+            const counts = {
+                processes:    (typeof csGetValues === 'function') ? csGetValues('processes').length : 0,
+                services:     (typeof csGetValues === 'function') ? csGetValues('services').length : 0,
+                measurements: document.querySelectorAll('#measurementRows .measurement-card').length,
+                team:         document.querySelectorAll('#teamRows .p-3').length,
+                actions:      document.querySelectorAll('#actionRows .p-3').length
+            };
+            Object.entries(counts).forEach(([key, val]) => {
+                const numEl = document.querySelector('[data-kpi-num="' + key + '"]');
+                const chipEl = document.querySelector('[data-kpi="' + key + '"]');
+                if (!numEl || !chipEl) return;
+                const prev = parseInt(numEl.textContent, 10) || 0;
+                if (prev !== val) {
+                    numEl.textContent = val;
+                    chipEl.classList.toggle('has-value', val > 0);
+                    chipEl.classList.add('kpi-bump');
+                    setTimeout(() => chipEl.classList.remove('kpi-bump'), 200);
+                }
+            });
+        }
+        document.addEventListener('input', updateWizKpiStrip);
+        document.addEventListener('change', updateWizKpiStrip);
+        // Initial paint after DOM ready (covers hydrate-from-draft too)
+        setTimeout(updateWizKpiStrip, 0);
+
+        // ─── Preview-before-submit modal ───────────────────────────────────
+        // Reads everything off the live form (running syncHiddenFields and
+        // syncTeamAndActionFields first so hidden values reflect current
+        // truth) and renders a read-only summary. User can print, edit
+        // (close), or confirm-and-submit.
+        function htmlEscape(s) {
+            return (s ?? '').toString().replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+        }
+        function buildPreviewHtml() {
+            try { syncHiddenFields(); } catch (e) {}
+            const t = (en, ar) => (isRtl ? ar : en);
+            const titleEn = document.querySelector('[name="TitleEn"]')?.value?.trim() || '';
+            const titleAr = document.querySelector('[name="TitleAr"]')?.value?.trim() || '';
+            const descEn  = document.querySelector('[name="DescriptionEn"]')?.value?.trim() || '';
+            const descAr  = document.querySelector('[name="DescriptionAr"]')?.value?.trim() || '';
+            const innovType = document.querySelector('[name="InnovationType"]')?.value || '';
+            const horizon   = document.querySelector('[name="Horizon"]')?.value || '';
+            const targetDate = document.querySelector('[name="TargetDate"]')?.value || '';
+            const impact = document.getElementById('ImpactScore')?.value || '—';
+            const effort = document.getElementById('EffortScore')?.value || '—';
+            const total  = document.getElementById('totalScore')?.textContent?.trim() || '—';
+
+            // Scope chips
+            const procLabels = Array.from(document.querySelectorAll('.cs-chk[data-csid="processes"]:checked'))
+                .map(c => c.getAttribute('data-label') || c.value);
+            const svcLabels  = Array.from(document.querySelectorAll('.cs-chk[data-csid="services"]:checked'))
+                .map(c => c.getAttribute('data-label') || c.value);
+
+            // Measurements
+            const mCards = Array.from(document.querySelectorAll('#measurementRows .measurement-card'));
+            const measurementsHtml = mCards.length === 0
+                ? '<p class="empty">' + t('No measurements added.', 'لم تتم إضافة مقاييس.') + '</p>'
+                : '<table><thead><tr>' +
+                    '<th>' + t('Name', 'الاسم') + '</th>' +
+                    '<th>' + t('Type', 'النوع') + '</th>' +
+                    '<th>' + t('Unit', 'الوحدة') + '</th>' +
+                    '<th>' + t('Now', 'الحالي') + '</th>' +
+                    '<th>' + t('Target', 'الهدف') + '</th>' +
+                  '</tr></thead><tbody>' +
+                  mCards.map(c => {
+                      const name = c.querySelector('.m-name-en')?.value || c.querySelector('.m-name-ar')?.value || '';
+                      const type = c.querySelector('.m-type')?.value || '';
+                      const unit = c.querySelector('.m-unit')?.value || '';
+                      const cur  = c.querySelector('.m-current')?.value || '';
+                      const tgt  = c.querySelector('.m-target')?.value || '';
+                      return '<tr>' +
+                          '<td>' + htmlEscape(name) + '</td>' +
+                          '<td>' + htmlEscape(type) + '</td>' +
+                          '<td>' + htmlEscape(unit) + '</td>' +
+                          '<td>' + htmlEscape(cur) + '</td>' +
+                          '<td>' + htmlEscape(tgt) + '</td>' +
+                      '</tr>';
+                  }).join('') +
+                  '</tbody></table>';
+
+            // Team
+            const teamRows = Array.from(document.querySelectorAll('#teamRows .p-3'));
+            const teamHtml = teamRows.length === 0
+                ? '<p class="empty">' + t('No team members assigned.', 'لم يتم تعيين أعضاء الفريق.') + '</p>'
+                : '<table><thead><tr>' +
+                    '<th>' + t('Member', 'العضو') + '</th>' +
+                    '<th>' + t('Role', 'الدور') + '</th>' +
+                    '<th>' + t('Notes', 'ملاحظات') + '</th>' +
+                  '</tr></thead><tbody>' +
+                  teamRows.map(r => {
+                      const userSel = r.querySelector('.tm-user');
+                      const roleSel = r.querySelector('.tm-role');
+                      const notes = r.querySelector('.tm-notes')?.value || '';
+                      const userName = userSel?.options[userSel.selectedIndex]?.text || '';
+                      const roleName = roleSel?.options[roleSel.selectedIndex]?.text || '';
+                      return '<tr><td>' + htmlEscape(userName) + '</td><td>' + htmlEscape(roleName) + '</td><td>' + htmlEscape(notes) + '</td></tr>';
+                  }).join('') +
+                  '</tbody></table>';
+
+            // Actions
+            const actionRows = Array.from(document.querySelectorAll('#actionRows .p-3'));
+            const actionHtml = actionRows.length === 0
+                ? '<p class="empty">' + t('No action items.', 'لا توجد إجراءات.') + '</p>'
+                : '<table><thead><tr>' +
+                    '<th>' + t('Action', 'الإجراء') + '</th>' +
+                    '<th>' + t('Assignee', 'المسؤول') + '</th>' +
+                    '<th>' + t('Due', 'الاستحقاق') + '</th>' +
+                  '</tr></thead><tbody>' +
+                  actionRows.map(r => {
+                      const name = r.querySelector('.ac-name')?.value || r.querySelector('.ac-name-ar')?.value || '';
+                      const assignSel = r.querySelector('.ac-assignee');
+                      const assignee = assignSel?.options[assignSel.selectedIndex]?.text || '';
+                      const due = r.querySelector('.ac-due')?.value || '';
+                      return '<tr><td>' + htmlEscape(name) + '</td><td>' + htmlEscape(assignee) + '</td><td>' + htmlEscape(due) + '</td></tr>';
+                  }).join('') +
+                  '</tbody></table>';
+
+            return '' +
+                '<h4>' + t('Title', 'العنوان') + '</h4>' +
+                '<p><strong>EN:</strong> ' + (titleEn ? htmlEscape(titleEn) : '<span class="empty">' + t('(empty)', '(فارغ)') + '</span>') + '</p>' +
+                '<p><strong>AR:</strong> ' + (titleAr ? htmlEscape(titleAr) : '<span class="empty">' + t('(empty)', '(فارغ)') + '</span>') + '</p>' +
+                (descEn || descAr ? '<h4>' + t('Description', 'الوصف') + '</h4>' +
+                    (descEn ? '<p>' + htmlEscape(descEn) + '</p>' : '') +
+                    (descAr ? '<p dir="rtl">' + htmlEscape(descAr) + '</p>' : '') : '') +
+                '<h4>' + t('Scope', 'النطاق') + '</h4>' +
+                (procLabels.length === 0 && svcLabels.length === 0
+                    ? '<p class="empty">' + t('No process or service selected.', 'لم يتم اختيار عملية أو خدمة.') + '</p>'
+                    : '<p>' +
+                        procLabels.map(l => '<span class="pv-pill">' + t('Process: ', 'عملية: ') + htmlEscape(l) + '</span>').join('') +
+                        svcLabels.map(l => '<span class="pv-pill">' + t('Service: ', 'خدمة: ') + htmlEscape(l) + '</span>').join('') +
+                    '</p>') +
+                (innovType || horizon || targetDate
+                    ? '<h4>' + t('Classification', 'التصنيف') + '</h4>' +
+                      '<p>' +
+                          (innovType  ? '<span class="pv-pill">' + t('Type: ', 'النوع: ') + htmlEscape(innovType) + '</span>' : '') +
+                          (horizon    ? '<span class="pv-pill">' + t('Horizon: ', 'الأفق: ') + htmlEscape(horizon) + '</span>' : '') +
+                          (targetDate ? '<span class="pv-pill">' + t('Target date: ', 'تاريخ الهدف: ') + htmlEscape(targetDate) + '</span>' : '') +
+                      '</p>'
+                    : '') +
+                '<h4>' + t('Measurements', 'المقاييس') + '</h4>' +
+                measurementsHtml +
+                '<h4>' + t('Scoring', 'التقييم') + '</h4>' +
+                '<p>' +
+                    '<span class="pv-pill">' + t('Impact: ', 'الأثر: ') + htmlEscape(impact) + '</span>' +
+                    '<span class="pv-pill">' + t('Effort: ', 'الجهد: ') + htmlEscape(effort) + '</span>' +
+                    '<span class="pv-pill">' + t('Total: ', 'الإجمالي: ') + htmlEscape(total) + '</span>' +
+                '</p>' +
+                '<h4>' + t('Team', 'الفريق') + '</h4>' + teamHtml +
+                '<h4>' + t('Action Plan', 'خطة العمل') + '</h4>' + actionHtml;
+        }
+        function openWizPreview() {
+            const body = document.getElementById('wizPreviewBody');
+            if (body) body.innerHTML = buildPreviewHtml();
+            document.getElementById('wizPreviewModal')?.classList.remove('hidden');
+            if (window.lucide) lucide.createIcons();
+        }
+        function closeWizPreview() {
+            document.getElementById('wizPreviewModal')?.classList.add('hidden');
+        }
+        document.getElementById('previewBtn')?.addEventListener('click', openWizPreview);
+        document.getElementById('wizPreviewClose')?.addEventListener('click', closeWizPreview);
+        document.getElementById('wizPreviewEdit')?.addEventListener('click', closeWizPreview);
+        document.getElementById('wizPreviewPrint')?.addEventListener('click', () => window.print());
+        document.getElementById('wizPreviewConfirm')?.addEventListener('click', () => {
+            closeWizPreview();
+            document.getElementById('submitBtn')?.click();
+        });
+        // Esc to close
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && !document.getElementById('wizPreviewModal')?.classList.contains('hidden')) {
+                closeWizPreview();
+            }
+        });
+
+        // ─── Inline step checklist (Option F) ──────────────────────────────
+        // Computes the missing-fields list for steps 1 + 2 and updates the
+        // .wiz-checklist banner in real time. Replaces the previous "click
+        // Next, hit a wall, read the error" loop with continuous guidance.
+        function updateStepChecklist() {
+            const t = (en, ar) => (isRtl ? ar : en);
+
+            // Step 1: Scope (process or service) + bilingual title
+            (function step1() {
+                const el = document.querySelector('.wiz-checklist[data-step-checklist="1"]');
+                if (!el) return;
+                const missing = [];
+                const processIds = (typeof csGetValues === 'function') ? csGetValues('processes') : [];
+                const serviceIds = (typeof csGetValues === 'function') ? csGetValues('services') : [];
+                const titleEn = document.querySelector('[name="TitleEn"]')?.value?.trim();
+                const titleAr = document.querySelector('[name="TitleAr"]')?.value?.trim();
+                if (!processIds.length && !serviceIds.length) missing.push(t('a Process or a Service', 'عملية أو خدمة'));
+                if (!titleEn) missing.push(t('English title', 'العنوان بالإنجليزية'));
+                if (!titleAr) missing.push(t('Arabic title', 'العنوان بالعربية'));
+                renderChecklist(el, missing);
+            })();
+
+            // Step 2: at least one measurement card with all required fields
+            (function step2() {
+                const el = document.querySelector('.wiz-checklist[data-step-checklist="2"]');
+                if (!el) return;
+                const cards = document.querySelectorAll('#measurementRows .measurement-card');
+                const missing = [];
+                if (!cards.length) {
+                    missing.push(t('add at least one measurement', 'أضف مقياسًا واحدًا على الأقل'));
+                } else {
+                    let incomplete = 0;
+                    cards.forEach(c => {
+                        const nameEn = c.querySelector('.m-name-en')?.value?.trim();
+                        const nameAr = c.querySelector('.m-name-ar')?.value?.trim();
+                        const unit   = c.querySelector('.m-unit')?.value?.trim();
+                        const cur    = c.querySelector('.m-current')?.value?.trim();
+                        const tgt    = c.querySelector('.m-target')?.value?.trim();
+                        const applies= c.querySelector('.m-applies')?.value?.trim();
+                        if (!unit || (!nameEn && !nameAr) || !applies || cur === '' || tgt === '') incomplete++;
+                    });
+                    if (incomplete > 0) {
+                        missing.push(t(
+                            incomplete + (incomplete === 1 ? ' measurement is missing required fields' : ' measurements are missing required fields'),
+                            incomplete + (incomplete === 1 ? ' مقياس ينقصه حقول إلزامية' : ' مقاييس تنقصها حقول إلزامية')
+                        ));
+                    }
+                }
+                renderChecklist(el, missing);
+            })();
+        }
+
+        function renderChecklist(el, missing) {
+            const t = (en, ar) => (isRtl ? ar : en);
+            const txt = el.querySelector('.wiz-checklist-text');
+            const icon = el.querySelector('[data-lucide]');
+            if (missing.length === 0) {
+                el.dataset.state = 'ok';
+                if (icon) { icon.setAttribute('data-lucide', 'check-circle-2'); }
+                if (txt) txt.textContent = t('Ready to continue.', 'جاهز للمتابعة.');
+            } else {
+                el.dataset.state = 'missing';
+                if (icon) { icon.setAttribute('data-lucide', 'circle-dashed'); }
+                if (txt) txt.textContent = t('Still need: ', 'ما زال يلزم: ') + missing.join(' · ');
+            }
+            if (window.lucide) lucide.createIcons();
+        }
+
+        // Live wiring: any change in the wizard form updates the checklist.
+        // Also recompute on add/remove of measurement cards.
+        document.addEventListener('input', updateStepChecklist);
+        document.addEventListener('change', updateStepChecklist);
+        const __mRows = document.getElementById('measurementRows');
+        // childList only — subtree:true caused a feedback loop because
+        // lucide.createIcons() inside addMeasurementRow() swaps <i> tags
+        // for <svg> nested in the new card, fires the observer, which
+        // re-runs renderChecklist + lucide.createIcons → freeze.
+        if (__mRows) new MutationObserver(updateStepChecklist).observe(__mRows, { childList: true });
+        // First paint after DOM ready
+        setTimeout(updateStepChecklist, 0);
+
+        // ─── Save as Draft + Resume ───────────────────────────────────────
+        // Per-user snapshot of the wizard form. Stored as opaque JSON on the
+        // server. Title is best-effort from TitleEn so the drafts list shows
+        // something more useful than a UUID.
+        function getWizardSnapshot() {
+            // Push live measurement / chip / score state into the hidden
+            // fields first so FormData captures the current truth.
+            try { syncHiddenFields(); } catch (e) { /* may throw if step not yet rendered — payload is still useful */ }
+            const data = {};
+            const form = document.getElementById('wizardForm');
+            new FormData(form).forEach((v, k) => {
+                if (k === '__RequestVerificationToken') return;
+                if (k === 'DraftId') return;
+                if (k in data) {
+                    if (Array.isArray(data[k])) data[k].push(v);
+                    else data[k] = [data[k], v];
+                } else data[k] = v;
+            });
+            // Also capture the chip selections explicitly (they're already
+            // mirrored to SelectedProcessIds[] hidden inputs by addCSHidden,
+            // but only on submit — store directly so resume is reliable).
+            data.__chips = {
+                processes: csGetValues('processes'),
+                services: csGetValues('services')
+            };
+            return data;
+        }
+
+        // Dirty / in-flight flags so the auto-save timer doesn't double-post
+        // and so we don't save an untouched form on first load.
+        let __wizardDirty = false;
+        let __saveInFlight = false;
+
+        function setAutoSaveStatus(text) {
+            const el = document.getElementById('autoSaveStatus');
+            if (el) el.textContent = text || '';
+        }
+
+        function fmtClock(d) {
+            try { return d.toLocaleTimeString(isRtl ? 'ar-AE' : 'en-GB', { hour: '2-digit', minute: '2-digit' }); }
+            catch { return d.toISOString().substring(11,16); }
+        }
+
+        async function saveDraftCall(opts) {
+            opts = opts || {};
+            const isAuto = opts.auto === true;
+            if (__saveInFlight) return;
+            const btn = document.getElementById('saveDraftBtn');
+            const lbl = document.getElementById('saveDraftLabel');
+            const oldText = lbl.textContent;
+            __saveInFlight = true;
+            if (!isAuto) { btn.disabled = true; lbl.textContent = (isRtl ? 'جاري الحفظ…' : 'Saving…'); }
+            else { setAutoSaveStatus(isRtl ? 'جاري الحفظ تلقائيًا…' : 'Auto-saving…'); }
+            try {
+                const payload = getWizardSnapshot();
+                const titleEn = document.querySelector('[name="TitleEn"]')?.value?.trim();
+                const titleAr = document.querySelector('[name="TitleAr"]')?.value?.trim();
+                const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+                const body = {
+                    Id: document.getElementById('hdnDraftId').value || null,
+                    Title: titleEn || titleAr || '',
+                    PayloadJson: JSON.stringify(payload)
+                };
+                const res = await fetch('@Url.Action("SaveDraft", "Improvements")', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token || '' },
+                    body: JSON.stringify(body),
+                    credentials: 'same-origin',
+                    redirect: 'manual'
+                });
+                // Cookie-auth + ajax pitfall: an expired session redirects to
+                // /Account/Login which returns 200 OK with HTML. Detect that
+                // *before* trying to parse JSON so the user gets a useful
+                // error instead of "Save failed".
+                if (res.type === 'opaqueredirect' || res.status === 0 || res.status === 401 || res.status === 403) {
+                    throw new Error('AUTH');
+                }
+                const ct = res.headers.get('content-type') || '';
+                if (!res.ok || !ct.includes('application/json')) {
+                    if (ct.includes('text/html')) throw new Error('AUTH');
+                    throw new Error('HTTP ' + res.status);
+                }
+                const j = await res.json();
+                document.getElementById('hdnDraftId').value = j.id;
+                __wizardDirty = false;
+                const stamp = fmtClock(new Date());
+                setAutoSaveStatus((isRtl ? 'تم الحفظ ' : 'Saved ') + stamp);
+                if (!isAuto) {
+                    lbl.textContent = (isRtl ? 'تم الحفظ ✓' : 'Saved ✓');
+                    setTimeout(() => { lbl.textContent = oldText; btn.disabled = false; }, 1800);
+                }
+            } catch (e) {
+                const isAuthLost = (e && e.message === 'AUTH');
+                const failMsg = isAuthLost
+                    ? (isRtl ? 'انتهت الجلسة — أعد تحميل الصفحة' : 'Session expired — please reload')
+                    : (isRtl ? 'فشل الحفظ' : 'Save failed');
+                setAutoSaveStatus(failMsg);
+                if (!isAuto) {
+                    lbl.textContent = failMsg;
+                    setTimeout(() => { lbl.textContent = oldText; btn.disabled = false; }, 3500);
+                }
+            } finally {
+                __saveInFlight = false;
+            }
+        }
+        document.getElementById('saveDraftBtn')?.addEventListener('click', () => saveDraftCall());
+
+        // Dirty tracking — any input/change/click inside the wizard form
+        // marks the snapshot dirty. Auto-save reads this flag.
+        const __wizForm = document.getElementById('wizardForm');
+        if (__wizForm) {
+            const markDirty = () => { __wizardDirty = true; };
+            __wizForm.addEventListener('input',  markDirty);
+            __wizForm.addEventListener('change', markDirty);
+        }
+
+        // Auto-save loop — fires every 30s. Only posts when:
+        //   1. The form has been touched since the last save (dirty), AND
+        //   2. There's enough content to be worth keeping (title or any
+        //      measurement card), AND
+        //   3. No save is currently in flight.
+        // First fire is at t=30s, not on load — so a casual visit doesn't
+        // create a phantom draft.
+        setInterval(function autoSaveTick() {
+            if (!__wizardDirty || __saveInFlight) return;
+            const titleEn = document.querySelector('[name="TitleEn"]')?.value?.trim();
+            const titleAr = document.querySelector('[name="TitleAr"]')?.value?.trim();
+            const hasMeasurements = document.querySelectorAll('#measurementRows .measurement-card').length > 0;
+            if (!titleEn && !titleAr && !hasMeasurements) return;
+            saveDraftCall({ auto: true });
+        }, 30000);
+
+        // Hydrate from a resumed draft. Server already set ResumeDraftId via
+        // ?draftId=X; we fetch the payload and replay it into the form.
+        async function hydrateFromDraft(draftId) {
+            try {
+                const res = await fetch('@Url.Action("LoadDraft", "Improvements")?id=' + encodeURIComponent(draftId));
+                if (!res.ok) return;
+                const j = await res.json();
+                const payload = JSON.parse(j.payloadJson);
+                const form = document.getElementById('wizardForm');
+
+                // Phase 1 — restore scalar form values by name
+                Object.keys(payload).forEach(k => {
+                    if (k === '__chips') return;
+                    const v = payload[k];
+                    const els = form.querySelectorAll('[name="' + k + '"]');
+                    if (els.length === 0) return;
+                    els.forEach(el => {
+                        if (el.type === 'checkbox') {
+                            // pipe-separated arrays for chips handled below
+                            el.checked = (v === 'on' || v === 'true' || v === el.value);
+                        } else if (el.type === 'radio') {
+                            el.checked = (el.value === v);
+                        } else {
+                            el.value = Array.isArray(v) ? v.join(',') : (v ?? '');
+                        }
+                    });
+                });
+
+                // Phase 2 — restore chip selections (processes / services)
+                if (payload.__chips) {
+                    (payload.__chips.processes || []).forEach(id => {
+                        const c = document.querySelector('.cs-chk[data-csid="processes"][value="' + id + '"]');
+                        if (c) { c.checked = true; }
+                    });
+                    if (typeof csUpdate === 'function') csUpdate('processes');
+                    (payload.__chips.services || []).forEach(id => {
+                        const c = document.querySelector('.cs-chk[data-csid="services"][value="' + id + '"]');
+                        if (c) { c.checked = true; }
+                    });
+                    if (typeof csUpdate === 'function') csUpdate('services');
+                }
+
+                // Phase 3 — re-build measurement cards from the pipe-separated
+                // hidden fields. Phase 1 set the hidden values; we now rebuild
+                // visible cards and copy values back into them.
+                // Separators here MUST match syncHiddenFields() in the
+                // same file. Using the wrong separator collapses an entire
+                // pipe-joined string into applies[0] etc., and every card
+                // beyond the first hydrates with empty per-card values.
+                const names    = (payload.MeasurementNames    || '').split('|');
+                const namesAr  = (payload.MeasurementNamesAr  || '').split('|');
+                const types    = (payload.MeasurementTypes    || '').split(',');
+                const units    = (payload.MeasurementUnits    || '').split('|');
+                const targets  = (payload.MeasurementTargets  || '').split(',');
+                const asIs     = (payload.MeasurementAsIs     || '').split(',');
+                const weights  = (payload.MeasurementWeights  || '').split(',');
+                const applies  = (payload.MeasurementAppliesTo|| '').split('|');
+                const periods  = (payload.MeasurementPeriods  || '').split('|');
+                const methods  = (payload.MeasurementMethods  || '').split('|');
+                const tobe     = (payload.MeasurementToBe     || '').split(',');
+                const bpmn     = (payload.MeasurementBpmn     || '').split('|');
+                const dirs     = (payload.MeasurementDirections || '').split('|');
+                const kpiIds   = (payload.MeasurementKpiDefinitionIds || '').split('|');
+
+                const count = Math.max(names.length, types.length);
+                const hasAnyMeasurement = count > 0 && (names[0] || types[0]);
+                if (hasAnyMeasurement) {
+                    document.getElementById('measurementRows').innerHTML = '';
+                    measurementCounter = 0;
+                    for (let i = 0; i < count; i++) {
+                        addMeasurementRow();
+                    }
+                    // Now populate each card's class-named inputs
+                    document.querySelectorAll('#measurementRows .measurement-card').forEach((card, i) => {
+                        const set = (sel, val) => { const el = card.querySelector(sel); if (el && val !== undefined) el.value = val; };
+                        set('.m-name-en',  names[i]);
+                        set('.m-name-ar',  namesAr[i]);
+                        set('.m-type',     types[i]);
+                        set('.m-unit',     units[i]);
+                        set('.m-target',   targets[i]);
+                        set('.m-current',  asIs[i]);
+                        set('.m-weight',   weights[i]);
+                        set('.m-applies', applies[i]);
+                        set('.m-period',   periods[i]);
+                        set('.m-method',   methods[i]);
+                        set('.m-tobe',     tobe[i]);
+                        set('.m-bpmn',     bpmn[i]);
+                        set('.m-direction', dirs[i] || 'HigherBetter');
+                        set('.m-kpi-definition-id', kpiIds[i]);
+                        // Restore direction button visual state
+                        const dirVal = dirs[i] || 'HigherBetter';
+                        card.querySelectorAll('.dir-btn').forEach(b => {
+                            b.classList.toggle('active', b.dataset.dir === dirVal);
+                        });
+                    });
+                    if (typeof updateWeightTotal === 'function') updateWeightTotal();
+                }
+
+                lucide.createIcons();
+                // Hydration triggers many input events — clear dirty so the
+                // 30s auto-save doesn't immediately re-post the same payload.
+                setTimeout(() => { __wizardDirty = false; setAutoSaveStatus(isRtl ? 'تم استئناف المسودة' : 'Draft resumed'); }, 0);
+            } catch (e) {
+                console.warn('Draft hydration failed:', e);
+            }
+        }
+
+        const __resumeDraftId = '@(ViewBag.ResumeDraftId ?? "")';
+        if (__resumeDraftId) {
+            // Defer until step-1 fields exist
+            setTimeout(() => hydrateFromDraft(__resumeDraftId), 50);
+        }
+
+        // Keyboard shortcuts — power-user accelerators.
+        //   Ctrl/Cmd + S     → save draft (without leaving the page)
+        //   Ctrl/Cmd + Enter → advance to next step (or submit on last step)
+        //   Ctrl/Cmd + ←     → previous step (Ctrl + → in RTL)
+        //   Ctrl/Cmd + →     → next step (Ctrl + ← in RTL)
+        // RTL flips arrows because the user's mental model of "forward" maps
+        // to the rightward arrow in LTR and leftward in RTL.
+        document.addEventListener('keydown', function (e) {
+            const meta = e.ctrlKey || e.metaKey;
+            if (!meta) return;
+            // Ignore inside contenteditable / textareas to keep native UX
+            if (e.target.tagName === 'TEXTAREA' && e.key === 'Enter' && !e.shiftKey) {
+                return;
+            }
+            if (e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                saveDraftCall();
+                return;
+            }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (currentStep === totalSteps) {
+                    document.getElementById('submitBtn')?.click();
+                } else {
+                    document.getElementById('nextBtn')?.click();
+                }
+                return;
+            }
+            const fwdKey = isRtl ? 'ArrowLeft'  : 'ArrowRight';
+            const backKey= isRtl ? 'ArrowRight' : 'ArrowLeft';
+            if (e.key === fwdKey) {
+                e.preventDefault();
+                document.getElementById('nextBtn')?.click();
+            } else if (e.key === backKey) {
+                e.preventDefault();
+                document.getElementById('prevBtn')?.click();
+            }
+        });
+
+        // Browser-level "you have unsaved changes" prompt — fires when the
+        // user closes the tab, navigates away, or hits Back. Skipped when
+        // the form is being submitted (the actual create flow) or when the
+        // user explicitly cancels via the in-page wizardCancelBtn handler.
+        let __submitting = false;
+        document.getElementById('wizardForm')?.addEventListener('submit', () => { __submitting = true; });
+        window.addEventListener('beforeunload', function (e) {
+            if (__submitting) return;
+            if (window.__wizardSubmitting) return;  // user already confirmed Cancel
+            if (!__wizardDirty) return;
+            // Modern browsers ignore the custom string but require these two
+            // calls to surface their built-in confirmation dialog.
+            e.preventDefault();
+            e.returnValue = '';
+        });
+
+        showStep(1);
+        lucide.createIcons();
+    </script>
+    <!-- BPMN Modeler library (full editor) -->
+    <link rel="stylesheet" href="~/lib/bpmn-js/diagram-js.css" asp-append-version="true">
+    <link rel="stylesheet" href="~/lib/bpmn-js/bpmn-js.css" asp-append-version="true">
+    <link rel="stylesheet" href="~/lib/bpmn-js/bpmn-embedded.css" asp-append-version="true">
+    <script src="~/lib/bpmn-js/bpmn-modeler.production.min.js" asp-append-version="true"></script>
+    <style>.bjs-powered-by { display: none !important; } #bpmnDrawCanvas .djs-palette { top: 10px !important; } </style>
+}
+
+<style>
+    /* ── Outer shell ───────────────────────────────────────── */
+    .wiz-shell {
+        min-height: calc(100vh - 60px);
+        padding: 1rem;
+        background: #f3f5f8;
+    }
+    .wiz-pageheader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 0.55rem 1rem;
+        margin-bottom: 1rem;
+        min-height: 48px;
+    }
+    .wiz-pageheader-title {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-width: 0;
+    }
+    .wiz-pageheader-title h1 {
+        font-size: var(--fs-base);
+        font-weight: 600;
+        color: #1f2937;
+        margin: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .wiz-pageheader-meta {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex-shrink: 0;
+    }
+    .wiz-step-counter {
+        font-size: var(--fs-xs);
+        font-weight: 600;
+        color: #005B99;
+        white-space: nowrap;
+    }
+    .wiz-cancel {
+        font-size: var(--fs-xs);
+        color: #6b7280;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+    .wiz-cancel:hover { color: #1f2937; text-decoration: none; }
+
+    /* ── Body grid (rail + main) ────────────────────────────── */
+    .wiz-body {
+        display: grid;
+        grid-template-columns: 260px 1fr;
+        gap: 1rem;
+        align-items: start;
+    }
+    @@media (max-width: 991px) {
+        .wiz-body { grid-template-columns: 1fr; }
+    }
+
+    /* ── Left vertical-stepper rail ─────────────────────────── */
+    .wiz-rail {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 0.85rem 0.5rem;
+        position: sticky;
+        top: 1rem;
+    }
+    @@media (max-width: 991px) {
+        .wiz-rail { position: static; }
+    }
+    .wiz-stepper {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        position: relative;
+    }
+    .wiz-stepper::before {
+        content: '';
+        position: absolute;
+        left: 23px;
+        top: 18px;
+        bottom: 18px;
+        width: 2px;
+        background: #e5e7eb;
+        z-index: 0;
+    }
+    .wiz-rail-rtl .wiz-stepper::before {
+        left: auto;
+        right: 23px;
+    }
+    .wizard-step {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.65rem;
+        padding: 0.45rem 0.5rem;
+        border-radius: 6px;
+        position: relative;
+        z-index: 1;
+        text-align: start;
+        transition: background 0.15s;
+    }
+    .wizard-step + .wizard-step {
+        margin-top: 0.15rem;
+    }
+    .wizard-step.cursor-pointer:hover {
+        background: #f3f5f8;
+    }
+    .step-circle {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: #e5e7eb;
+        color: #6b7280;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: var(--fs-sm);
+        flex-shrink: 0;
+        margin: 0;
+        border: 2px solid #fff;
+        box-shadow: 0 0 0 1px #e5e7eb;
+        transition: all 0.2s;
+    }
+    .step-meta {
+        flex: 1;
+        min-width: 0;
+        padding-top: 2px;
+    }
+    .step-label {
+        font-size: var(--fs-sm);
+        color: #4b5563;
+        font-weight: 500;
+        line-height: 1.25;
+        white-space: normal;
+    }
+    .step-subtitle {
+        font-size: var(--fs-xs);
+        color: #9ca3af;
+        line-height: 1.25;
+        margin-top: 2px;
+        white-space: normal;
+    }
+    .wizard-step.active {
+        background: #f0f7ff;
+    }
+    .wizard-step.active .step-circle {
+        background: #005B99;
+        color: #fff;
+        box-shadow: 0 0 0 3px rgba(0, 91, 153, 0.2);
+    }
+    .wizard-step.active .step-label {
+        color: #005B99;
+        font-weight: 600;
+    }
+    .wizard-step.completed .step-circle {
+        background: #10b981;
+        color: #fff;
+        font-size: 0;
+        position: relative;
+        box-shadow: 0 0 0 1px #10b981;
+    }
+    .wizard-step.completed .step-circle::before {
+        content: '✓';
+        font-size: var(--fs-sm);
+        font-weight: 700;
+        color: #fff;
+    }
+    .wizard-step.completed .step-label {
+        color: #10b981;
+    }
+
+    /* ── Main column ────────────────────────────────────────── */
+    .wiz-main {
+        min-width: 0;
+        padding-bottom: 0;
+    }
+
+    /* ── Sticky bottom action bar ───────────────────────────── */
+    .wiz-actionbar {
+        position: sticky;
+        bottom: 0;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.04);
+        padding: 0.55rem 0.85rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 1rem;
+        z-index: 10;
+    }
+    .wiz-actionbar-spacer { flex: 1; }
+    .wiz-btn-prev {
+        background: transparent;
+        border: 1px solid #d1d5db;
+        color: #4b5563;
+        font-size: var(--fs-sm);
+        padding: 0.35rem 0.75rem;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        cursor: pointer;
+    }
+    .wiz-btn-prev:hover:not(:disabled) {
+        background: #f3f5f8;
+        color: #1f2937;
+    }
+    .wiz-btn-prev:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    /* ── Field-level validation highlight ───────────────────── */
+    .wizard-invalid,
+    .wizard-invalid .cs-trigger {
+        border-color: #dc2626 !important;
+        box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15) !important;
+        animation: wizardShake 0.4s ease-in-out;
+    }
+    @@keyframes wizardShake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-4px); }
+        75% { transform: translateX(4px); }
+    }
+
+    /* Score sliders */
+    .score-slider-input {
+        accent-color: #005B99;
+        width: 100%;
+        cursor: pointer;
+    }
+    .score-badge {
+        transition: background 0.2s;
+    }
+
+    /* Measurement card section dividers */
+    .measurement-card details > summary {
+        list-style: none;
+    }
+    .measurement-card details > summary::-webkit-details-marker {
+        display: none;
+    }
+    .measurement-card details > summary::after {
+        content: '+';
+        float: inline-end;
+        font-weight: bold;
+    }
+    .measurement-card details[open] > summary::after {
+        content: '−';
+    }
+
+    /* Step 3 tabs — pill-style strip on the section bottom border. */
+    .t3-tabs { border-bottom-color: #e5e7eb; }
+    .t3-tab {
+        background: transparent;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        padding: .45rem .85rem;
+        margin-bottom: -1px;
+        color: #6b7280;
+        font-size: var(--fs-sm);
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        cursor: pointer;
+        transition: color .15s ease, border-color .15s ease;
+    }
+    .t3-tab:hover { color: #005B99; }
+    .t3-tab.active {
+        color: #005B99;
+        border-bottom-color: #005B99;
+    }
+    .t3-count {
+        display: inline-block;
+        background: #e5e7eb;
+        color: #374151;
+        font-size: var(--fs-xs);
+        font-weight: 700;
+        line-height: 1;
+        padding: .15rem .4rem;
+        border-radius: 999px;
+        min-width: 18px;
+        text-align: center;
+    }
+    .t3-tab.active .t3-count { background: #005B99; color: #fff; }
+
+    /* Inline step-completion checklist — sits at the top of each macro
+       step, updates live as the user types. Subtle but always-visible
+       guidance that replaces the need to bounce off Next-button errors. */
+    .wiz-checklist {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        padding: .5rem .75rem;
+        margin-bottom: .85rem;
+        border-radius: 6px;
+        font-size: var(--fs-sm);
+        line-height: 1.35;
+        transition: background-color .2s ease, border-color .2s ease, color .2s ease;
+    }
+    .wiz-checklist[data-state="missing"] {
+        background: #fefce8;
+        border: 1px solid #fde047;
+        color: #854d0e;
+    }
+    .wiz-checklist[data-state="ok"] {
+        background: #f0fdf4;
+        border: 1px solid #86efac;
+        color: #166534;
+    }
+    .wiz-checklist svg { flex-shrink: 0; }
+
+    /* Live KPI strip — sits under the page header. Each chip pulses
+       briefly when its count changes so the user catches the feedback. */
+    .wiz-kpi-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .5rem;
+        padding: .5rem .85rem;
+        background: #f8fafc;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .wiz-kpi {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        padding: .25rem .6rem;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 999px;
+        font-size: var(--fs-xs);
+        color: #64748b;
+        transition: background-color .25s ease, color .25s ease, border-color .25s ease;
+    }
+    .wiz-kpi-num {
+        font-weight: 700;
+        color: #0f172a;
+        min-width: 12px;
+        text-align: center;
+    }
+    /* Once a chip has any count > 0, promote to brand colour */
+    .wiz-kpi.has-value {
+        background: #eff6ff;
+        border-color: #bfdbfe;
+        color: #1e40af;
+    }
+    .wiz-kpi.has-value .wiz-kpi-num { color: #005B99; }
+    /* Brief pulse on count change */
+    .wiz-kpi.kpi-bump { transform: scale(1.06); transition: transform .15s ease-out; }
+
+    /* Quick-add target picker — popover anchored above the template strip
+       (qaTemplates sits at the bottom of step 2, so opening downward would
+       push the picker off the section). */
+    .qa-picker {
+        position: absolute;
+        bottom: 100%;
+        inset-inline-start: 0;
+        margin-bottom: .35rem;
+        min-width: 320px;
+        max-width: 480px;
+        background: #fff;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        box-shadow: 0 10px 25px -5px rgba(0,0,0,.15);
+        z-index: 50;
+        overflow: hidden;
+    }
+    .qa-picker.hidden { display: none; }
+    .qa-picker-header {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        padding: .55rem .75rem;
+        background: #f8fafc;
+        border-bottom: 1px solid #e5e7eb;
+        font-size: var(--fs-sm);
+        color: #1e3a8a;
+    }
+    .qa-picker-body {
+        padding: .65rem .75rem;
+        max-height: 280px;
+        overflow-y: auto;
+    }
+    .qa-picker-body label {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        padding: .25rem .35rem;
+        border-radius: 4px;
+        font-size: var(--fs-sm);
+        cursor: pointer;
+    }
+    .qa-picker-body label:hover { background: #f1f5f9; }
+    .qa-picker-footer {
+        display: flex;
+        align-items: center;
+        gap: .35rem;
+        padding: .5rem .75rem;
+        background: #f8fafc;
+        border-top: 1px solid #e5e7eb;
+    }
+    .qa-picker-footer .btn-link { font-size: var(--fs-xs); padding: 0 .25rem; }
+
+    /* Preview-before-submit modal */
+    .wiz-preview-overlay {
+        position: fixed; inset: 0; z-index: 1090;
+        background: rgba(15,23,42,.55);
+        display: flex; align-items: center; justify-content: center;
+        padding: 1.5rem;
+    }
+    .wiz-preview-overlay.hidden { display: none; }
+    .wiz-preview-card {
+        background: #fff; border-radius: 10px;
+        max-width: 920px; width: 100%; max-height: 90vh;
+        display: flex; flex-direction: column;
+        box-shadow: 0 25px 50px -12px rgba(0,0,0,.25);
+    }
+    .wiz-preview-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 1rem 1.25rem; border-bottom: 1px solid #e5e7eb;
+    }
+    .wiz-preview-header h3 {
+        margin: 0; font-size: var(--fs-lg); font-weight: 600;
+        display: inline-flex; align-items: center; gap: .5rem; color: #005B99;
+    }
+    .wiz-preview-body {
+        padding: 1.25rem; overflow-y: auto; flex: 1;
+        font-size: var(--fs-sm); color: #374151;
+    }
+    .wiz-preview-body h4 {
+        font-size: var(--fs-sm); font-weight: 700; color: #1f2937;
+        text-transform: uppercase; letter-spacing: .03em;
+        border-bottom: 2px solid #e5e7eb; padding-bottom: .25rem;
+        margin: 1rem 0 .5rem;
+    }
+    .wiz-preview-body h4:first-child { margin-top: 0; }
+    .wiz-preview-body table { width: 100%; border-collapse: collapse; font-size: var(--fs-xs); }
+    .wiz-preview-body th, .wiz-preview-body td {
+        padding: .35rem .5rem; border-bottom: 1px solid #f1f5f9; text-align: start;
+    }
+    .wiz-preview-body th { background: #f8fafc; font-weight: 600; color: #475569; }
+    .wiz-preview-body .empty { color: #94a3b8; font-style: italic; }
+    .wiz-preview-body .pv-pill {
+        display: inline-block; background: #eff6ff; color: #1e40af;
+        padding: .15rem .5rem; border-radius: 999px;
+        font-size: var(--fs-xs); margin-inline-end: .25rem;
+    }
+    .wiz-preview-footer {
+        display: flex; justify-content: flex-end; gap: .5rem;
+        padding: .85rem 1.25rem; border-top: 1px solid #e5e7eb;
+        background: #f8fafc; border-radius: 0 0 10px 10px;
+    }
+    @@media print {
+        body * { visibility: hidden !important; }
+        .wiz-preview-overlay, .wiz-preview-overlay * { visibility: visible !important; }
+        .wiz-preview-overlay { position: static; padding: 0; background: #fff; }
+        .wiz-preview-card { box-shadow: none; max-height: none; }
+        .wiz-preview-footer, #wizPreviewClose { display: none !important; }
+    }
+</style>
+
+

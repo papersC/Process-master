@@ -1,0 +1,258 @@
+@model ESEMS.Web.Models.ViewModels.ResponsibilityPickerVM
+@{
+    if (Model == null) { return; }
+
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    // One stable DOM id per call. Multiple pickers on the same page will not collide.
+    var rpId = "rp_" + Guid.NewGuid().ToString("N").Substring(0, 8);
+
+    // Shared CSS is emitted once per request — guard via ViewData so multiple
+    // <partial /> calls on the same page don't double up.
+    var emitCss = ViewData["_RPCssRendered"] == null;
+    if (emitCss) { ViewData["_RPCssRendered"] = true; }
+}
+
+@if (emitCss)
+{
+    <style>
+        .rp-wrap { position: relative; }
+        .rp-input { width: 100%; padding: .42rem .65rem; border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-sm); background: #fff; color: #111827; }
+        .rp-input:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+        .rp-drop { position: absolute; z-index: 60; left: 0; right: 0; top: calc(100% + 4px); background: #fff; border: 1px solid #e5e7eb; border-radius: .375rem; box-shadow: 0 8px 24px rgba(15,23,42,.08); max-height: 280px; overflow-y: auto; }
+        .rp-drop[hidden] { display: none; }
+        .rp-item { display: flex; align-items: flex-start; gap: .55rem; padding: .5rem .65rem; cursor: pointer; border-bottom: 1px solid #f1f5f9; font-size: var(--fs-xs); }
+        .rp-item:last-child { border-bottom: none; }
+        .rp-item:hover, .rp-item.is-active { background: #eff6ff; }
+        .rp-item .rp-i-title { font-weight: 600; color: #0f172a; }
+        .rp-item .rp-i-unit  { color: #64748b; font-size: var(--fs-xs); margin-top: .1rem; }
+        .rp-item.is-preferred .rp-i-unit { color: #005B99; font-weight: 600; }
+        .rp-item.is-picked { opacity: .45; cursor: default; }
+        .rp-empty { padding: .65rem; font-size: var(--fs-xs); color: #94a3b8; text-align: center; }
+        .rp-chips { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .45rem; }
+        .rp-chip { display: inline-flex; align-items: center; gap: .35rem; padding: .25rem .55rem .25rem .65rem; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 9999px; font-size: var(--fs-xs); color: #1e3a8a; max-width: 100%; }
+        .rp-chip .rp-chip-title { font-weight: 600; max-width: 22rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .rp-chip .rp-chip-unit  { color: #475569; }
+        .rp-chip .rp-chip-x { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; background: transparent; border: none; border-radius: 9999px; color: #64748b; cursor: pointer; padding: 0; }
+        .rp-chip .rp-chip-x:hover { background: #1e3a8a; color: #fff; }
+        .rp-empty-chips { font-size: var(--fs-xs); color: #94a3b8; margin-top: .35rem; font-style: italic; }
+    </style>
+}
+
+<div class="rp-wrap"
+     id="@rpId"
+     data-field-name="@Model.FieldName"
+     data-preferred-unit="@(Model.PreferredUnitId ?? "")"
+     data-unit-selector='[name="OwningUnitId"]'
+     data-search-url="@Url.Action("SearchResponsibilities", "OrganizationUnits")"
+     data-rtl="@(isRtl ? "1" : "0")">
+
+    <input type="text"
+           class="rp-input"
+           placeholder="@(isRtl ? "اكتب للبحث عن المسؤوليات..." : "Type to search responsibilities...")"
+           autocomplete="off" />
+
+    <div class="rp-drop" hidden></div>
+
+    @* Initial chips — server-rendered so the form survives a page reload
+       without JS having to call /SearchResponsibilities just to redraw what
+       the controller already loaded. *@
+    <div class="rp-chips">
+        @foreach (var r in Model.Selected)
+        {
+            var unitName = isRtl
+                ? (r.OrganizationUnit?.NameAr ?? "")
+                : (r.OrganizationUnit?.NameEn ?? "");
+            <span class="rp-chip" data-id="@r.Id">
+                <span class="rp-chip-title">@(isRtl ? r.NameAr : r.NameEn)</span>
+                <span class="rp-chip-unit">· @unitName</span>
+                <button type="button" class="rp-chip-x" aria-label="@(isRtl ? "إزالة" : "Remove")">×</button>
+                <input type="hidden" name="@Model.FieldName" value="@r.Id" />
+            </span>
+        }
+        @if (!Model.Selected.Any())
+        {
+            <span class="rp-empty-chips" data-rp-empty-msg>
+                @(isRtl ? "لم يتم ربط أي مسؤولية بعد." : "No responsibilities linked yet.")
+            </span>
+        }
+    </div>
+</div>
+
+@* JS is emitted per-instance (cheap — same nonce, same browser cache). It
+   self-binds to the picker root via the rpId above and uses addEventListener
+   exclusively — no inline on* attrs, per the CSP rules. *@
+<script nonce="@Context.CspNonce()">
+(function () {
+    var root = document.getElementById('@rpId');
+    if (!root) return;
+    var fieldName    = root.dataset.fieldName;
+    var fallbackUnit = root.dataset.preferredUnit || '';
+    var unitSelector = root.dataset.unitSelector || '';
+    var searchUrl    = root.dataset.searchUrl;
+    var isRtl        = root.dataset.rtl === '1';
+    var input        = root.querySelector('.rp-input');
+    var drop         = root.querySelector('.rp-drop');
+    var chips        = root.querySelector('.rp-chips');
+
+    var emptyChipMsg = isRtl ? "لم يتم ربط أي مسؤولية بعد." : "No responsibilities linked yet.";
+    var noResultsMsg = isRtl ? "لا توجد نتائج" : "No matches";
+    var pickUnitMsg  = isRtl ? "اختر الوحدة التنظيمية أولاً" : "Select an organization unit first";
+
+    // Strict-scope: every search is filtered to whatever Owning Unit the
+    // parent form currently holds. Re-read on every search so a unit change
+    // immediately narrows the results without needing a page reload.
+    function getCurrentUnitId() {
+        if (unitSelector) {
+            var el = document.querySelector(unitSelector);
+            if (el && (el.value || '').trim()) return el.value.trim();
+        }
+        return fallbackUnit; // server-side preferred unit (Create flow)
+    }
+
+    function picked() {
+        return Array.from(chips.querySelectorAll('input[type=hidden]')).map(function (i) { return i.value; });
+    }
+
+    function refreshEmpty() {
+        var hasChips = chips.querySelector('.rp-chip') != null;
+        var ph = chips.querySelector('[data-rp-empty-msg]');
+        if (hasChips) {
+            if (ph) ph.remove();
+        } else if (!ph) {
+            var s = document.createElement('span');
+            s.className = 'rp-empty-chips';
+            s.setAttribute('data-rp-empty-msg', '');
+            s.textContent = emptyChipMsg;
+            chips.appendChild(s);
+        }
+    }
+
+    function addChip(item) {
+        var label    = isRtl ? item.titleAr : item.titleEn;
+        var unitName = isRtl ? item.unitNameAr : item.unitNameEn;
+        var chip = document.createElement('span');
+        chip.className = 'rp-chip';
+        chip.dataset.id = item.id;
+        chip.innerHTML =
+            '<span class="rp-chip-title"></span>' +
+            '<span class="rp-chip-unit"></span>' +
+            '<button type="button" class="rp-chip-x" aria-label="' + (isRtl ? 'إزالة' : 'Remove') + '">×</button>' +
+            '<input type="hidden" name="' + fieldName + '" />';
+        chip.querySelector('.rp-chip-title').textContent = label;
+        chip.querySelector('.rp-chip-unit').textContent  = '· ' + unitName;
+        chip.querySelector('input[type=hidden]').value   = item.id;
+        chip.querySelector('.rp-chip-x').addEventListener('click', function () {
+            chip.remove();
+            refreshEmpty();
+            lastSearchKey = null; // re-fetch so the removed item un-greys
+        });
+        chips.appendChild(chip);
+        refreshEmpty();
+    }
+
+    // Bind remove for chips that the server already rendered.
+    chips.querySelectorAll('.rp-chip').forEach(function (chip) {
+        chip.querySelector('.rp-chip-x').addEventListener('click', function () {
+            chip.remove();
+            refreshEmpty();
+            lastSearchKey = null;
+        });
+    });
+
+    function showHint(msg) {
+        drop.innerHTML = '';
+        var e = document.createElement('div');
+        e.className = 'rp-empty';
+        e.textContent = msg;
+        drop.appendChild(e);
+        drop.hidden = false;
+    }
+
+    function renderDrop(items) {
+        drop.innerHTML = '';
+        if (!items.length) {
+            showHint(noResultsMsg);
+            return;
+        }
+        var alreadyPicked = picked();
+        items.forEach(function (it) {
+            var taken = alreadyPicked.indexOf(it.id) !== -1;
+            var unitName = isRtl ? it.unitNameAr : it.unitNameEn;
+            var title    = isRtl ? it.titleAr    : it.titleEn;
+            var row = document.createElement('div');
+            row.className = 'rp-item' + (taken ? ' is-picked' : '');
+            row.innerHTML =
+                '<div style="flex:1;min-width:0;">' +
+                  '<div class="rp-i-title"></div>' +
+                  '<div class="rp-i-unit"></div>' +
+                '</div>';
+            row.querySelector('.rp-i-title').textContent = title;
+            row.querySelector('.rp-i-unit').textContent  = unitName;
+            if (!taken) {
+                row.addEventListener('click', function () {
+                    addChip(it);
+                    drop.hidden = true;
+                    input.value = '';
+                    lastSearchKey = null; // re-fetch on next focus so picked items grey out
+                    input.focus();
+                });
+            }
+            drop.appendChild(row);
+        });
+        drop.hidden = false;
+    }
+
+    var pending = null;
+    // Cache key combines query + unit so a unit change re-fetches even when
+    // the query text is unchanged.
+    var lastSearchKey = null;
+    function doSearch(q) {
+        var unit = getCurrentUnitId();
+        if (!unit) {
+            lastSearchKey = null;
+            showHint(pickUnitMsg);
+            return;
+        }
+        var key = unit + '' + q;
+        if (key === lastSearchKey) { drop.hidden = false; return; }
+        lastSearchKey = key;
+        if (pending) { pending.abort(); pending = null; }
+        pending = new AbortController();
+        var url = searchUrl + '?q=' + encodeURIComponent(q) + '&unitId=' + encodeURIComponent(unit);
+        fetch(url, { signal: pending.signal, credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.ok ? r.json() : []; })
+            .then(function (items) { renderDrop(items || []); })
+            .catch(function () { /* aborted or network err — silent */ });
+    }
+
+    // When the parent form's Owning Unit changes, invalidate the cache AND drop
+    // any chips selected under the old unit — mandates are strictly scoped, so
+    // a chip from the previous unit is no longer a valid pick.
+    if (unitSelector) {
+        document.addEventListener('change', function (e) {
+            if (e.target && e.target.matches && e.target.matches(unitSelector)) {
+                lastSearchKey = null;
+                drop.hidden = true;
+                chips.querySelectorAll('.rp-chip').forEach(function (c) { c.remove(); });
+                refreshEmpty();
+            }
+        });
+    }
+
+    var debounce;
+    input.addEventListener('input', function () {
+        clearTimeout(debounce);
+        var q = input.value.trim();
+        debounce = setTimeout(function () { doSearch(q); }, 180);
+    });
+    input.addEventListener('focus', function () { doSearch(input.value.trim()); });
+    input.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { drop.hidden = true; input.blur(); }
+    });
+    document.addEventListener('click', function (e) {
+        if (!root.contains(e.target)) { drop.hidden = true; }
+    });
+
+    refreshEmpty();
+})();
+</script>

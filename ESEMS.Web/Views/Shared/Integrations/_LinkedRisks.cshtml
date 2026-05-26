@@ -1,0 +1,132 @@
+@*
+    Reusable risks panel — pulls from IRiskProvider for any (entityType, entityId).
+    Renders nothing when the provider is disabled (no-op tenant) or returns empty.
+
+    Usage:
+        @await Html.PartialAsync("Integrations/_LinkedRisks", new ESEMS.Web.Views.Shared.Integrations.LinkedPanelArgs {
+            EntityType = ESEMS.Web.Services.Integrations.Contracts.LinkedEntityType.Process,
+            EntityId   = Model.Id
+        })
+
+    Calls the provider synchronously inside the view (acceptable here — single HTTP call,
+    short timeout, fail-soft to empty list). Page-render budget worst case = TimeoutSeconds.
+*@
+@using ESEMS.Web.Services.Integrations.Contracts
+@inject IRiskProvider RiskProvider
+@model ESEMS.Web.Views.Shared.Integrations.LinkedPanelArgs
+
+@{
+    if (!RiskProvider.IsEnabled || Model is null || string.IsNullOrEmpty(Model.EntityId))
+    {
+        return;
+    }
+
+    var risks = await RiskProvider.GetRisksForEntityAsync(Model.EntityType, Model.EntityId, take: Model.MaxItems);
+    var deepLink = RiskProvider.GetEntityDeepLink(Model.EntityType, Model.EntityId);
+    var hot = risks.Count(r => r.Severity == LinkedRiskSeverity.Critical || r.Severity == LinkedRiskSeverity.High);
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+}
+
+<style>
+    .lk-card { background:#fff; border:1px solid #e5e7eb; border-radius:.5rem; overflow:hidden; }
+    .lk-head { display:flex; align-items:center; justify-content:space-between; gap:.5rem; padding:.55rem .85rem; border-bottom:1px solid #f1f5f9; }
+    .lk-title { display:inline-flex; align-items:center; gap:.4rem; font-size: var(--fs-sm); font-weight:600; color:#111827; margin:0; }
+    .lk-title i { width:16px; height:16px; color:#005B99; }
+    .lk-source { font-size: var(--fs-xs); color:#94a3b8; font-weight:500; padding:.1rem .35rem; background:#f8fafc; border-radius:.25rem; font-family:ui-monospace,monospace; }
+    .lk-count { display:inline-flex; align-items:center; gap:.3rem; font-size: var(--fs-xs); color:#374151; font-weight:600; }
+    .lk-count-hot { color:#b91c1c; font-weight:700; }
+    .lk-table-wrap { max-height:240px; overflow-y:auto; }
+    .lk-table { width:100%; font-size: var(--fs-xs); border-collapse:collapse; }
+    .lk-table th { font-size: var(--fs-xs); text-transform:uppercase; letter-spacing:.04em; color:#6b7280; font-weight:600; padding:.4rem .6rem; text-align:start; border-bottom:1px solid #e5e7eb; background:#f8fafc; }
+    .lk-table td { padding:.35rem .6rem; border-bottom:1px solid #f3f4f6; color:#374151; vertical-align:middle; }
+    .lk-table tbody tr:last-child td { border-bottom:none; }
+    .lk-sev { display:inline-block; padding:.1rem .45rem; font-size: var(--fs-xs); font-weight:700; border-radius:.25rem; }
+    .lk-sev-Critical { background:#fef2f2; color:#b91c1c; }
+    .lk-sev-High     { background:#fff7ed; color:#c2410c; }
+    .lk-sev-Medium   { background:#fefce8; color:#a16207; }
+    .lk-sev-Low      { background:#f0fdf4; color:#15803d; }
+    .lk-sev-Unknown  { background:#f1f5f9; color:#64748b; }
+    .lk-empty { padding:.85rem; text-align:center; color:#94a3b8; font-size: var(--fs-xs); }
+    .lk-foot { display:flex; justify-content:flex-end; padding:.4rem .85rem; background:#fafbfc; border-top:1px solid #f1f5f9; }
+    .lk-foot a { color:#005B99; font-size: var(--fs-xs); font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:.25rem; }
+    .lk-foot a:hover { text-decoration:underline; }
+</style>
+
+<div class="lk-card" id="@(Model.AnchorId ?? "linked-risks")">
+    <div class="lk-head">
+        <h3 class="lk-title">
+            <i data-lucide="shield-alert"></i>
+            <span>@(isRtl ? "المخاطر المرتبطة" : "Linked Risks")</span>
+            <span class="lk-source">@RiskProvider.ProviderName</span>
+        </h3>
+        @if (risks.Count > 0)
+        {
+            <span class="lk-count @(hot > 0 ? "lk-count-hot" : "")">
+                <i data-lucide="@(hot > 0 ? "alert-triangle" : "check-circle-2")" style="width:13px;height:13px;"></i>
+                @if (hot > 0)
+                {
+                    <span>@hot @(isRtl ? "حرج/عالي" : "critical/high") — @risks.Count @(isRtl ? "إجمالي" : "total")</span>
+                }
+                else
+                {
+                    <span>@risks.Count @(isRtl ? "نشط" : "active")</span>
+                }
+            </span>
+        }
+    </div>
+
+    @if (risks.Count == 0)
+    {
+        <div class="lk-empty">
+            <i data-lucide="shield-check" style="width:24px;height:24px;color:#cbd5e1;display:block;margin:0 auto .35rem;"></i>
+            @(isRtl ? "لا توجد مخاطر مسجلة لهذا العنصر." : "No risks recorded for this entity.")
+        </div>
+    }
+    else
+    {
+        <div class="lk-table-wrap">
+            <table class="lk-table">
+                <thead>
+                    <tr>
+                        <th>@(isRtl ? "الرمز" : "Code")</th>
+                        <th>@(isRtl ? "العنوان" : "Title")</th>
+                        <th>@(isRtl ? "الخطورة" : "Severity")</th>
+                        <th>@(isRtl ? "الحالة" : "Status")</th>
+                        <th>@(isRtl ? "المالك" : "Owner")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in risks)
+                    {
+                        <tr>
+                            <td style="font-family:ui-monospace,monospace;color:#475569;">@r.Code</td>
+                            <td style="color:#111827;font-weight:500;">
+                                @if (!string.IsNullOrEmpty(r.ExternalUrl))
+                                {
+                                    <a href="@r.ExternalUrl" target="_blank" rel="noopener" style="color:#005B99;text-decoration:none;">@r.Title</a>
+                                }
+                                else
+                                {
+                                    @r.Title
+                                }
+                            </td>
+                            <td><span class="lk-sev lk-sev-@r.Severity">@r.Severity</span></td>
+                            <td>@r.Status</td>
+                            <td style="color:#6b7280;">@(r.OwnerName ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(deepLink))
+    {
+        <div class="lk-foot">
+            <a href="@deepLink" target="_blank" rel="noopener">
+                @(isRtl ? "فتح في النظام" : "Open in") @RiskProvider.ProviderName
+                <i data-lucide="external-link" style="width:12px;height:12px;"></i>
+            </a>
+        </div>
+    }
+</div>

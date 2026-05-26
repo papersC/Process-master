@@ -1,0 +1,285 @@
+@model AssetCategory
+@{
+    ViewData["Title"] = Shared["Title_EditAssetCategory"].Value;
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+    var displayName = isRtl ? Model.NameAr : Model.NameEn;
+    var arrowBack = isRtl ? "arrow-right" : "arrow-left";
+
+    // Resolve parent category name for the breadcrumb without a second DB hit:
+    // ViewBag.ParentCategories already contains the eligible parents.
+    var parentList = ViewBag.ParentCategories as Microsoft.AspNetCore.Mvc.Rendering.SelectList;
+    var parentName = !string.IsNullOrEmpty(Model.ParentCategoryId)
+        ? parentList?.FirstOrDefault(p => p.Value == Model.ParentCategoryId)?.Text
+        : null;
+}
+
+<style>
+    /* ============================ AssetCategories/Edit — page-scoped ac-* tokens ============================
+       Brand: #005B99. Two-column edit shell: form left, sticky context sidebar right. */
+    .ac-page { display: flex; flex-direction: column; gap: .75rem; }
+
+    /* Sticky thin header — replaces the gradient hero. */
+    .ac-stickyhead { position: sticky; top: 0; z-index: 30; background: #fff; border-bottom: 1px solid #e5e7eb; margin: 0 -.75rem .25rem; padding: .55rem .75rem .45rem; box-shadow: 0 1px 0 rgba(15,23,42,.04); }
+    .ac-titlerow { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+    .ac-titlemain { min-width: 0; flex: 1 1 360px; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .ac-code-pill { display: inline-block; padding: .14rem .55rem; font-size: var(--fs-xs); font-weight: 700; border-radius: .25rem; background: #eff6ff; color: #1d4ed8; font-family: ui-monospace, monospace; letter-spacing: .04em; }
+    .ac-title { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; line-height: 1.2; max-width: 480px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ac-breadcrumb { font-size: var(--fs-xs); color: #6b7280; }
+    .ac-actions { display: inline-flex; gap: .35rem; flex-wrap: wrap; }
+
+    /* Buttons */
+    .ac-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; text-decoration: none; border: 1px solid transparent; line-height: 1.1; transition: background .12s, color .12s, border-color .12s; }
+    .ac-btn-primary { background: #005B99; color: #fff; border-color: #005B99; }
+    .ac-btn-primary:hover { background: #003d6b; border-color: #003d6b; color: #fff; }
+    .ac-btn-outline { background: #fff; color: #005B99; border-color: #cbd5e1; }
+    .ac-btn-outline:hover { background: #f1f5f9; }
+    .ac-btn-ghost { background: transparent; color: #6b7280; border-color: transparent; }
+    .ac-btn-ghost:hover { background: #f9fafb; color: #111827; }
+    .ac-btn-sm { padding: .3rem .55rem; font-size: var(--fs-xs); }
+
+    /* Cards (used for both form sections + sidebar widgets). */
+    .ac-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; overflow: hidden; }
+    .ac-card-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .55rem .85rem; border-bottom: 1px solid #f1f5f9; }
+    .ac-card-title { display: inline-flex; align-items: center; gap: .4rem; font-size: var(--fs-sm); font-weight: 600; color: #111827; margin: 0; }
+    .ac-card-title i { width: 16px; height: 16px; color: #005B99; }
+    .ac-card-body { padding: .85rem 1rem; }
+
+    /* Form grid */
+    .ac-form-grid { display: grid; gap: .65rem; margin-bottom: .65rem; }
+    .ac-form-grid:last-child { margin-bottom: 0; }
+    .ac-form-grid-2 { grid-template-columns: 1fr 1fr; }
+    .ac-form-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+    @@media (max-width: 768px) { .ac-form-grid-2, .ac-form-grid-3 { grid-template-columns: 1fr; } }
+    .ac-label { display: flex; align-items: center; gap: .25rem; font-size: var(--fs-xs); font-weight: 600; color: #374151; margin-bottom: .25rem; }
+    .ac-req { color: #dc2626; }
+    .ac-input, .ac-select, .ac-textarea { width: 100%; padding: .45rem .65rem; border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-sm); background: #fff; color: #111827; font-family: inherit; }
+    .ac-textarea { min-height: 4.5rem; resize: vertical; }
+    .ac-input:focus, .ac-select:focus, .ac-textarea:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .ac-input[readonly] { background: #f8fafc; color: #6b7280; cursor: not-allowed; }
+    .ac-help { font-size: var(--fs-xs); color: #6b7280; margin-top: .15rem; }
+    .ac-err { font-size: var(--fs-xs); color: #dc2626; margin-top: .15rem; display: block; }
+
+    /* Layout shell — form + sticky sidebar. */
+    .ac-shell { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: .65rem; align-items: start; }
+    @@media (max-width: 992px) { .ac-shell { grid-template-columns: 1fr; } .ac-side { position: static !important; } }
+    .ac-side { position: sticky; top: 4.25rem; display: flex; flex-direction: column; gap: .55rem; }
+
+    /* Sidebar stat chips */
+    .ac-stats { display: flex; flex-direction: column; gap: .35rem; }
+    .ac-stat { display: flex; align-items: center; gap: .55rem; padding: .55rem .7rem; background: #fff; border: 1px solid #e5e7eb; border-radius: .375rem; }
+    .ac-stat-icon { width: 30px; height: 30px; border-radius: .375rem; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .ac-stat-text { display: flex; flex-direction: column; min-width: 0; }
+    .ac-stat-label { font-size: var(--fs-xs); font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: .04em; line-height: 1.1; }
+    .ac-stat-value { font-size: var(--fs-base); font-weight: 700; color: #111827; line-height: 1.15; margin-top: .1rem; }
+    .ac-stat-sub { font-size: var(--fs-xs); color: #9ca3af; line-height: 1.1; }
+
+    /* Inline TempData banners — minimal, never push form below the fold. */
+    .ac-banner { display: flex; align-items: center; gap: .45rem; padding: .5rem .75rem; border-radius: .375rem; font-size: var(--fs-xs); }
+    .ac-banner-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+    .ac-banner-error { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
+
+    /* Validation summary block — hidden when empty so it doesn't reserve space. */
+    .ac-valsum { padding: .5rem .75rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: .375rem; color: #b91c1c; font-size: var(--fs-xs); }
+    .ac-valsum:empty { display: none; }
+    .ac-valsum ul { margin: 0; padding-inline-start: 1.1rem; }
+</style>
+
+<div class="ac-page">
+    <div class="ac-stickyhead">
+        <div class="ac-titlerow">
+            <div class="ac-titlemain">
+                <a asp-action="Details" asp-route-id="@Model.Id" class="ac-btn ac-btn-ghost ac-btn-sm" style="padding:.3rem .45rem;" title="@Shared["Button_Cancel"]" aria-label="@Shared["Button_Cancel"]"><i data-lucide="@arrowBack" style="width:14px;height:14px;" aria-hidden="true"></i></a>
+                <span class="ac-code-pill">@Model.Code</span>
+                <h1 class="ac-title" title="@displayName">@displayName</h1>
+                @if (!string.IsNullOrEmpty(parentName))
+                {
+                    <span class="ac-breadcrumb">@(isRtl ? "أصل: " : "Parent: ")<strong style="color:#374151;">@parentName</strong></span>
+                }
+                else
+                {
+                    <span class="ac-breadcrumb">@Shared["Text_NoneTopLevel"]</span>
+                }
+            </div>
+            <div class="ac-actions">
+                <a asp-action="Index" class="ac-btn ac-btn-outline"><i data-lucide="list" style="width:14px;height:14px;"></i>@Shared["Nav_AssetCategories"]</a>
+                <a asp-action="Details" asp-route-id="@Model.Id" class="ac-btn ac-btn-outline"><i data-lucide="eye" style="width:14px;height:14px;"></i>@Shared["Button_Cancel"]</a>
+                <button type="submit" form="acEditForm" class="ac-btn ac-btn-primary"><i data-lucide="save" style="width:14px;height:14px;"></i>@Shared["Button_SaveChanges"]</button>
+            </div>
+        </div>
+    </div>
+
+    <form asp-action="Edit" method="post" id="acEditForm">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="Id" />
+        <input type="hidden" asp-for="CreatedAt" />
+        <input type="hidden" asp-for="CreatedById" />
+        <input type="hidden" asp-for="UpdatedAt" />
+        <input type="hidden" asp-for="UpdatedById" />
+        <input type="hidden" asp-for="Version" />
+
+        <div asp-validation-summary="ModelOnly" class="ac-valsum" style="margin-bottom:.6rem;"></div>
+
+        <div class="ac-shell">
+            <div style="display:flex;flex-direction:column;gap:.55rem;">
+                <!-- IDENTITY -->
+                <div class="ac-card">
+                    <div class="ac-card-head">
+                        <h2 class="ac-card-title"><i data-lucide="info"></i>@Shared["Heading_BasicInformation"]</h2>
+                    </div>
+                    <div class="ac-card-body">
+                        <div class="ac-form-grid ac-form-grid-2">
+                            <div>
+                                <label asp-for="Code" class="ac-label">@Shared["Label_CategoryCode"]</label>
+                                <input asp-for="Code" class="ac-input" readonly />
+                            </div>
+                            <div>
+                                <label asp-for="ParentCategoryId" class="ac-label">@Shared["Label_ParentCategory"]</label>
+                                <select asp-for="ParentCategoryId" asp-items="@ViewBag.ParentCategories" class="ac-select">
+                                    <option value="">@Shared["Text_NoneTopLevel"]</option>
+                                </select>
+                                <div class="ac-help">@Shared["Text_LeaveEmptyTopLevel"]</div>
+                            </div>
+                        </div>
+
+                        @* Render bilingual pairs in source order matching visual order so Tab follows the
+                           reading flow. In RTL the first grid cell sits on the right (where Arabic readers
+                           start), so output Arabic first. CSS `order` only flips visuals, not tab order. *@
+                        <div class="ac-form-grid ac-form-grid-2">
+                            @if (isRtl)
+                            {
+                                <div>
+                                    <label asp-for="NameAr" class="ac-label">@Shared["Label_NameArabic"] <span class="ac-req">*</span></label>
+                                    <input asp-for="NameAr" class="ac-input" dir="rtl" />
+                                    <span asp-validation-for="NameAr" class="ac-err"></span>
+                                </div>
+                                <div>
+                                    <label asp-for="NameEn" class="ac-label">@Shared["Label_NameEnglish"] <span class="ac-req">*</span></label>
+                                    <input asp-for="NameEn" class="ac-input" dir="ltr" />
+                                    <span asp-validation-for="NameEn" class="ac-err"></span>
+                                </div>
+                            }
+                            else
+                            {
+                                <div>
+                                    <label asp-for="NameEn" class="ac-label">@Shared["Label_NameEnglish"] <span class="ac-req">*</span></label>
+                                    <input asp-for="NameEn" class="ac-input" />
+                                    <span asp-validation-for="NameEn" class="ac-err"></span>
+                                </div>
+                                <div>
+                                    <label asp-for="NameAr" class="ac-label">@Shared["Label_NameArabic"] <span class="ac-req">*</span></label>
+                                    <input asp-for="NameAr" class="ac-input" dir="rtl" />
+                                    <span asp-validation-for="NameAr" class="ac-err"></span>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="ac-form-grid ac-form-grid-2">
+                            @if (isRtl)
+                            {
+                                <div>
+                                    <label asp-for="DescriptionAr" class="ac-label">@Shared["Label_DescriptionArabic"]</label>
+                                    <textarea asp-for="DescriptionAr" rows="2" class="ac-textarea" dir="rtl"></textarea>
+                                </div>
+                                <div>
+                                    <label asp-for="DescriptionEn" class="ac-label">@Shared["Label_DescriptionEnglish"]</label>
+                                    <textarea asp-for="DescriptionEn" rows="2" class="ac-textarea" dir="ltr"></textarea>
+                                </div>
+                            }
+                            else
+                            {
+                                <div>
+                                    <label asp-for="DescriptionEn" class="ac-label">@Shared["Label_DescriptionEnglish"]</label>
+                                    <textarea asp-for="DescriptionEn" rows="2" class="ac-textarea"></textarea>
+                                </div>
+                                <div>
+                                    <label asp-for="DescriptionAr" class="ac-label">@Shared["Label_DescriptionArabic"]</label>
+                                    <textarea asp-for="DescriptionAr" rows="2" class="ac-textarea" dir="rtl"></textarea>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DEFAULTS -->
+                <div class="ac-card">
+                    <div class="ac-card-head">
+                        <h2 class="ac-card-title"><i data-lucide="settings"></i>@Shared["Heading_DefaultAssetSettings"]</h2>
+                        <span style="font-size: var(--fs-xs);color:#9ca3af;">@(isRtl ? "تطبَّق على الأصول الجديدة" : "Applied to new assets")</span>
+                    </div>
+                    <div class="ac-card-body">
+                        <div class="ac-form-grid ac-form-grid-3">
+                            <div>
+                                <label asp-for="DefaultDepreciationRate" class="ac-label">@Shared["Label_DefaultDepreciationRate"]</label>
+                                <input asp-for="DefaultDepreciationRate" type="number" step="0.01" min="0" max="100" lang="en" inputmode="decimal" class="ac-input" />
+                                <span asp-validation-for="DefaultDepreciationRate" class="ac-err"></span>
+                                <div class="ac-help">@Shared["Text_PercentagePerYear"]</div>
+                            </div>
+                            <div>
+                                <label asp-for="DefaultUsefulLifeYears" class="ac-label">@Shared["Label_DefaultUsefulLife"]</label>
+                                <input asp-for="DefaultUsefulLifeYears" type="number" min="0" lang="en" inputmode="numeric" class="ac-input" />
+                                <span asp-validation-for="DefaultUsefulLifeYears" class="ac-err"></span>
+                                <div class="ac-help">@Shared["Text_ExpectedLifespan"]</div>
+                            </div>
+                            <div>
+                                <label asp-for="DefaultMaintenanceIntervalDays" class="ac-label">@Shared["Label_DefaultMaintenanceInterval"]</label>
+                                <input asp-for="DefaultMaintenanceIntervalDays" type="number" min="0" lang="en" inputmode="numeric" class="ac-input" />
+                                <span asp-validation-for="DefaultMaintenanceIntervalDays" class="ac-err"></span>
+                                <div class="ac-help">@Shared["Text_DaysBetweenMaintenance"]</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STICKY CONTEXT SIDEBAR -->
+            <aside class="ac-side">
+                <div class="ac-card">
+                    <div class="ac-card-head">
+                        <h2 class="ac-card-title"><i data-lucide="bar-chart"></i>@Shared["Heading_CategoryStatistics"]</h2>
+                    </div>
+                    <div class="ac-card-body" style="padding:.65rem .75rem;">
+                        <div class="ac-stats">
+                            <div class="ac-stat">
+                                <div class="ac-stat-icon" style="background:#eff6ff;color:#1d4ed8;"><i data-lucide="package" style="width:16px;height:16px;"></i></div>
+                                <div class="ac-stat-text">
+                                    <span class="ac-stat-label">@Shared["Label_AssetsInCategory"]</span>
+                                    <span class="ac-stat-value">@Model.Assets.Count.ToString("N0")</span>
+                                </div>
+                            </div>
+                            <div class="ac-stat">
+                                <div class="ac-stat-icon" style="background:#f5f3ff;color:#6d28d9;"><i data-lucide="folder-tree" style="width:16px;height:16px;"></i></div>
+                                <div class="ac-stat-text">
+                                    <span class="ac-stat-label">@Shared["Column_Subcategories"]</span>
+                                    <span class="ac-stat-value">@Model.SubCategories.Count.ToString("N0")</span>
+                                </div>
+                            </div>
+                            <div class="ac-stat">
+                                <div class="ac-stat-icon" style="background:#f1f5f9;color:#475569;"><i data-lucide="calendar" style="width:16px;height:16px;"></i></div>
+                                <div class="ac-stat-text">
+                                    <span class="ac-stat-label">@Shared["Label_Created"]</span>
+                                    <span class="ac-stat-value" style="font-size: var(--fs-sm);">@Model.CreatedAt.ToDubaiString("MMM dd, yyyy")</span>
+                                    <span class="ac-stat-sub">@Model.CreatedAt.ToDubaiString("HH:mm")</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:.35rem;">
+                    <button type="submit" class="ac-btn ac-btn-primary" style="justify-content:center;padding:.55rem .85rem;">
+                        <i data-lucide="save" style="width:14px;height:14px;"></i>@Shared["Button_SaveChanges"]
+                    </button>
+                    <a asp-action="Details" asp-route-id="@Model.Id" class="ac-btn ac-btn-ghost" style="justify-content:center;padding:.5rem .85rem;border:1px solid #e5e7eb;">
+                        <i data-lucide="x" style="width:14px;height:14px;"></i>@Shared["Button_Cancel"]
+                    </a>
+                </div>
+            </aside>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script nonce="@Context.CspNonce()">if (window.lucide) lucide.createIcons();</script>
+}

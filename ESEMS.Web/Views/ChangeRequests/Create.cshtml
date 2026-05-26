@@ -1,0 +1,436 @@
+@model ChangeRequest
+@{
+    ViewData["Title"] = Shared["Action_CreateChangeRequest"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    var step1 = isRtl ? "الهوية والمبررات" : "Identity & Justification";
+    var step2 = isRtl ? "الوصف والربط" : "Description & Linking";
+}
+
+<partial name="_WizardStyles" />
+
+<style>
+    .wiz-pickers-list { max-height: 200px; overflow-y: auto; border: 1px solid #d1d5db; border-radius: .375rem; padding: .35rem; background: #fff; }
+    .wiz-picker-item { display: flex; align-items: flex-start; gap: .55rem; padding: .35rem .5rem; border-radius: .35rem; cursor: pointer; }
+    .wiz-picker-item:hover { background: #f9fafb; }
+    .wiz-picker-item input[type="checkbox"] { margin-top: .2rem; flex-shrink: 0; }
+    .wiz-picker-meta { flex: 1; min-width: 0; }
+    .wiz-picker-title { font-size: var(--fs-sm); color: #111827; font-weight: 500; }
+    .wiz-picker-sub { font-size: var(--fs-xs); color: #6b7280; margin-top: .15rem; display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+    .wiz-pickers-empty { padding: .85rem; text-align: center; color: #94a3b8; font-size: var(--fs-xs); }
+    .wiz-tag-Critical { background: #fee2e2; color: #b91c1c; padding: .08rem .4rem; font-size: var(--fs-xs); font-weight: 700; border-radius: .25rem; }
+    .wiz-tag-High { background: #ffedd5; color: #c2410c; padding: .08rem .4rem; font-size: var(--fs-xs); font-weight: 700; border-radius: .25rem; }
+    .wiz-tag-Medium { background: #fef3c7; color: #92400e; padding: .08rem .4rem; font-size: var(--fs-xs); font-weight: 700; border-radius: .25rem; }
+    .wiz-tag-Low { background: #ecfdf5; color: #047857; padding: .08rem .4rem; font-size: var(--fs-xs); font-weight: 700; border-radius: .25rem; }
+    /* Multi-select chip dropdown — same widget as Improvements/Wizard */
+    .cs-wrap { position: relative; }
+    .cs-trigger { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; min-height: 38px; padding: .3rem .55rem; border: 1px solid #d1d5db; border-radius: .375rem; background: #fff; cursor: pointer; }
+    .cs-trigger:hover { border-color: #94a3b8; }
+    .cs-chips { display: inline-flex; flex-wrap: wrap; gap: .25rem; }
+    .cs-chip { display: inline-flex; align-items: center; gap: .25rem; padding: .1rem .5rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; border-radius: 999px; font-size: var(--fs-xs); }
+    .cs-chip button { background: none; border: none; color: #1e40af; cursor: pointer; padding: 0 .15rem; line-height: 1; font-size: var(--fs-sm); }
+    .cs-chip button:hover { color: #b91c1c; }
+    .cs-ph { color: #9ca3af; font-size: var(--fs-xs); flex: 1; }
+    .cs-caret { width: 14px; height: 14px; color: #9ca3af; margin-inline-start: auto; flex-shrink: 0; }
+    .cs-drop { position: absolute; z-index: 50; inset-inline-start: 0; inset-inline-end: 0; top: 100%; margin-top: .25rem; background: #fff; border: 1px solid #e5e7eb; border-radius: .375rem; box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+    .cs-drop.hidden { display: none; }
+    .cs-search-wrap { padding: .5rem; border-bottom: 1px solid #f1f5f9; }
+    .cs-search { width: 100%; padding: .35rem .55rem; border: 1px solid #e5e7eb; border-radius: .25rem; font-size: var(--fs-xs); }
+    .cs-search:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0, 91, 153, .12); }
+    .cs-list { max-height: 240px; overflow-y: auto; padding: .25rem 0; }
+    .cs-opt { display: flex; align-items: center; gap: .5rem; padding: .35rem .65rem; cursor: pointer; font-size: var(--fs-xs); }
+    .cs-opt:hover { background: #f8fafc; }
+    .cs-opt input[type="checkbox"] { margin: 0; flex-shrink: 0; }
+    .cs-opt-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cs-opt-meta { flex-shrink: 0; }
+    .cs-empty { padding: .85rem; text-align: center; color: #94a3b8; font-size: var(--fs-xs); }
+</style>
+
+<div class="wiz-pageheader">
+    <h1 class="wiz-pagetitle"><i data-lucide="git-pull-request" style="width:20px;height:20px;color:#005B99;"></i>@ViewData["Title"]</h1>
+    <div style="display:inline-flex;align-items:center;gap:.85rem;">
+        <span class="wiz-stepcount">@(isRtl ? "الخطوة" : "Step") <b id="stepCounter">1</b> @(isRtl ? "من" : "of") 2</span>
+        <a asp-action="Index" class="wiz-cancellink"><i data-lucide="x" style="width:14px;height:14px;"></i> @Shared["Action_Back"]</a>
+    </div>
+</div>
+
+<form asp-action="Create" method="post" id="wizardForm" novalidate data-guard-unsaved data-once-submit>
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" style="margin-bottom:.6rem;padding:.6rem .8rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.375rem;color:#b91c1c;font-size: var(--fs-xs);"></div>
+
+    <div class="wiz-grid">
+        <aside class="wiz-rail">
+            <ul class="wiz-steps" id="wizardSteps">
+                <li class="wiz-step active" data-step="1" onclick="wizGoTo(1)">
+                    <span class="wiz-stepnum">1</span>
+                    <span class="wiz-steptext"><span class="wiz-steptitle">@step1</span><span class="wiz-stepsub">@(isRtl ? "المصدر، الأولوية، الاسم" : "Source, priority, name")</span></span>
+                </li>
+                <li class="wiz-step" data-step="2" onclick="wizGoTo(2)">
+                    <span class="wiz-stepnum">2</span>
+                    <span class="wiz-steptext"><span class="wiz-steptitle">@step2</span><span class="wiz-stepsub">@(isRtl ? "الوصف، الكيانات، الأصول" : "Description, entities, assets")</span></span>
+                </li>
+            </ul>
+        </aside>
+
+        <section class="wiz-main">
+            <div class="wiz-checklist" data-state="missing"
+                 data-required-checklist
+                 data-required-fields='NameEn:@(isRtl ? "الاسم بالإنجليزية" : "English name")|NameAr:@(isRtl ? "الاسم بالعربية" : "Arabic name")'
+                 data-text-prefix='@(isRtl ? "ما زال يلزم: " : "Still need: ")'
+                 data-text-ok='@(isRtl ? "جاهز للحفظ." : "Ready to submit.")'
+                 data-text-sep=' · '>
+                <i data-lucide="circle-dashed" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                <span class="wiz-checklist-text"></span>
+            </div>
+
+            <!-- Step 1 -->
+            <div class="wiz-step-content active" data-step="1">
+                <div class="wiz-stephdr"><i data-lucide="info" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 1: @step1</h2></div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="Source" class="pc-label">@Shared["Label_Source"]</label>
+                        <select asp-for="Source" id="SourceSel" class="pc-select">
+                            @foreach (var s in Enum.GetValues<ChangeRequestSource>()) { <option value="@s">@Shared[$"ChangeRequestSource_{s}"]</option> }
+                        </select>
+                        <div class="pc-help">@Shared["Help_OriginOfRequest"]</div>
+                    </div>
+                    <div>
+                        <label asp-for="Priority" class="pc-label">@Shared["Column_Priority"]</label>
+                        <input asp-for="Priority" type="number" min="1" max="10" id="PriorityInp" class="pc-input" />
+                        <div class="pc-help">@Shared["Help_PriorityScale"]</div>
+                    </div>
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="NameEn" class="pc-label">@Shared["Label_NameEn"] <span class="req">*</span></label>
+                        <input asp-for="NameEn" id="NameEn" class="pc-input" />
+                        <span asp-validation-for="NameEn" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NameAr" class="pc-label">@Shared["Label_NameAr"] <span class="req">*</span></label>
+                        <input asp-for="NameAr" id="NameAr" dir="rtl" class="pc-input" />
+                        <span asp-validation-for="NameAr" class="pc-err"></span>
+                    </div>
+                </div>
+
+                <div class="pc-grid-2">
+                    <div>
+                        <label asp-for="Justification" class="pc-label">@Shared["Label_Justification"]</label>
+                        <textarea asp-for="Justification" rows="4" class="pc-textarea" placeholder="@Shared["Placeholder_Justification"]"></textarea>
+                        <div class="pc-help">@Shared["Help_BusinessReason"]</div>
+                    </div>
+                    <div>
+                        <label asp-for="ImpactAssessment" class="pc-label">@Shared["Column_ImpactAssessment"]</label>
+                        <textarea asp-for="ImpactAssessment" rows="4" class="pc-textarea" placeholder="@Shared["Placeholder_ImpactAssessment"]"></textarea>
+                        <div class="pc-help">@Shared["Help_DescribeImpact"]</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="wiz-step-content" data-step="2">
+                <div class="wiz-stephdr"><i data-lucide="link-2" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 2: @step2</h2></div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="DescriptionEn" class="pc-label">@Shared["Label_DescriptionEn"]</label>
+                        <textarea asp-for="DescriptionEn" rows="3" class="pc-textarea"></textarea>
+                    </div>
+                    <div>
+                        <label asp-for="DescriptionAr" class="pc-label">@Shared["Label_DescriptionAr"]</label>
+                        <textarea asp-for="DescriptionAr" dir="rtl" rows="3" class="pc-textarea"></textarea>
+                    </div>
+                </div>
+
+                <div class="pc-row">
+                    <label asp-for="ExternalReferenceId" class="pc-label">@Shared["Label_ExternalRef"]</label>
+                    <input asp-for="ExternalReferenceId" class="pc-input" placeholder="@(isRtl ? "مثال: JIRA-123، IMS-456" : "e.g., JIRA-123, IMS-456")" />
+                    <div class="pc-help">@Shared["Help_ExternalReference"]</div>
+                </div>
+
+                <div class="pc-grid-3 pc-row">
+                    <div>
+                        <label asp-for="ProcessId" class="pc-label">@Shared["Column_Process"]</label>
+                        <select asp-for="ProcessId" id="ProcessSel" asp-items="ViewBag.Processes" class="pc-select">
+                            <option value="">@Shared["Option_Optional"]</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label asp-for="ServiceId" class="pc-label">@Shared["Column_Service"]</label>
+                        <select asp-for="ServiceId" id="ServiceSel" asp-items="ViewBag.Services" class="pc-select">
+                            <option value="">@Shared["Option_Optional"]</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label asp-for="OwningUnitId" class="pc-label">@Shared["Column_OwningUnit"]</label>
+                        <select asp-for="OwningUnitId" id="UnitSel" asp-items="ViewBag.OrganizationUnits" class="pc-select">
+                            <option value="">@Shared["Option_Optional"]</option>
+                        </select>
+                    </div>
+                </div>
+
+                @* Multi-select chip dropdowns — replaces the older scrollable
+                   checkbox lists. Same pattern used by Improvements/Wizard
+                   so behaviour is consistent across the app. The checkbox
+                   inputs keep name="selectedAssets" / "selectedRisks" so
+                   the existing controller binding is unchanged. *@
+                <div class="pc-grid-2">
+                    <div>
+                        <label class="pc-label"><i data-lucide="package" style="width:14px;height:14px;color:#005B99;vertical-align:-2px;margin-inline-end:.25rem;"></i>@Shared["Label_AffectedAssets"]</label>
+                        <div class="cs-wrap relative" id="csWrap_assets">
+                            <div class="cs-trigger" onclick="csToggle('assets')">
+                                <span id="csChips_assets" class="cs-chips"></span>
+                                <span id="csPh_assets" class="cs-ph">@(isRtl ? "اختر الأصول..." : "Select assets...")</span>
+                                <svg class="cs-caret" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </div>
+                            <div id="csDrop_assets" class="cs-drop hidden">
+                                <div class="cs-search-wrap">
+                                    <input type="text" placeholder="@(isRtl ? "بحث..." : "Search...")" oninput="csFilter('assets', this.value)" class="cs-search" />
+                                </div>
+                                <div class="cs-list">
+                                    @if (ViewBag.Assets != null && ((IEnumerable<Asset>)ViewBag.Assets).Any())
+                                    {
+                                        @foreach (var asset in (IEnumerable<Asset>)ViewBag.Assets)
+                                        {
+                                            var assetLabel = asset.AssetTag + " · " + (isRtl ? (asset.NameAr ?? asset.NameEn) : (asset.NameEn ?? asset.NameAr));
+                                            <label class="cs-opt">
+                                                <input type="checkbox" name="selectedAssets" value="@asset.Id" class="cs-chk" data-csid="assets" data-label="@assetLabel" onchange="csUpdate('assets')" />
+                                                <span class="cs-opt-text">@assetLabel</span>
+                                            </label>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <div class="cs-empty">@Shared["Text_NoAssetsAvailable"]</div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="pc-label"><i data-lucide="shield-alert" style="width:14px;height:14px;color:#F46A6A;vertical-align:-2px;margin-inline-end:.25rem;"></i>@Shared["Label_RelatedRisks"]</label>
+                        <div class="cs-wrap relative" id="csWrap_risks">
+                            <div class="cs-trigger" onclick="csToggle('risks')">
+                                <span id="csChips_risks" class="cs-chips"></span>
+                                <span id="csPh_risks" class="cs-ph">@(isRtl ? "اختر المخاطر..." : "Select risks...")</span>
+                                <svg class="cs-caret" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </div>
+                            <div id="csDrop_risks" class="cs-drop hidden">
+                                <div class="cs-search-wrap">
+                                    <input type="text" placeholder="@(isRtl ? "بحث..." : "Search...")" oninput="csFilter('risks', this.value)" class="cs-search" />
+                                </div>
+                                <div class="cs-list">
+                                    @if (ViewBag.Risks != null && ((IEnumerable<EnterpriseRisk>)ViewBag.Risks).Any())
+                                    {
+                                        @foreach (var risk in (IEnumerable<EnterpriseRisk>)ViewBag.Risks)
+                                        {
+                                            var riskLabel = risk.RiskNumber + " · " + (isRtl ? (risk.NameAr ?? risk.NameEn) : (risk.NameEn ?? risk.NameAr));
+                                            <label class="cs-opt">
+                                                <input type="checkbox" name="selectedRisks" value="@risk.Id" class="cs-chk" data-csid="risks" data-label="@riskLabel" onchange="csUpdate('risks')" />
+                                                <span class="cs-opt-text">@riskLabel</span>
+                                                <span class="wiz-tag-@risk.RiskLevel cs-opt-meta">@risk.RiskLevel</span>
+                                            </label>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <div class="cs-empty">@Shared["Text_NoRisksAvailable"]</div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="wiz-footer">
+                <button type="button" class="pc-btn pc-btn-ghost" id="prevBtn" disabled>
+                    <i data-lucide="@(isRtl ? "chevron-right" : "chevron-left")" style="width:16px;height:16px;"></i>
+                    @(isRtl ? "السابق" : "Previous")
+                </button>
+                <button type="button" class="pc-btn pc-btn-primary" id="nextBtn">
+                    @(isRtl ? "التالي" : "Next")
+                    <i data-lucide="@(isRtl ? "chevron-left" : "chevron-right")" style="width:16px;height:16px;"></i>
+                </button>
+            </div>
+        </section>
+
+        <aside class="wiz-summary">
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="hash"></i><h3>@Shared["Column_Code"]</h3></div>
+                <p class="wiz-sum-note">@(isRtl ? "يُولد تلقائيًا عند الحفظ" : "Auto-generated on save")</p>
+                <div class="wiz-sum-codepreview">CR-—</div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="info"></i><h3>@(isRtl ? "ملخص" : "Summary")</h3></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="zap"></i> @Shared["Column_Priority"]</span><span class="wiz-sum-pill" id="sumPriority">5</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="bookmark"></i> @Shared["Label_Source"]</span><span class="wiz-sum-pill" id="sumSource">—</span></div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="link-2"></i><h3>@(isRtl ? "الكيانات المرتبطة" : "Related Entities")</h3></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="git-branch"></i> @Shared["Column_Process"]</span><span class="wiz-sum-pill" id="sumProcess">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="briefcase"></i> @Shared["Column_Service"]</span><span class="wiz-sum-pill" id="sumService">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="building-2"></i> @Shared["Column_OwningUnit"]</span><span class="wiz-sum-pill" id="sumUnit">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="package"></i> @Shared["Label_AffectedAssets"]</span><span class="wiz-sum-pill" id="sumAssets">0</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="shield-alert"></i> @Shared["Label_RelatedRisks"]</span><span class="wiz-sum-pill" id="sumRisks">0</span></div>
+            </div>
+
+            <div class="wiz-sum-actions">
+                <button type="submit" class="pc-btn pc-btn-primary pc-btn-block" id="submitBtn" disabled
+                        title="@(isRtl ? "أكمل جميع الخطوات لتفعيل الزر" : "Complete all steps to enable")">
+                    <i data-lucide="send" style="width:16px;height:16px;"></i>
+                    @Shared["Button_Submit"]
+                </button>
+                <a asp-action="Index" class="pc-btn pc-btn-ghost pc-btn-block">
+                    <i data-lucide="x" style="width:16px;height:16px;"></i>
+                    @Shared["Button_Cancel"]
+                </a>
+            </div>
+        </aside>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script nonce="@Context.CspNonce()">
+        // Multi-select chip dropdown helpers — same shape used by Improvements/Wizard.
+        let csOpen = null;
+        function csToggle(id) {
+            const drop = document.getElementById('csDrop_' + id);
+            if (!drop) return;
+            if (csOpen && csOpen !== id) document.getElementById('csDrop_' + csOpen)?.classList.add('hidden');
+            drop.classList.toggle('hidden');
+            csOpen = drop.classList.contains('hidden') ? null : id;
+        }
+        function csFilter(id, query) {
+            const q = (query || '').toLowerCase();
+            document.querySelectorAll('.cs-opt input.cs-chk[data-csid="' + id + '"]').forEach(chk => {
+                const label = (chk.getAttribute('data-label') || '').toLowerCase();
+                chk.closest('label')?.classList.toggle('hidden', q && !label.includes(q));
+            });
+        }
+        function csUpdate(id) {
+            const chips = document.getElementById('csChips_' + id);
+            const ph = document.getElementById('csPh_' + id);
+            if (!chips || !ph) return;
+            chips.innerHTML = '';
+            const selected = Array.from(document.querySelectorAll('.cs-chk[data-csid="' + id + '"]:checked'));
+            selected.forEach(chk => {
+                const span = document.createElement('span');
+                span.className = 'cs-chip';
+                const label = chk.getAttribute('data-label') || chk.value;
+                const txt = document.createElement('span');
+                txt.textContent = label;
+                txt.style.maxWidth = '180px';
+                txt.style.overflow = 'hidden';
+                txt.style.textOverflow = 'ellipsis';
+                txt.style.whiteSpace = 'nowrap';
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = '×';
+                btn.addEventListener('click', e => { e.stopPropagation(); chk.checked = false; csUpdate(id); });
+                span.appendChild(txt);
+                span.appendChild(btn);
+                chips.appendChild(span);
+            });
+            ph.style.display = selected.length > 0 ? 'none' : '';
+        }
+        // Close any open chip dropdown when clicking outside.
+        document.addEventListener('click', e => {
+            if (!csOpen) return;
+            const wrap = document.getElementById('csWrap_' + csOpen);
+            if (wrap && !wrap.contains(e.target)) {
+                document.getElementById('csDrop_' + csOpen)?.classList.add('hidden');
+                csOpen = null;
+            }
+        });
+        // Initialise chip strips on load (handles pre-checked items on Edit).
+        document.querySelectorAll('.cs-wrap').forEach(w => {
+            const id = w.id.replace(/^csWrap_/, '');
+            csUpdate(id);
+        });
+
+        if (window.lucide) lucide.createIcons();
+        const isRtl = @Html.Raw(isRtl ? "true" : "false");
+        const TOTAL_STEPS = 2;
+        let currentStep = 1, highestVisited = 1;
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const submitBtn = document.getElementById('submitBtn');
+        const stepCounterEl = document.getElementById('stepCounter');
+
+        function validateStep(n) {
+            if (n !== 1) return true;
+            const errors = [];
+            const mark = (id, label) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (!(el.value || '').trim()) { el.classList.add('invalid'); errors.push(label); } else { el.classList.remove('invalid'); }
+            };
+            mark('NameEn', isRtl ? "الاسم بالإنجليزية مطلوب" : "English name is required");
+            mark('NameAr', isRtl ? "الاسم بالعربية مطلوب"   : "Arabic name is required");
+            if (errors.length) {
+                Swal.fire({ icon:'warning', title: isRtl ? "حقول مطلوبة" : "Required Fields", html: errors.join('<br>'), confirmButtonColor:'#005B99' });
+                return false;
+            }
+            return true;
+        }
+
+        function showStep(n) {
+            currentStep = Math.max(1, Math.min(TOTAL_STEPS, n));
+            highestVisited = Math.max(highestVisited, currentStep);
+            document.querySelectorAll('.wiz-step').forEach(el => {
+                const s = parseInt(el.dataset.step, 10);
+                el.classList.toggle('active', s === currentStep);
+                el.classList.toggle('completed', s < highestVisited && s !== currentStep);
+            });
+            document.querySelectorAll('.wiz-step-content').forEach(p => {
+                p.classList.toggle('active', parseInt(p.dataset.step, 10) === currentStep);
+            });
+            prevBtn.disabled = (currentStep === 1);
+            nextBtn.classList.toggle('d-none', currentStep === TOTAL_STEPS);
+            if (submitBtn) submitBtn.disabled = (currentStep !== TOTAL_STEPS);
+            if (stepCounterEl) stepCounterEl.textContent = currentStep;
+            if (window.lucide) lucide.createIcons();
+        }
+        window.wizGoTo = function (n) {
+            if (n <= currentStep) { showStep(n); return; }
+            if (n === currentStep + 1) { if (validateStep(currentStep)) showStep(n); return; }
+            if (validateStep(currentStep)) showStep(currentStep + 1);
+        };
+        prevBtn.addEventListener('click', () => showStep(currentStep - 1));
+        nextBtn.addEventListener('click', () => { if (validateStep(currentStep)) showStep(currentStep + 1); });
+
+        function refresh() {
+            const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v || '—'; };
+            const src = document.getElementById('SourceSel');
+            set('sumSource', src?.value ? src.options[src.selectedIndex]?.text?.trim() : '');
+            set('sumPriority', (document.getElementById('PriorityInp')?.value || '').trim() || '5');
+            const p = document.getElementById('ProcessSel');
+            set('sumProcess', p?.value ? p.options[p.selectedIndex]?.text?.trim() : '');
+            const s = document.getElementById('ServiceSel');
+            set('sumService', s?.value ? s.options[s.selectedIndex]?.text?.trim() : '');
+            const u = document.getElementById('UnitSel');
+            set('sumUnit', u?.value ? u.options[u.selectedIndex]?.text?.trim() : '');
+            const aCount = document.querySelectorAll('#assetsList input[type="checkbox"]:checked').length;
+            const rCount = document.querySelectorAll('#risksList  input[type="checkbox"]:checked').length;
+            set('sumAssets', String(aCount));
+            set('sumRisks',  String(rCount));
+        }
+        ['SourceSel','PriorityInp','ProcessSel','ServiceSel','UnitSel'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', refresh);
+            document.getElementById(id)?.addEventListener('input', refresh);
+        });
+        document.querySelectorAll('#assetsList input[type="checkbox"], #risksList input[type="checkbox"]')
+                .forEach(cb => cb.addEventListener('change', refresh));
+        document.getElementById('wizardForm').addEventListener('submit', function (e) {
+            if (!validateStep(1)) { e.preventDefault(); showStep(1); }
+        });
+
+        showStep(1);
+        refresh();
+    </script>
+}

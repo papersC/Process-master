@@ -1,0 +1,343 @@
+@model Process
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = (isRtl ? "إعداد العملية" : "Process Setup");
+    var step = (int)(ViewBag.CurrentStep ?? 1);
+
+    string StepTitle(int n) => n switch
+    {
+        1 => isRtl ? "ربط المخاطر" : "Link Risks",
+        2 => isRtl ? "ربط الخدمات" : "Link Services",
+        3 => isRtl ? "الأنشطة" : "Activities",
+        4 => isRtl ? "مخطط BPMN" : "BPMN Diagram",
+        _ => ""
+    };
+}
+
+<div class="max-w-5xl mx-auto">
+    <!-- Header -->
+    <div class="mb-6">
+        <div class="flex items-center gap-2 text-sm text-gray-500 mb-1">
+            <i data-lucide="sparkles" class="w-4 h-4 text-indigo-500"></i>
+            <span>@(isRtl ? "إعداد العملية بعد الإنشاء" : "Post-create setup")</span>
+        </div>
+        <h1 class="text-2xl font-bold text-gray-900">@Model.Name</h1>
+        <p class="text-sm text-gray-500 mt-1">
+            @(isRtl ? "أكمل الخطوات الأربع لإعداد العملية بشكل كامل. يمكنك تخطي أي خطوة والعودة إليها لاحقًا." : "Complete the four steps to fully set up the process. You can skip any step and come back later.")
+        </p>
+    </div>
+
+    <!-- Step Indicator -->
+    <div class="mb-6">
+        <div class="flex items-stretch gap-0 rounded-xl overflow-hidden border border-gray-200">
+            @for (int i = 1; i <= 4; i++)
+            {
+                var state = i == step ? "active" : (i < step ? "done" : "pending");
+                var bg = state == "active" ? "background:#1e40af;color:#fff;" :
+                         state == "done" ? "background:#e0e7ff;color:#1e40af;" :
+                                            "background:#f3f4f6;color:#6b7280;";
+                <div class="flex-1 flex items-center justify-center gap-2 px-3 py-3 text-sm font-medium" style="@bg">
+                    <span class="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold"
+                          style="@(state == "active" ? "background:rgba(255,255,255,0.25);" : state == "done" ? "background:#c7d2fe;" : "background:rgba(0,0,0,0.08);")">
+                        @if (state == "done")
+                        {
+                            <i data-lucide="check" style="width:14px;height:14px;"></i>
+                        }
+                        else
+                        {
+                            @i
+                        }
+                    </span>
+                    <span class="hidden md:inline">@StepTitle(i)</span>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Form -->
+    <form method="post" asp-action="SetupSave" asp-route-id="@Model.Id" id="setupForm">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="step" value="@step" />
+        <input type="hidden" name="action" id="actionField" value="next" />
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                @switch (step)
+                {
+                    case 1:
+                        <i data-lucide="shield-alert" class="w-5 h-5 text-red-500"></i>
+                        break;
+                    case 2:
+                        <i data-lucide="concierge-bell" class="w-5 h-5 text-blue-500"></i>
+                        break;
+                    case 3:
+                        <i data-lucide="list-checks" class="w-5 h-5 text-emerald-500"></i>
+                        break;
+                    case 4:
+                        <i data-lucide="git-branch" class="w-5 h-5 text-indigo-500"></i>
+                        break;
+                }
+                <h2 class="text-base font-semibold text-gray-900">@StepTitle(step)</h2>
+            </div>
+
+            <div class="p-6">
+                @if (step == 1)
+                {
+                    var risks = ViewBag.AllRisks as System.Collections.IEnumerable;
+                    var linkedIds = ViewBag.LinkedRiskIds as List<string> ?? new List<string>();
+                    <p class="text-sm text-gray-500 mb-4">@(isRtl ? "اختر المخاطر المؤسسية المرتبطة بهذه العملية." : "Select the enterprise risks that relate to this process.")</p>
+
+                    <div class="mb-3">
+                        <input type="text" id="riskFilter" placeholder="@(isRtl ? "بحث..." : "Search risks...")"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                    </div>
+
+                    <div class="border border-gray-200 rounded-lg max-h-96 overflow-y-auto divide-y divide-gray-100" id="riskList">
+                        @if (risks != null)
+                        {
+                            foreach (dynamic r in risks)
+                            {
+                                string rid = r.Id;
+                                var isLinked = linkedIds.Contains(rid);
+                                <label class="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer risk-row">
+                                    <input type="checkbox" name="SelectedRiskIds" value="@rid"
+                                           class="mt-0.5 w-4 h-4 text-blue-600 rounded" @(isLinked ? "checked" : "") />
+                                    <div class="flex-1 min-w-0">
+                                        <div class="text-sm font-medium text-gray-900 risk-name">@r.RiskNumber — @r.Name</div>
+                                    </div>
+                                </label>
+                            }
+                        }
+                        else
+                        {
+                            <div class="p-6 text-center text-sm text-gray-500">@(isRtl ? "لا توجد مخاطر متاحة." : "No risks available.")</div>
+                        }
+                    </div>
+                }
+                else if (step == 2)
+                {
+                    var services = ViewBag.AllServices as System.Collections.IEnumerable;
+                    var linkedIds = ViewBag.LinkedServiceIds as List<string> ?? new List<string>();
+                    <p class="text-sm text-gray-500 mb-4">@(isRtl ? "اختر الخدمات التي تدعمها هذه العملية." : "Select the services that this process supports.")</p>
+
+                    <div class="mb-3">
+                        <input type="text" id="serviceFilter" placeholder="@(isRtl ? "بحث..." : "Search services...")"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                    </div>
+
+                    <div class="border border-gray-200 rounded-lg max-h-96 overflow-y-auto divide-y divide-gray-100" id="serviceList">
+                        @if (services != null)
+                        {
+                            foreach (dynamic s in services)
+                            {
+                                string sid = s.Id;
+                                var isLinked = linkedIds.Contains(sid);
+                                <label class="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer service-row">
+                                    <input type="checkbox" name="SelectedServiceIds" value="@sid"
+                                           class="mt-0.5 w-4 h-4 text-blue-600 rounded" @(isLinked ? "checked" : "") />
+                                    <div class="flex-1 min-w-0">
+                                        <div class="text-sm font-medium text-gray-900 service-name">@s.Code — @s.Name</div>
+                                    </div>
+                                </label>
+                            }
+                        }
+                        else
+                        {
+                            <div class="p-6 text-center text-sm text-gray-500">@(isRtl ? "لا توجد خدمات متاحة." : "No services available.")</div>
+                        }
+                    </div>
+                }
+                else if (step == 3)
+                {
+                    var existing = ViewBag.ExistingActivities as System.Collections.IEnumerable;
+                    <p class="text-sm text-gray-500 mb-4">@(isRtl ? "أضف الخطوات الرئيسية لهذه العملية. يمكنك دائمًا إضافة التفاصيل لاحقًا." : "Add the main steps for this process. You can always add details later.")</p>
+
+                    <table class="w-full text-sm" id="activitiesTable">
+                        <thead class="text-xs text-gray-500 uppercase bg-gray-50">
+                            <tr>
+                                <th class="px-3 py-2 text-start" style="width:8%">#</th>
+                                <th class="px-3 py-2 text-start" style="width:18%">@(isRtl ? "الرمز" : "Code")</th>
+                                <th class="px-3 py-2 text-start">@(isRtl ? "الاسم (إنجليزي)" : "Name (EN)")</th>
+                                <th class="px-3 py-2 text-start">@(isRtl ? "الاسم (عربي)" : "Name (AR)")</th>
+                                <th style="width:40px"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="activitiesBody">
+                            @{
+                                var idx = 0;
+                                if (existing != null)
+                                {
+                                    foreach (dynamic a in existing)
+                                    {
+                                        idx++;
+                                        <tr class="border-t border-gray-100 activity-row" data-id="@a.Id">
+                                            <td class="px-3 py-2 text-gray-500 num">@idx</td>
+                                            <td class="px-3 py-2"><input type="text" class="act-code w-full px-2 py-1 border border-gray-300 rounded text-sm" value="@a.Code" /></td>
+                                            <td class="px-3 py-2"><input type="text" class="act-name-en w-full px-2 py-1 border border-gray-300 rounded text-sm" value="@a.NameEn" /></td>
+                                            <td class="px-3 py-2"><input type="text" dir="rtl" class="act-name-ar w-full px-2 py-1 border border-gray-300 rounded text-sm" value="@a.NameAr" /></td>
+                                            <td class="px-3 py-2"><button type="button" class="remove-row text-red-500 hover:text-red-700" title="@(isRtl ? "حذف" : "Remove")" aria-label="@(isRtl ? "حذف" : "Remove")"><i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i></button></td>
+                                        </tr>
+                                    }
+                                }
+                            }
+                        </tbody>
+                    </table>
+
+                    <button type="button" id="addActivityRow" class="mt-3 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100">
+                        <i data-lucide="plus" class="w-4 h-4"></i>
+                        @(isRtl ? "إضافة نشاط" : "Add Activity")
+                    </button>
+                    <input type="hidden" name="ActivitiesJson" id="ActivitiesJson" />
+                }
+                else if (step == 4)
+                {
+                    var hasBpmn = !string.IsNullOrWhiteSpace(Model.BpmnDiagram);
+                    <div class="text-center py-8">
+                        <div class="inline-flex items-center justify-center mb-4"
+                             style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#eef2ff,#f5f3ff);">
+                            <i data-lucide="workflow" style="width:32px;height:32px;color:#6366f1;"></i>
+                        </div>
+                        @if (hasBpmn)
+                        {
+                            <h3 class="text-lg font-semibold text-gray-900 mb-1">@(isRtl ? "تم إرفاق مخطط BPMN" : "BPMN diagram attached")</h3>
+                            <p class="text-sm text-gray-500 mb-5">@(isRtl ? "يمكنك فتح المحرر للتعديل، أو إنهاء الإعداد." : "Open the editor to edit, or finish the setup.")</p>
+                        }
+                        else
+                        {
+                            <h3 class="text-lg font-semibold text-gray-900 mb-1">@(isRtl ? "ارسم مخطط BPMN للعملية" : "Draw the BPMN diagram for this process")</h3>
+                            <p class="text-sm text-gray-500 mb-5">@(isRtl ? "افتح المحرر لرسم مخطط سير العملية. يمكنك تخطي هذه الخطوة والعودة إليها لاحقًا." : "Open the editor to design the workflow. You can skip this step and come back later.")</p>
+                        }
+                        <a href="~/AI/Diagrams?processId=@Model.Id" class="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white rounded-lg" style="background:#1e40af;">
+                            <i data-lucide="pen-tool" class="w-4 h-4"></i>
+                            @(hasBpmn ? (isRtl ? "تعديل المخطط" : "Edit Diagram") : (isRtl ? "افتح محرر BPMN" : "Open BPMN Editor"))
+                        </a>
+                    </div>
+                }
+            </div>
+
+            <!-- Footer actions -->
+            <div class="px-6 py-4 border-t border-gray-200 flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                    @if (step > 1)
+                    {
+                        <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                                data-action="back">
+                            <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" class="w-4 h-4"></i>
+                            @(isRtl ? "السابق" : "Back")
+                        </button>
+                    }
+                </div>
+                <div class="flex items-center gap-2">
+                    <a asp-action="Details" asp-route-id="@Model.Id" class="text-sm text-gray-500 hover:text-gray-700">
+                        @(isRtl ? "إنهاء الإعداد لاحقًا" : "Finish setup later")
+                    </a>
+                    <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                            data-action="skip">
+                        @(isRtl ? "تخطي" : "Skip")
+                        <i data-lucide="skip-forward" class="w-4 h-4"></i>
+                    </button>
+                    @if (step < 4)
+                    {
+                        <button type="submit" class="inline-flex items-center gap-2 px-5 py-2 text-sm font-medium text-white rounded-lg"
+                                style="background:#1e40af;" data-action="next">
+                            @(isRtl ? "التالي" : "Next")
+                            <i data-lucide="@(isRtl ? "arrow-left" : "arrow-right")" class="w-4 h-4"></i>
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="submit" class="inline-flex items-center gap-2 px-5 py-2 text-sm font-medium text-white rounded-lg"
+                                style="background:#16a34a;" data-action="finish">
+                            <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                            @(isRtl ? "إنهاء" : "Finish")
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        // Step 1 & 2: live filter
+        (function () {
+            const wire = (inputId, listSelector, nameSelector) => {
+                const input = document.getElementById(inputId);
+                if (!input) return;
+                input.addEventListener('input', () => {
+                    const q = input.value.toLowerCase().trim();
+                    document.querySelectorAll(listSelector).forEach(row => {
+                        const txt = (row.querySelector(nameSelector)?.textContent || '').toLowerCase();
+                        row.style.display = !q || txt.includes(q) ? '' : 'none';
+                    });
+                });
+            };
+            wire('riskFilter', '.risk-row', '.risk-name');
+            wire('serviceFilter', '.service-row', '.service-name');
+        })();
+
+        // Step 3: activity rows
+        (function () {
+            const table = document.getElementById('activitiesTable');
+            if (!table) return;
+            const body = document.getElementById('activitiesBody');
+            const addBtn = document.getElementById('addActivityRow');
+
+            function renumber() {
+                Array.from(body.querySelectorAll('tr.activity-row')).forEach((tr, i) => {
+                    tr.querySelector('.num').textContent = (i + 1).toString();
+                });
+            }
+
+            function makeRow(id, code, nameEn, nameAr) {
+                const tr = document.createElement('tr');
+                tr.className = 'border-t border-gray-100 activity-row';
+                if (id) tr.dataset.id = id;
+                tr.innerHTML =
+                    '<td class="px-3 py-2 text-gray-500 num"></td>' +
+                    '<td class="px-3 py-2"><input type="text" class="act-code w-full px-2 py-1 border border-gray-300 rounded text-sm" value="' + (code || '') + '"></td>' +
+                    '<td class="px-3 py-2"><input type="text" class="act-name-en w-full px-2 py-1 border border-gray-300 rounded text-sm" value="' + (nameEn || '') + '"></td>' +
+                    '<td class="px-3 py-2"><input type="text" dir="rtl" class="act-name-ar w-full px-2 py-1 border border-gray-300 rounded text-sm" value="' + (nameAr || '') + '"></td>' +
+                    '<td class="px-3 py-2"><button type="button" class="remove-row text-red-500 hover:text-red-700" aria-label="Remove row" title="Remove"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td>';
+                return tr;
+            }
+
+            addBtn?.addEventListener('click', () => {
+                body.appendChild(makeRow());
+                renumber();
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            });
+
+            body.addEventListener('click', (e) => {
+                const btn = e.target.closest('.remove-row');
+                if (!btn) return;
+                btn.closest('tr')?.remove();
+                renumber();
+            });
+
+            // Serialize rows into hidden JSON on any submit that includes step 3
+            document.getElementById('setupForm')?.addEventListener('submit', () => {
+                const rows = Array.from(body.querySelectorAll('tr.activity-row')).map(tr => ({
+                    id: tr.dataset.id || null,
+                    code: tr.querySelector('.act-code')?.value?.trim() || '',
+                    nameEn: tr.querySelector('.act-name-en')?.value?.trim() || '',
+                    nameAr: tr.querySelector('.act-name-ar')?.value?.trim() || ''
+                }));
+                const field = document.getElementById('ActivitiesJson');
+                if (field) field.value = JSON.stringify(rows);
+            });
+
+            renumber();
+        })();
+
+        // Capture which button was clicked so the server knows the intent
+        (function () {
+            document.querySelectorAll('#setupForm button[data-action]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.getElementById('actionField').value = btn.dataset.action;
+                });
+            });
+        })();
+    </script>
+}

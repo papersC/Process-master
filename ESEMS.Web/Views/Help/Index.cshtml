@@ -1,0 +1,214 @@
+@inject IStringLocalizer<SharedResource> Shared
+@{
+    ViewData["Title"] = Shared["Title_HelpSupport"].Value;
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+}
+
+@*  Compact 4-quadrant grid. Replaces the prior hero-cards + 2-col stack
+    so every help entry-point fits in one viewport with no scroll.
+    Quadrants: Quick Start · Module Guides · FAQs · Support.   *@
+
+<style>
+    .help-shell { display: flex; flex-direction: column; gap: .75rem; }
+    .help-header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .25rem 0 .5rem; border-bottom: 1px solid #e5e7eb; flex-wrap: wrap; }
+    .help-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .help-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .help-header-actions { display: flex; gap: .35rem; }
+    .help-btn { display: inline-flex; align-items: center; gap: .35rem; padding: .42rem .85rem; border-radius: .375rem; font-size: var(--fs-xs); font-weight: 600; text-decoration: none; border: 1px solid #cbd5e1; background: #fff; color: #1f2937; }
+    .help-btn:hover { background: #f1f5f9; color: #1f2937; }
+    .help-btn-primary { background: #005B99; color: #fff; border-color: #005B99; }
+    .help-btn-primary:hover { background: #003d6b; color: #fff; }
+
+    /* Quadrant grid — 4 equal tiles, 2x2 on desktop, 1x4 on tablet, stacked on mobile. */
+    .help-quad { display: grid; grid-template-columns: repeat(2, 1fr); gap: .75rem; }
+    @@media (max-width: 1023px) { .help-quad { grid-template-columns: 1fr; } }
+
+    .help-tile { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .55rem; min-height: 220px; }
+    .help-tile-head { display: flex; align-items: center; gap: .55rem; padding-bottom: .5rem; border-bottom: 1px solid #f1f5f9; }
+    .help-tile-icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; background: rgba(0,91,153,.12); color: #005B99; flex-shrink: 0; }
+    .help-tile-icon i { width: 18px; height: 18px; }
+    .help-tile-title { font-size: var(--fs-sm); font-weight: 600; color: #111827; }
+    .help-tile-sub { font-size: var(--fs-xs); color: #6b7280; }
+    .help-tile-body { flex: 1; display: flex; flex-direction: column; gap: .35rem; }
+
+    /* Row-style links inside a tile — no decorative chevron clutter. */
+    .help-row { display: flex; align-items: flex-start; gap: .55rem; padding: .4rem .5rem; border-radius: 6px; text-decoration: none; color: #1f2937; transition: background-color .12s; }
+    .help-row:hover { background: rgba(0,91,153,.06); color: #005B99; }
+    .help-row-icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 5px; background: rgba(0,91,153,.08); color: #005B99; flex-shrink: 0; margin-top: 1px; }
+    .help-row-icon i { width: 14px; height: 14px; }
+    .help-row-text { flex: 1; min-width: 0; }
+    .help-row-title { font-size: var(--fs-xs); font-weight: 600; line-height: 1.3; }
+    .help-row-sub { font-size: 11px; color: #6b7280; line-height: 1.3; }
+
+    /* FAQ accordion — quieter than the Bootstrap default. */
+    .help-faq { border-radius: 6px; border: 1px solid #f1f5f9; overflow: hidden; }
+    .help-faq + .help-faq { margin-top: .35rem; }
+    .help-faq-q { padding: .5rem .65rem; background: #fff; cursor: pointer; font-size: var(--fs-xs); font-weight: 600; color: #1f2937; display: flex; align-items: center; gap: .5rem; user-select: none; }
+    .help-faq-q::-webkit-details-marker { display: none; }
+    .help-faq-q::before { content: '▸'; color: #94a3b8; transition: transform .15s; }
+    details[open] > .help-faq-q::before { transform: rotate(90deg); }
+    .help-faq-a { padding: .25rem .65rem .55rem 1.65rem; font-size: var(--fs-xs); color: #475569; line-height: 1.5; background: #f8fafc; border-top: 1px solid #f1f5f9; }
+    html[dir="rtl"] .help-faq-a { padding: .25rem 1.65rem .55rem .65rem; }
+
+    /* Support footer of the contact tile. */
+    .help-contact-row { display: flex; align-items: center; gap: .5rem; padding: .5rem .65rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: var(--fs-xs); }
+    .help-contact-row i { color: #005B99; width: 14px; height: 14px; }
+    .help-contact-row a { color: #005B99; text-decoration: none; font-weight: 600; word-break: break-all; }
+    .help-contact-row a:hover { text-decoration: underline; }
+</style>
+
+<div class="help-shell">
+    <div class="help-header">
+        <div>
+            <h1>
+                <i data-lucide="help-circle" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>
+                @Shared["Title_HelpSupport"]
+            </h1>
+            <p>@Shared["Text_HelpHubSubtitle"]</p>
+        </div>
+        <div class="help-header-actions">
+            <a href="~/Home/UserManual" class="help-btn help-btn-primary">
+                <i data-lucide="book-open" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                @Shared["Help_UserManual_Open"]
+            </a>
+        </div>
+    </div>
+
+    <div class="help-quad">
+
+        @* Quadrant 1: Quick Start *@
+        <section class="help-tile">
+            <div class="help-tile-head">
+                <span class="help-tile-icon"><i data-lucide="play-circle" aria-hidden="true"></i></span>
+                <div>
+                    <div class="help-tile-title">@Shared["Help_QuickStart_NewUser"]</div>
+                    <div class="help-tile-sub">@(isRtl ? "خطواتك الأولى في النظام" : "Your first steps")</div>
+                </div>
+            </div>
+            <div class="help-tile-body">
+                <a href="~/Home/UserManual" class="help-row">
+                    <span class="help-row-icon"><i data-lucide="book-open" aria-hidden="true"></i></span>
+                    <span class="help-row-text">
+                        <span class="help-row-title">@Shared["Help_QuickStart_NewUser"]</span>
+                        <span class="help-row-sub">@Shared["Help_QuickStart_NewUser_Desc"]</span>
+                    </span>
+                </a>
+                <a href="~/Home/UserManual#navigation" class="help-row">
+                    <span class="help-row-icon"><i data-lucide="compass" aria-hidden="true"></i></span>
+                    <span class="help-row-text">
+                        <span class="help-row-title">@Shared["Help_QuickStart_Navigation"]</span>
+                        <span class="help-row-sub">@Shared["Help_QuickStart_Navigation_Desc"]</span>
+                    </span>
+                </a>
+                <a href="javascript:document.getElementById('spAiAssistantBtn')?.click()" class="help-row">
+                    <span class="help-row-icon"><i data-lucide="sparkles" aria-hidden="true"></i></span>
+                    <span class="help-row-text">
+                        <span class="help-row-title">@Shared["Help_QuickStart_AiAssistant"]</span>
+                        <span class="help-row-sub">@Shared["Help_QuickStart_AiAssistant_Desc"]</span>
+                    </span>
+                </a>
+            </div>
+        </section>
+
+        @* Quadrant 2: Module guides *@
+        <section class="help-tile">
+            <div class="help-tile-head">
+                <span class="help-tile-icon"><i data-lucide="book-open" aria-hidden="true"></i></span>
+                <div>
+                    <div class="help-tile-title">@Shared["Help_DetailedGuides"]</div>
+                    <div class="help-tile-sub">@(isRtl ? "أدلة تفصيلية للوحدات الأساسية" : "Detailed guides for each module")</div>
+                </div>
+            </div>
+            <div class="help-tile-body">
+                @{
+                    var guides = new[]
+                    {
+                        new { Icon = "workflow",     Title = Shared["Nav_Processes"].Value,        Desc = Shared["Help_Guide_Processes"].Value     },
+                        new { Icon = "trending-up",  Title = Shared["Nav_Improvements"].Value,     Desc = Shared["Help_Guide_Improvements"].Value  },
+                        new { Icon = "shield-alert", Title = Shared["Nav_Risks"].Value,            Desc = Shared["Help_Guide_Risks"].Value         },
+                        new { Icon = "package",      Title = Shared["Nav_Services"].Value,         Desc = Shared["Help_Guide_Services"].Value      },
+                        new { Icon = "settings",     Title = Shared["Nav_SettingsHub"].Value,      Desc = Shared["Help_Guide_Settings"].Value      }
+                    };
+                }
+                @foreach (var g in guides)
+                {
+                    <a href="~/Home/UserManual" class="help-row">
+                        <span class="help-row-icon"><i data-lucide="@g.Icon" aria-hidden="true"></i></span>
+                        <span class="help-row-text">
+                            <span class="help-row-title">@g.Title</span>
+                            <span class="help-row-sub">@g.Desc</span>
+                        </span>
+                    </a>
+                }
+            </div>
+        </section>
+
+        @* Quadrant 3: FAQs *@
+        <section class="help-tile">
+            <div class="help-tile-head">
+                <span class="help-tile-icon"><i data-lucide="message-circle-question" aria-hidden="true"></i></span>
+                <div>
+                    <div class="help-tile-title">@Shared["Help_FAQs"]</div>
+                    <div class="help-tile-sub">@(isRtl ? "إجابات على الأسئلة الشائعة" : "Common answers, fast")</div>
+                </div>
+            </div>
+            <div class="help-tile-body">
+                @{
+                    var faqs = new[]
+                    {
+                        new { Q = Shared["Help_FAQ_1_Q"].Value, A = Shared["Help_FAQ_1_A"].Value },
+                        new { Q = Shared["Help_FAQ_2_Q"].Value, A = Shared["Help_FAQ_2_A"].Value },
+                        new { Q = Shared["Help_FAQ_3_Q"].Value, A = Shared["Help_FAQ_3_A"].Value },
+                        new { Q = Shared["Help_FAQ_4_Q"].Value, A = Shared["Help_FAQ_4_A"].Value }
+                    };
+                }
+                @foreach (var f in faqs)
+                {
+                    <details class="help-faq">
+                        <summary class="help-faq-q">@f.Q</summary>
+                        <div class="help-faq-a">@f.A</div>
+                    </details>
+                }
+            </div>
+        </section>
+
+        @* Quadrant 4: Manual + Support *@
+        <section class="help-tile">
+            <div class="help-tile-head">
+                <span class="help-tile-icon"><i data-lucide="life-buoy" aria-hidden="true"></i></span>
+                <div>
+                    <div class="help-tile-title">@Shared["Help_ContactSupport"]</div>
+                    <div class="help-tile-sub">@(isRtl ? "الدليل الكامل والدعم المباشر" : "Full manual + direct support")</div>
+                </div>
+            </div>
+            <div class="help-tile-body">
+                <a href="~/Home/UserManual" class="help-row">
+                    <span class="help-row-icon"><i data-lucide="file-text" aria-hidden="true"></i></span>
+                    <span class="help-row-text">
+                        <span class="help-row-title">@Shared["Help_UserManual_Title"]</span>
+                        <span class="help-row-sub">@Shared["Help_UserManual_Desc"]</span>
+                    </span>
+                </a>
+                <div class="help-contact-row" style="margin-top:auto;">
+                    <i data-lucide="mail" aria-hidden="true"></i>
+                    <span style="color:#475569;">@Shared["Help_ContactSupport_Desc"]</span>
+                </div>
+                <a class="help-contact-row" href="mailto:support@mbrhe.gov.ae">
+                    <i data-lucide="send" aria-hidden="true"></i>
+                    <span>support@mbrhe.gov.ae</span>
+                </a>
+            </div>
+        </section>
+
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+        // F1 keyboard shortcut — preserved from previous design.
+        document.addEventListener('keydown', e => {
+            if (e.key === 'F1') { e.preventDefault(); window.location.href = '@Url.Action("Index", "Help")'; }
+        });
+    </script>
+}

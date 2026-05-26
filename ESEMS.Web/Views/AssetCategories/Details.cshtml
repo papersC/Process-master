@@ -1,0 +1,294 @@
+@model AssetCategory
+@{
+    ViewData["Title"] = Model.Code;
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+}
+
+<!-- Modern Banner Header -->
+<div class="mb-8 rounded-2xl shadow-xl overflow-hidden" style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+    <div class="px-8 py-10">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-6">
+                <div class="w-20 h-20 bg-white/10 backdrop-blur-sm rounded-2xl flex items-center justify-center">
+                    <i data-lucide="folder-tree" class="w-10 h-10 text-white"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-3 mb-2">
+                        <h1 class="text-4xl font-bold text-white">@Model.Code</h1>
+                    </div>
+                    <p class="text-blue-100 text-lg">@(isRtl ? Model.NameAr : Model.NameEn)</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <a asp-action="Index" class="inline-flex items-center gap-2 px-6 py-3 bg-white text-blue-600 font-semibold rounded-lg hover:bg-blue-50 transition-all shadow-md">
+                    <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" class="w-5 h-5" style="stroke: #005B99;"></i>
+                    <span style="color: #005B99;">@Shared["Button_BackToList"]</span>
+                </a>
+                <a asp-action="Edit" asp-route-id="@Model.Id" class="inline-flex items-center gap-2 px-6 py-3 bg-white/10 backdrop-blur-sm text-white font-semibold rounded-lg hover:bg-white/20 transition-all border border-white/20">
+                    <i data-lucide="edit" class="w-5 h-5"></i>
+                    @Shared["Button_Edit"]
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white rounded-lg shadow-sm p-4 border-s-4 border-blue-500">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-xs font-medium text-gray-500">@Shared["Column_Assets"]</p>
+                <h3 class="text-2xl font-bold text-gray-900">@Model.Assets.Count</h3>
+            </div>
+            <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                <i data-lucide="package" class="w-5 h-5 text-blue-600"></i>
+            </div>
+        </div>
+    </div>
+    <div class="bg-white rounded-lg shadow-sm p-4 border-s-4 border-purple-500">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-xs font-medium text-gray-500">@Shared["Label_Subcategories"]</p>
+                <h3 class="text-2xl font-bold text-gray-900">@Model.SubCategories.Count</h3>
+            </div>
+            <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                <i data-lucide="folder" class="w-5 h-5 text-purple-600"></i>
+            </div>
+        </div>
+    </div>
+    <div class="bg-white rounded-lg shadow-sm p-4 border-s-4 border-green-500">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-xs font-medium text-gray-500">@Shared["Label_OperationalAssets"]</p>
+                <h3 class="text-2xl font-bold text-gray-900">@Model.Assets.Count(a => a.Status == AssetStatus.Operational)</h3>
+            </div>
+            <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
+            </div>
+        </div>
+    </div>
+    <div class="bg-white rounded-lg shadow-sm p-4 border-s-4 border-orange-500">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-xs font-medium text-gray-500">@Shared["Label_TotalValue"]</p>
+                <h3 class="text-2xl font-bold text-gray-900">@Model.Assets.Sum(a => a.CurrentValue ?? 0).ToString("N0") AED</h3>
+            </div>
+            <div class="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+                <i data-lucide="dollar-sign" class="w-5 h-5 text-orange-600"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Category Information -->
+    <div class="lg:col-span-1">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div class="px-6 py-4" style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+                <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                    <i data-lucide="info" class="w-5 h-5"></i>
+                    @Shared["Heading_CategoryInformation"]
+                </h2>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 uppercase mb-1">@Shared["Label_Code"]</label>
+                    <p class="text-sm font-semibold text-gray-900">@Model.Code</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 uppercase mb-1">@Shared["Label_NameEnglish"]</label>
+                    <p class="text-sm font-semibold text-gray-900">@Model.NameEn</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 uppercase mb-1">@Shared["Label_NameArabic"]</label>
+                    <p class="text-sm font-semibold text-gray-900" dir="rtl">@Model.NameAr</p>
+                </div>
+                @if (!string.IsNullOrEmpty(Model.DescriptionEn))
+                {
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 uppercase mb-1">@Shared["Column_Description"]</label>
+                        <p class="text-sm text-gray-700">@(isRtl ? Model.DescriptionAr : Model.DescriptionEn)</p>
+                    </div>
+                }
+                @if (Model.ParentCategory != null)
+                {
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 uppercase mb-1">@Shared["Label_ParentCategory"]</label>
+                        <a asp-action="Details" asp-route-id="@Model.ParentCategory.Id" class="text-sm text-blue-600 hover:text-blue-800">
+                            @Model.ParentCategory.Code - @(isRtl ? Model.ParentCategory.NameAr : Model.ParentCategory.NameEn)
+                        </a>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Default Settings -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden mt-6">
+            <div class="px-6 py-4" style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+                <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                    <i data-lucide="settings" class="w-5 h-5"></i>
+                    @Shared["Heading_DefaultSettings"]
+                </h2>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 uppercase mb-1">@Shared["Label_DepreciationRate"]</label>
+                    <p class="text-sm font-semibold text-gray-900">
+                        @(Model.DefaultDepreciationRate.HasValue ? $"{Model.DefaultDepreciationRate.Value:0.##}% {Shared["Text_PerYear"].Value}" : Shared["Text_NotSet"].Value)
+                    </p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 uppercase mb-1">@Shared["Label_UsefulLife"]</label>
+                    <p class="text-sm font-semibold text-gray-900">
+                        @(Model.DefaultUsefulLifeYears.HasValue ? $"{Model.DefaultUsefulLifeYears.Value} {Shared["Text_Years"].Value}" : Shared["Text_NotSet"].Value)
+                    </p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 uppercase mb-1">@Shared["Label_MaintenanceInterval"]</label>
+                    <p class="text-sm font-semibold text-gray-900">
+                        @(Model.DefaultMaintenanceIntervalDays.HasValue ? $"{Model.DefaultMaintenanceIntervalDays.Value} {Shared["Text_Days"].Value}" : Shared["Text_NotSet"].Value)
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Assets and Subcategories -->
+    <div class="lg:col-span-2 space-y-6">
+        <!-- Subcategories -->
+        @if (Model.SubCategories.Any())
+        {
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div class="px-6 py-4" style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+                    <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                        <i data-lucide="folder" class="w-5 h-5"></i>
+                        @Shared["Label_Subcategories"] (@Model.SubCategories.Count)
+                    </h2>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+                            <tr>
+                                <th class="px-4 py-3 text-start text-xs font-medium text-white uppercase">@Shared["Column_Code"]</th>
+                                <th class="px-4 py-3 text-start text-xs font-medium text-white uppercase">@Shared["Column_Name"]</th>
+                                <th class="px-4 py-3 text-start text-xs font-medium text-white uppercase">@Shared["Column_Assets"]</th>
+                                <th class="px-4 py-3 text-right text-xs font-medium text-white uppercase">@Shared["Column_Actions"]</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            @foreach (var subcat in Model.SubCategories.OrderBy(s => s.Code))
+                            {
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <span class="text-sm font-medium text-gray-900">@subcat.Code</span>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <span class="text-sm text-gray-900">@(isRtl ? subcat.NameAr : subcat.NameEn)</span>
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                            @subcat.Assets.Count
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-right">
+                                        <a asp-action="Details" asp-route-id="@subcat.Id" class="text-blue-600 hover:text-blue-800" title="View Details">
+                                            <i data-lucide="eye" class="w-4 h-4 inline"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+
+        <!-- Assets -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div class="px-6 py-4" style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+                <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                    <i data-lucide="package" class="w-5 h-5"></i>
+                    @Shared["Label_AssetsInCategory"] (@Model.Assets.Count)
+                </h2>
+            </div>
+            @if (Model.Assets.Any())
+            {
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead style="background: linear-gradient(135deg, #005B99 0%, #003d6b 100%);">
+                            <tr>
+                                <th class="px-4 py-3 text-start text-xs font-medium text-white uppercase">@Shared["Column_AssetTag"]</th>
+                                <th class="px-4 py-3 text-start text-xs font-medium text-white uppercase">@Shared["Column_Name"]</th>
+                                <th class="px-4 py-3 text-start text-xs font-medium text-white uppercase">@Shared["Column_Status"]</th>
+                                <th class="px-4 py-3 text-start text-xs font-medium text-white uppercase">@Shared["Column_AssignedTo"]</th>
+                                <th class="px-4 py-3 text-right text-xs font-medium text-white uppercase">@Shared["Column_Actions"]</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            @foreach (var asset in Model.Assets.OrderBy(a => a.AssetTag))
+                            {
+                                var statusClass = asset.Status switch
+                                {
+                                    AssetStatus.Operational => "bg-green-100 text-green-800",
+                                    AssetStatus.UnderMaintenance => "bg-orange-100 text-orange-800",
+                                    AssetStatus.Retired => "bg-gray-100 text-gray-800",
+                                    _ => "bg-blue-100 text-blue-800"
+                                };
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <a asp-controller="Assets" asp-action="Details" asp-route-id="@asset.Id" class="text-sm font-medium text-blue-600 hover:text-blue-800">
+                                            @asset.AssetTag
+                                        </a>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <span class="text-sm text-gray-900">@(isRtl ? asset.NameAr : asset.NameEn)</span>
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium @statusClass">
+                                            @Shared[$"AssetStatus_{asset.Status}"].Value
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        @if (asset.AssignedToUnit != null)
+                                        {
+                                            <span class="text-sm text-gray-700">@(isRtl ? asset.AssignedToUnit.NameAr : asset.AssignedToUnit.NameEn)</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-xs text-gray-400">-</span>
+                                        }
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-right">
+                                        <a asp-controller="Assets" asp-action="Details" asp-route-id="@asset.Id" class="text-blue-600 hover:text-blue-800" title="View Details">
+                                            <i data-lucide="eye" class="w-4 h-4 inline"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="p-12 text-center">
+                    <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i data-lucide="package" class="w-8 h-8 text-gray-400"></i>
+                    </div>
+                    <p class="text-gray-500 font-medium">@Shared["Text_NoAssetsInCategory"]</p>
+                    <a asp-controller="Assets" asp-action="Create" asp-route-categoryId="@Model.Id" class="text-blue-600 hover:text-blue-700 text-sm mt-2 inline-block">
+                        Add first asset
+                    </a>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">lucide.createIcons();</script>
+}
+

@@ -1,0 +1,75 @@
+@using ESEMS.Web.Models.Common
+@using ESEMS.Web.Models.Enums
+@inject IStringLocalizer<SharedResource> Shared
+@{
+    var logs = ViewBag.RecentAuditLogs as List<AuditLog> ?? new List<AuditLog>();
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ar";
+
+    string ActionBadgeClass(AuditAction action) => action switch
+    {
+        AuditAction.Create => "bg-green-100 text-green-700 border-green-200",
+        AuditAction.Update => "bg-blue-100 text-blue-700 border-blue-200",
+        AuditAction.Delete => "bg-red-100 text-red-700 border-red-200",
+        _ => "bg-gray-100 text-gray-700 border-gray-200"
+    };
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h5 class="fw-bold mb-0">@Shared["Heading_RecentActivity"]</h5>
+        <small class="text-muted">@Shared["Help_RecentActivity"]</small>
+    </div>
+    <a asp-controller="AuditLogs" asp-action="Index" class="btn btn-sm btn-outline-primary">
+        <i data-lucide="external-link" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+        @Shared["Button_OpenFullAuditLog"]
+    </a>
+</div>
+
+@if (!logs.Any())
+{
+    <div class="text-center py-5 text-muted">
+        <i data-lucide="scroll-text" style="width:40px;height:40px;opacity:.2;"></i>
+        <p class="mt-2 mb-0">@Shared["Text_NoActivityYet"]</p>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="small" style="width:140px;">@Shared["Col_When"]</th>
+                        <th class="small" style="width:90px;">@Shared["Col_Action"]</th>
+                        <th class="small" style="width:140px;">@Shared["Col_EntityType"]</th>
+                        <th class="small">@Shared["Col_Summary"]</th>
+                        <th class="small" style="width:160px;">@Shared["Col_User"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var log in logs)
+                    {
+                        <tr>
+                            <td class="small text-muted align-middle">@log.Timestamp.ToDubaiString("yyyy-MM-dd HH:mm")</td>
+                            <td class="align-middle">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border @ActionBadgeClass(log.Action)">
+                                    @log.Action
+                                </span>
+                            </td>
+                            <td class="small align-middle">
+                                <span class="font-monospace" style="font-size: var(--fs-xs);">@log.EntityType</span>
+                            </td>
+                            <td class="small align-middle">
+                                <span class="text-gray-800">@(string.IsNullOrWhiteSpace(log.EntityId) ? "—" : log.EntityId.Length > 36 ? log.EntityId.Substring(0, 36) + "…" : log.EntityId)</span>
+                            </td>
+                            <td class="small align-middle">@(log.UserName ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="mt-2 text-end">
+        <small class="text-muted">@string.Format(Shared["Text_ShowingLastN"].Value, logs.Count)</small>
+    </div>
+}

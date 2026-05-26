@@ -1,0 +1,1968 @@
+@model Process
+@inject ESEMS.Web.Services.Integrations.Contracts.IProcessPerformanceProvider PerfProvider
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = Shared["Title_ProcessDetails"].Value;
+    var isMainProcess = (bool)(ViewBag.IsMainProcess ?? false);
+    var subProcesses = ViewBag.SubProcesses as List<Process> ?? new List<Process>();
+
+    // Pre-compute collections used across tabs.
+    var allRisks = Model.Risks.Where(r => r.IsActive)
+        .Select(r => new {
+            NameAr = r.NameAr, NameEn = r.NameEn,
+            Likelihood = r.LikelihoodScore, Impact = r.ImpactScore,
+            Owner = (ESEMS.Web.Models.User?)null
+        })
+        .Concat(Model.EnterpriseRisks.Where(r => r.IsActive)
+            .Select(r => new {
+                NameAr = r.NameAr, NameEn = r.NameEn,
+                Likelihood = r.Likelihood, Impact = r.Impact,
+                Owner = r.Owner
+            }))
+        .OrderByDescending(r => r.Likelihood * r.Impact)
+        .ToList();
+
+    var linkedAssets = (Model.Assets ?? Enumerable.Empty<ESEMS.Web.Models.AssetManagement.Asset>())
+        .Where(a => !a.IsDeleted).ToList();
+
+    var linkedDocuments = ViewBag.LinkedDocuments as IEnumerable<ESEMS.Web.Models.DocumentManagement.ProcessDocument>
+        ?? Enumerable.Empty<ESEMS.Web.Models.DocumentManagement.ProcessDocument>();
+    var linkedDocCount = linkedDocuments.Count();
+
+    var activities = Model.Activities?.Where(a => !a.IsDeleted)
+        .OrderBy(a => a.DisplayOrder).ThenBy(a => a.Code).ToList()
+        ?? new List<Activity>();
+
+    var totalServices = Model.ProcessServices?.Count(ps => ps.IsActive) ?? 0;
+    var totalActivities = isMainProcess ? (int)(ViewBag.TotalActivities ?? 0) : activities.Count;
+    var totalTasks = isMainProcess ? (int)(ViewBag.TotalTasks ?? 0) : Model.Activities.Sum(a => a.Tasks.Count);
+    var totalRisks = isMainProcess ? (int)(ViewBag.TotalRisks ?? 0) : allRisks.Count;
+    var hasBpmnDiagram = !string.IsNullOrWhiteSpace(Model.BpmnDiagram);
+}
+
+<div class="esems-container">
+
+@* =====================================================================
+   Executive-tabs redesign:
+   - Sticky compact header (always-visible identity + KPIs + actions)
+   - 5 tabs: Overview / Activities / Linked Items / Risks / BPMN
+   - Each tab panel groups existing cards verbatim — DOM IDs preserved
+     so all original JS (BPMN viewer, ProcessOptimizer, link-service
+     modal, activity accordion, version history) keeps working.
+   ===================================================================== *@
+<style>
+    .pd-stickyhead {
+        position: sticky; top: 0; z-index: 30;
+        background: #fff;
+        border-bottom: 1px solid #e5e7eb;
+        margin: 0 -.75rem .85rem;
+        padding: .55rem .75rem .35rem;
+        box-shadow: 0 1px 0 rgba(15,23,42,.04);
+    }
+    .pd-titlerow { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+    .pd-titlemain { min-width: 0; flex: 1 1 360px; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .pd-code-pill { display: inline-block; padding: .14rem .55rem; font-size: var(--fs-xs); font-weight: 700; border-radius: .25rem; background: #eff6ff; color: #1d4ed8; font-family: ui-monospace, monospace; letter-spacing: .04em; }
+    .pd-title { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; line-height: 1.2; max-width: 480px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pd-status-pill { display: inline-flex; align-items: center; gap: .25rem; padding: .15rem .55rem; font-size: var(--fs-xs); font-weight: 600; border-radius: .25rem; background: #f1f5f9; color: #475569; }
+    .pd-breadcrumb { font-size: var(--fs-xs); color: #6b7280; }
+    .pd-actions { display: inline-flex; gap: .35rem; flex-wrap: wrap; }
+    .pd-btn { border-radius: .375rem; padding: .35rem .7rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; text-decoration: none; border: 1px solid transparent; line-height: 1.1; }
+    .pd-btn-outline { background: #fff; color: #005B99; border-color: #cbd5e1; }
+    .pd-btn-outline:hover { background: #f1f5f9; color: #005B99; }
+    .pd-btn-ai { background: linear-gradient(135deg,#a855f7,#6366f1); color: #fff; box-shadow: 0 2px 8px rgba(99,102,241,.18); border: none; }
+    .pd-btn-ai:hover { color: #fff; opacity: .92; }
+
+    .pd-kpis { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .45rem; }
+    .pd-kpi { display: inline-flex; align-items: center; gap: .35rem; padding: .25rem .55rem; border: 1px solid #e5e7eb; border-radius: .375rem; background: #fafbfc; font-size: var(--fs-xs); color: #475569; }
+    .pd-kpi i { color: #005B99; }
+    .pd-kpi b { color: #0f172a; font-weight: 700; font-size: var(--fs-xs); }
+    .pd-kpi.pd-kpi-on { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+    .pd-kpi.pd-kpi-on i { color: #059669; }
+    .pd-kpi.pd-kpi-off { background: #f8fafc; color: #64748b; }
+    .pd-kpi.pd-kpi-off i { color: #94a3b8; }
+
+    .pd-tabnav { display: flex; gap: 0; border-bottom: 1px solid #e5e7eb; margin: 0 -.75rem .9rem; padding: 0 .25rem; overflow-x: auto; scrollbar-width: thin; }
+    .pd-tab { display: inline-flex; align-items: center; gap: .4rem; padding: .55rem .85rem; font-size: var(--fs-xs); font-weight: 600; color: #6b7280; background: transparent; border: none; border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; transition: color .15s, border-color .15s; }
+    .pd-tab:hover { color: #1d4ed8; }
+    .pd-tab.active { color: #005B99; border-bottom-color: #005B99; }
+    .pd-tab i { width: 14px; height: 14px; }
+    .pd-tab .pd-tab-badge { display: inline-block; min-width: 18px; padding: 0 .35rem; font-size: var(--fs-xs); font-weight: 700; line-height: 16px; text-align: center; background: #e2e8f0; color: #334155; border-radius: 8px; }
+    .pd-tab.active .pd-tab-badge { background: #005B99; color: #fff; }
+
+    .pd-tabpanel { animation: pdFade .18s ease-out; }
+    @@keyframes pdFade { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+
+    /* Compact card overrides for inside tabs */
+    .pd-tabpanel .card { border: 1px solid #e5e7eb; }
+    .pd-tabpanel .card-header { background: #fff; border-bottom: 1px solid #f1f5f9; padding: .55rem .85rem; }
+    .pd-tabpanel .card-body { padding: .85rem; }
+    .pd-tabpanel .esems-label { font-size: var(--fs-xs); color: #6b7280; margin-bottom: .15rem; }
+    .pd-tabpanel .esems-body { font-size: var(--fs-sm); }
+
+    @@media (max-width: 768px) {
+        .pd-title { white-space: normal; max-width: none; }
+        .pd-actions { width: 100%; }
+        .pd-actions .pd-btn { flex: 1 1 auto; justify-content: center; }
+    }
+</style>
+
+<!-- ===================== STICKY HEADER ===================== -->
+<div class="pd-stickyhead">
+    <div class="pd-titlerow">
+        <div class="pd-titlemain">
+            <span class="pd-code-pill">@Model.Code</span>
+            <h1 class="pd-title" title="@Model.Name">@Model.Name</h1>
+            <span class="pd-status-pill">
+                <i data-lucide="circle" style="width:8px;height:8px;fill:currentColor;"></i>
+                @Shared[$"ProcessStatus_{Model.Status}"].Value
+            </span>
+            <span class="pd-breadcrumb">
+                @(isRtl ? "المجموعة" : "Group"): @(isRtl ? Model.ProcessGroup?.NameAr : Model.ProcessGroup?.NameEn)
+                • @(isRtl ? "الفئة" : "Category"): @(isRtl ? Model.ProcessGroup?.Category?.NameAr : Model.ProcessGroup?.Category?.NameEn)
+            </span>
+        </div>
+        <div class="pd-actions">
+            <a asp-action="Index" class="pd-btn pd-btn-outline">
+                <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" style="width:14px;height:14px;" aria-hidden="true"></i>
+                @(isRtl ? "رجوع" : "Back")
+            </a>
+            <a asp-action="Edit" asp-route-id="@Model.Id" class="pd-btn pd-btn-outline">
+                <i data-lucide="edit" style="width:14px;height:14px;" aria-hidden="true"></i>
+                @(isRtl ? "تعديل" : "Edit")
+            </a>
+            @* Prominent header button — KPI badge is also a link, but the
+               audit said users couldn't find the RACI editor unless they
+               drilled into an activity. A button next to Edit/AI Analysis
+               is the unambiguous entry point. *@
+            <a asp-action="Raci" asp-route-id="@Model.Id" class="pd-btn pd-btn-outline">
+                <i data-lucide="users" style="width:14px;height:14px;" aria-hidden="true"></i>
+                @(isRtl ? "مصفوفة RACI" : "RACI Matrix")
+            </a>
+            <button type="button" class="pd-btn pd-btn-ai"
+                    onclick="executeAiAnalysis('/AI/AnalyzeProcess', { processId: '@Model.Id' }, '@(isRtl ? "تحليل العملية" : "Process Analysis")')">
+                <i data-lucide="sparkles" style="width:14px;height:14px;" aria-hidden="true"></i>
+                @(isRtl ? "تحليل الذكاء الاصطناعي" : "AI Analysis")
+            </button>
+        </div>
+    </div>
+
+    <div class="pd-kpis">
+        <span class="pd-kpi"><i data-lucide="layers" style="width:12px;height:12px;"></i> @(isRtl ? "الأنشطة" : "Activities") <b>@totalActivities</b></span>
+        <span class="pd-kpi"><i data-lucide="check-square" style="width:12px;height:12px;"></i> @(isRtl ? "المهام" : "Tasks") <b>@totalTasks</b></span>
+        @{
+            // RACI badge now matches the editor's actual scope:
+            // Process-level + every Activity + every Task on this Process.
+            var raciCount = isMainProcess
+                ? (int)(ViewBag.TotalRaci ?? 0)
+                : Model.RaciMatrix.Count
+                  + Model.Activities.Sum(a => a.RaciMatrix.Count + a.Tasks.Sum(t => t.RaciMatrix.Count));
+        }
+        <a asp-action="Raci" asp-route-id="@Model.Id" class="pd-kpi"
+           style="text-decoration:none;color:inherit;cursor:pointer;"
+           title="@(isRtl ? "إدارة مصفوفة RACI" : "Manage RACI matrix")">
+            <i data-lucide="users" style="width:12px;height:12px;"></i> RACI <b>@raciCount</b>
+        </a>
+        <span class="pd-kpi"><i data-lucide="shield-alert" style="width:12px;height:12px;"></i> @(isRtl ? "المخاطر" : "Risks") <b>@totalRisks</b></span>
+        <span class="pd-kpi"><i data-lucide="briefcase" style="width:12px;height:12px;"></i> @(isRtl ? "الخدمات" : "Services") <b>@totalServices</b></span>
+        <span class="pd-kpi"><i data-lucide="package" style="width:12px;height:12px;"></i> @(isRtl ? "الأصول" : "Assets") <b>@linkedAssets.Count</b></span>
+        <span class="pd-kpi"><i data-lucide="folder-open" style="width:12px;height:12px;"></i> @(isRtl ? "الوثائق" : "Documents") <b>@linkedDocCount</b></span>
+        <span class="pd-kpi @(hasBpmnDiagram ? "pd-kpi-on" : "pd-kpi-off")">
+            <i data-lucide="git-branch" style="width:12px;height:12px;"></i>
+            BPMN <b>@(hasBpmnDiagram ? (isRtl ? "موجود" : "Present") : (isRtl ? "غير موجود" : "Missing"))</b>
+        </span>
+    </div>
+</div>
+
+@* JustCreated banner — preserved from original, sits between header & tabs *@
+@if (TempData["ActivityRowsRejected"] is int rejectedRowsCount && rejectedRowsCount > 0)
+{
+    <div class="alert alert-warning d-flex align-items-start gap-3 mb-3" role="status"
+         style="border-left:4px solid #f59e0b;background:#fffbeb;">
+        <i data-lucide="alert-triangle" style="width:24px;height:24px;color:#f59e0b;flex-shrink:0;margin-top:2px;"></i>
+        <div class="flex-grow-1">
+            <div class="fw-semibold mb-1">
+                @(isRtl
+                    ? $"تم تخطي {rejectedRowsCount} من صفوف الأنشطة"
+                    : $"{rejectedRowsCount} activity row(s) were skipped")
+            </div>
+            <div class="small text-muted">
+                @(isRtl
+                    ? "يجب أن يكون اسم النشاط (عربي وإنجليزي) 3 أحرف على الأقل. أعد إضافتها من خلال زر \"إضافة نشاط\" أدناه."
+                    : "Activity names must be at least 3 characters in both languages. Re-add them via the \"Add Activity\" button below.")
+            </div>
+        </div>
+    </div>
+}
+@if (TempData["JustCreated"] != null)
+{
+    <div class="alert alert-success d-flex align-items-start gap-3 mb-3" role="status"
+         style="border-left:4px solid #16a34a;background:#f0fdf4;">
+        <i data-lucide="check-circle-2" style="width:24px;height:24px;color:#16a34a;flex-shrink:0;margin-top:2px;"></i>
+        <div class="flex-grow-1">
+            <div class="fw-semibold mb-1">@(isRtl ? "تم إنشاء العملية بنجاح" : "Process created successfully")</div>
+            <div class="small text-muted mb-2">@(isRtl ? "الخطوات التالية الموصى بها:" : "Recommended next steps:")</div>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="~/AI/Diagrams?processId=@Model.Id" class="btn btn-sm btn-primary">
+                    <i data-lucide="git-branch" style="width:14px;height:14px;"></i>
+                    @(isRtl ? "ارسم مخطط BPMN" : "Draw BPMN Diagram")
+                </a>
+                <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-sm btn-outline-secondary">
+                    <i data-lucide="link-2" style="width:14px;height:14px;"></i>
+                    @(isRtl ? "اربط الخدمات والمخاطر" : "Link Services & Risks")
+                </a>
+                <button type="button" onclick="executeAiAnalysis('/AI/AnalyzeProcess', { processId: '@Model.Id' }, '@(isRtl ? "تحليل العملية" : "Process Analysis")')" class="btn btn-sm text-white"
+                        style="background:linear-gradient(135deg,#a855f7,#6366f1);border:none;">
+                    <i data-lucide="sparkles" style="width:14px;height:14px;"></i>
+                    @(isRtl ? "تحليل بالذكاء الاصطناعي" : "Run AI Analysis")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ===================== TAB NAVIGATION ===================== -->
+<div class="pd-tabnav" role="tablist">
+    <button type="button" class="pd-tab active" data-pdtab="overview" onclick="pdShowTab('overview')" role="tab">
+        <i data-lucide="file-text"></i> @(isRtl ? "نظرة عامة" : "Overview")
+    </button>
+    <button type="button" class="pd-tab" data-pdtab="activities" onclick="pdShowTab('activities')" role="tab">
+        <i data-lucide="layers"></i> @(isRtl ? "الأنشطة والمهام" : "Activities & Tasks")
+        <span class="pd-tab-badge">@totalActivities</span>
+    </button>
+    <button type="button" class="pd-tab" data-pdtab="linked" onclick="pdShowTab('linked')" role="tab">
+        <i data-lucide="link-2"></i> @(isRtl ? "العناصر المرتبطة" : "Linked Items")
+        <span class="pd-tab-badge">@(totalServices + linkedAssets.Count + linkedDocCount)</span>
+    </button>
+    <button type="button" class="pd-tab" data-pdtab="risks" onclick="pdShowTab('risks')" role="tab">
+        <i data-lucide="shield-alert"></i> @(isRtl ? "المخاطر" : "Risks")
+        <span class="pd-tab-badge">@allRisks.Count</span>
+    </button>
+    @* Performance tab — only renders when an external performance system is configured.
+       The provider's IsEnabled flag is the single source of truth; the tab + panel
+       disappear together when the tenant doesn't have the integration. *@
+    @if (PerfProvider.IsEnabled)
+    {
+        <button type="button" class="pd-tab" data-pdtab="performance" onclick="pdShowTab('performance')" role="tab">
+            <i data-lucide="gauge"></i> @(isRtl ? "الأداء" : "Performance")
+        </button>
+    }
+    <button type="button" class="pd-tab" data-pdtab="bpmn" onclick="pdShowTab('bpmn')" role="tab">
+        <i data-lucide="git-branch"></i> BPMN
+    </button>
+</div>
+
+
+<!-- ===================== TAB: OVERVIEW ===================== -->
+<section id="pd-tab-overview" class="pd-tabpanel" role="tabpanel">
+    <div class="row g-3">
+        <!-- Summary Card -->
+        <div class="col-xl-8 col-lg-7">
+            <div class="card h-100">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i data-lucide="file-text" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                    <span class="esems-card-title">@(isRtl ? "ملخص" : "Summary")</span>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "النوع" : "Type")</label>
+                            <p class="esems-body fw-medium mb-0">@Model.ProcessType</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "الوحدة المالكة" : "Owning Unit")</label>
+                            <p class="esems-body fw-medium mb-0">@(Model.OwningUnit?.Name ?? "-")</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "الخدمات المرتبطة" : "Linked Services")</label>
+                            <p class="esems-body fw-medium mb-0">@totalServices @(isRtl ? "خدمات" : "services")</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "الأهداف الاستراتيجية" : "Strategic Objectives")</label>
+                            @{
+                                var linkedObjectives = (Model.ProcessStrategicObjectives ?? Enumerable.Empty<ESEMS.Web.Models.ServiceManagement.ProcessStrategicObjective>())
+                                    .Where(pso => pso.IsActive && pso.StrategicObjective != null)
+                                    .Select(pso => pso.StrategicObjective!.Name)
+                                    .ToList();
+                                if (!linkedObjectives.Any() && Model.StrategicObjective != null)
+                                {
+                                    linkedObjectives.Add(Model.StrategicObjective.Name);
+                                }
+                            }
+                            @if (linkedObjectives.Any())
+                            {
+                                <p class="esems-body fw-medium mb-0">@string.Join("، ", linkedObjectives)</p>
+                            }
+                            else
+                            {
+                                <p class="esems-body fw-medium mb-0">-</p>
+                            }
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "النظام" : "System")</label>
+                            <p class="esems-body fw-medium mb-0">@(Model.System?.Name ?? "-")</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "الوسوم" : "Tags")</label>
+                            <p class="esems-body mb-0">@(string.IsNullOrWhiteSpace(Model.Tags) ? "-" : Model.Tags)</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "المدة التقديرية" : "Estimated Duration")</label>
+                            <p class="esems-body mb-0">@(Model.EstimatedDuration.HasValue ? $"{Model.EstimatedDuration} {Model.DurationUnit}" : "-")</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "التكلفة التقديرية" : "Estimated Cost")</label>
+                            <p class="esems-body mb-0">@(Model.EstimatedCost.HasValue ? Model.EstimatedCost.Value.ToString("N2") : "-")</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@(isRtl ? "حالة الأتمتة" : "Automation Status")</label>
+                            <p class="esems-body fw-medium mb-0">@Model.AutomationStatus</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@Shared["Label_HasDetailedBreakdown"]</label>
+                            <p class="esems-body fw-medium mb-0">
+                                @if (Model.HasDetailedBreakdown)
+                                {
+                                    <span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> @(isRtl ? "نعم" : "Yes")</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-secondary">@(isRtl ? "لا" : "No")</span>
+                                }
+                            </p>
+                        </div>
+                    </div>
+                    <hr class="my-3" />
+                    <div>
+                        <label class="esems-label">@(isRtl ? "الوصف" : "Description")</label>
+                        <p class="esems-body mb-0">@(Model.Description ?? "-")</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right column: Stats + Top Risks -->
+        <div class="col-xl-4 col-lg-5">
+            <div class="card mb-3">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i data-lucide="bar-chart-2" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                    <span class="esems-card-title">@(isRtl ? "إحصائيات" : "Stats")</span>
+                    @if (isMainProcess)
+                    {
+                        <span class="badge bg-info text-white ms-auto" style="font-size: var(--fs-xs);">@(isRtl ? "مجمّع" : "Aggregated")</span>
+                    }
+                </div>
+                <div class="card-body py-2">
+                    <ul class="list-group list-group-flush">
+                        @if (isMainProcess)
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                                <span class="esems-body-secondary">@(isRtl ? "العمليات الفرعية" : "Sub-Processes")</span>
+                                <span class="esems-body fw-semibold">@subProcesses.Count</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                                <span class="esems-body-secondary">@(isRtl ? "الأنشطة" : "Activities")</span>
+                                <span class="esems-body fw-semibold">@(ViewBag.TotalActivities ?? 0)</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                                <span class="esems-body-secondary">@(isRtl ? "المهام" : "Tasks")</span>
+                                <span class="esems-body fw-semibold">@(ViewBag.TotalTasks ?? 0)</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                                <a asp-action="Raci" asp-route-id="@Model.Id" class="esems-body-secondary text-decoration-none d-inline-flex align-items-center gap-1"
+                                   title="@(isRtl ? "إدارة مصفوفة RACI" : "Manage RACI matrix")">
+                                    RACI <i data-lucide="external-link" style="width:10px;height:10px;color:#94a3b8;"></i>
+                                </a>
+                                <a asp-action="Raci" asp-route-id="@Model.Id" class="esems-body fw-semibold text-decoration-none" style="color:inherit;">@(ViewBag.TotalRaci ?? 0)</a>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                                <span class="esems-body-secondary">@(isRtl ? "المخاطر" : "Risks")</span>
+                                <span class="esems-body fw-semibold">@(ViewBag.TotalRisks ?? 0)</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2 border-bottom-0">
+                                <span class="esems-body-secondary">@(isRtl ? "المؤشرات" : "Measurements")</span>
+                                <span class="esems-body fw-semibold">@(ViewBag.TotalMeasurements ?? 0)</span>
+                            </li>
+                        }
+                        else
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                                <span class="esems-body-secondary">@(isRtl ? "الأنشطة" : "Activities")</span>
+                                <span class="esems-body fw-semibold">@Model.Activities.Count</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                                <span class="esems-body-secondary">@(isRtl ? "المهام" : "Tasks")</span>
+                                <span class="esems-body fw-semibold">@Model.Activities.Sum(a => a.Tasks.Count)</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                                <a asp-action="Raci" asp-route-id="@Model.Id" class="esems-body-secondary text-decoration-none d-inline-flex align-items-center gap-1"
+                                   title="@(isRtl ? "إدارة مصفوفة RACI" : "Manage RACI matrix")">
+                                    RACI <i data-lucide="external-link" style="width:10px;height:10px;color:#94a3b8;"></i>
+                                </a>
+                                <a asp-action="Raci" asp-route-id="@Model.Id" class="esems-body fw-semibold text-decoration-none" style="color:inherit;">@(Model.RaciMatrix.Count + Model.Activities.Sum(a => a.RaciMatrix.Count + a.Tasks.Sum(t => t.RaciMatrix.Count)))</a>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                                <span class="esems-body-secondary">@(isRtl ? "المخاطر" : "Risks")</span>
+                                <span class="esems-body fw-semibold">@(Model.Risks.Count + Model.EnterpriseRisks.Count)</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2 border-bottom-0">
+                                <span class="esems-body-secondary">@(isRtl ? "المؤشرات" : "Measurements")</span>
+                                <span class="esems-body fw-semibold">@Model.Measurements.Count</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Top 5 Risks -->
+            <div class="card">
+                <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <i data-lucide="shield-alert" style="width: 18px; height: 18px; color: var(--esems-color-danger);"></i>
+                        <span class="esems-card-title">@(isRtl ? "أعلى المخاطر" : "Top Risks")</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-1">
+                        <span class="badge badge-secondary">@allRisks.Count</span>
+                        @if (allRisks.Count > 5)
+                        {
+                            <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" onclick="pdShowTab('risks')" title="@(isRtl ? "عرض الكل" : "View all")">
+                                <i data-lucide="external-link" style="width:14px;height:14px;"></i>
+                            </button>
+                        }
+                    </div>
+                </div>
+                <div class="card-body py-2">
+                    @if (allRisks.Any())
+                    {
+                        <div class="list-group list-group-flush">
+                            @foreach (var risk in allRisks.Take(5))
+                            {
+                                var riskScore = risk.Likelihood * risk.Impact;
+                                var levelClass = riskScore switch { >= 15 => "danger", >= 10 => "warning", >= 5 => "info", _ => "success" };
+                                var levelLabel = riskScore switch { >= 15 => (isRtl ? "حرج" : "Critical"), >= 10 => (isRtl ? "عالي" : "High"), >= 5 => (isRtl ? "متوسط" : "Medium"), _ => (isRtl ? "منخفض" : "Low") };
+                                <div class="list-group-item px-0 py-2">
+                                    <div class="d-flex justify-content-between align-items-start mb-1 gap-2">
+                                        <span class="esems-body fw-medium" style="font-size: var(--fs-xs);">@(isRtl ? risk.NameAr : risk.NameEn)</span>
+                                        <span class="badge badge-@levelClass">@levelLabel</span>
+                                    </div>
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        <small class="esems-caption text-muted">L: @risk.Likelihood</small>
+                                        <small class="esems-caption text-muted">I: @risk.Impact</small>
+                                        <small class="esems-caption text-muted">@(isRtl ? "نقاط" : "Score"): @riskScore</small>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="esems-body-secondary text-center py-3 mb-0">@(isRtl ? "لا توجد مخاطر" : "No risks identified")</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Process Optimizer Panel -->
+    <div class="row g-4 mt-2">
+        <div class="col-lg-12">
+            <div class="card border-0" style="background: linear-gradient(135deg, rgba(168,85,247,0.05), rgba(99,102,241,0.05)); border: 1px solid rgba(168,85,247,0.12) !important;">
+                <div class="card-header d-flex align-items-center justify-content-between gap-2 bg-transparent border-0 pb-0">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 32px; height: 32px; background: linear-gradient(135deg, #a855f7, #6366f1);">
+                            <i data-lucide="cpu" style="width: 16px; height: 16px; color: white;"></i>
+                        </div>
+                        <span class="esems-card-title">@Shared["ProcessOptimizer_Title"]</span>
+                    </div>
+                    <button type="button" onclick="runProcessOptimizer('@Model.Id')" class="btn btn-sm text-white" style="background: linear-gradient(135deg, #a855f7, #6366f1); border: none; border-radius: 8px;" id="btnOptimize">
+                        <i data-lucide="zap" style="width: 14px; height: 14px;"></i>
+                        <span class="@(isRtl ? "me-1" : "ms-1")">@Shared["ProcessOptimizer_Optimize"]</span>
+                    </button>
+                </div>
+                <div class="card-body pt-2" id="optimizerContent" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+
+<!-- ===================== TAB: ACTIVITIES & TASKS ===================== -->
+<section id="pd-tab-activities" class="pd-tabpanel d-none" role="tabpanel">
+    @if (isMainProcess && subProcesses.Any())
+    {
+        <div class="card mb-3">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center gap-2">
+                    <i data-lucide="git-merge" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                    <span class="esems-card-title">@(isRtl ? "العمليات الفرعية" : "Sub-Processes")</span>
+                    <span class="badge bg-primary">@subProcesses.Count</span>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead style="background: #f8f9fa;">
+                            <tr>
+                                <th style="width: 90px; color: #005B99 !important; font-weight: 600;">@(isRtl ? "الكود" : "Code")</th>
+                                <th style="color: #005B99 !important; font-weight: 600;">@(isRtl ? "الاسم" : "Name")</th>
+                                <th style="color: #005B99 !important; font-weight: 600;">@(isRtl ? "الوحدة المالكة" : "Owning Unit")</th>
+                                <th class="text-center" style="width: 90px; color: #005B99 !important; font-weight: 600;">@(isRtl ? "الأنشطة" : "Activities")</th>
+                                <th class="text-center" style="width: 80px; color: #005B99 !important; font-weight: 600;">@(isRtl ? "المهام" : "Tasks")</th>
+                                <th class="text-center" style="width: 80px; color: #005B99 !important; font-weight: 600;">BPMN</th>
+                                <th class="text-end" style="width: 90px; color: #005B99 !important; font-weight: 600;">@(isRtl ? "إجراءات" : "Actions")</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var sp in subProcesses)
+                            {
+                                var spTaskCount = sp.Activities.Sum(a => a.Tasks.Count);
+                                var hasBpmn = sp.Activities.Any(a => a.Tasks.Any(t => !string.IsNullOrWhiteSpace(t.BpmnDiagram)));
+                                <tr>
+                                    <td><span class="badge bg-secondary">@sp.Code</span></td>
+                                    <td>
+                                        <div class="fw-medium">@(isRtl ? sp.NameAr : sp.NameEn)</div>
+                                        @if (!string.IsNullOrWhiteSpace(isRtl ? sp.NameEn : sp.NameAr))
+                                        {
+                                            <small class="text-muted">@(isRtl ? sp.NameEn : sp.NameAr)</small>
+                                        }
+                                    </td>
+                                    <td class="text-muted">@(sp.OwningUnit != null ? (isRtl ? sp.OwningUnit.NameAr : sp.OwningUnit.NameEn) : "-")</td>
+                                    <td class="text-center"><span class="badge bg-info text-white">@sp.Activities.Count</span></td>
+                                    <td class="text-center"><span class="badge bg-warning text-dark">@spTaskCount</span></td>
+                                    <td class="text-center">
+                                        @if (hasBpmn)
+                                        {
+                                            <i data-lucide="check-circle" style="width: 16px; height: 16px; color: #22c55e;"></i>
+                                        }
+                                        else
+                                        {
+                                            <i data-lucide="minus-circle" style="width: 16px; height: 16px; color: #cbd5e1;"></i>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        <a asp-action="Details" asp-route-id="@sp.Id" class="btn btn-sm btn-outline-primary" title="@(isRtl ? "عرض" : "View")">
+                                            <i data-lucide="eye" style="width: 14px; height: 14px;"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Activities & Tasks accordion -->
+    <div class="card">
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center gap-2">
+                <i data-lucide="layers" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                <span class="esems-card-title">@Shared["Section_ActivitiesAndTasks"]</span>
+                <span class="badge bg-primary">@activities.Count</span>
+            </div>
+            <a asp-controller="Activities" asp-action="Create" asp-route-processId="@Model.Id" class="btn btn-sm btn-primary" title="@Shared["Action_AddActivity"]">
+                <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
+                @Shared["Action_AddActivity"]
+            </a>
+        </div>
+        <div class="card-body p-0">
+            @if (activities.Any())
+            {
+                @foreach (var activity in activities)
+                {
+                    var actTasks = activity.Tasks?.Where(t => !t.IsDeleted).OrderBy(t => t.DisplayOrder).ThenBy(t => t.Code).ToList() ?? new List<ProcessTask>();
+                    var collapseId = $"collapse_{activity.Id.ToString().Replace("-", "")}";
+                    <div class="border-bottom">
+                        <div class="d-flex align-items-center justify-content-between p-3 bg-light" style="cursor: pointer;" onclick="toggleActivity(this)">
+                            <div class="d-flex align-items-center gap-2 flex-grow-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="activity-chevron" style="transition: transform 0.2s;"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                                <span class="badge bg-secondary" style="font-size: var(--fs-xs);">@activity.Code</span>
+                                <span class="fw-medium">@(isRtl ? activity.NameAr : activity.NameEn)</span>
+                                <span class="badge bg-info text-white ms-1" style="font-size: var(--fs-xs);">@activity.ChannelType</span>
+                                @if (activity.HasDetailedBreakdown)
+                                {
+                                    <span class="badge bg-success text-white ms-1" style="font-size: var(--fs-xs);" title="@(isRtl ? "تفصيل مفصّل" : "Has Detailed Breakdown")">
+                                        <i data-lucide="check-circle" style="width: 10px; height: 10px;"></i>
+                                    </span>
+                                }
+                                <span class="badge bg-warning text-dark ms-auto" style="font-size: var(--fs-xs);">
+                                    @actTasks.Count @(isRtl ? "مهام" : "Tasks")
+                                </span>
+                            </div>
+                        </div>
+                        <div class="activity-panel" style="display: none;">
+                            <div class="p-3">
+                                    <!-- Activity Details Row -->
+                                    <div class="d-flex flex-wrap gap-3 mb-3 pb-3 border-bottom">
+                                        <div>
+                                            <small class="text-muted d-block">@(isRtl ? "المدة" : "Duration")</small>
+                                            <span class="esems-body">@(activity.EstimatedDuration.HasValue ? $"{activity.EstimatedDuration} {activity.DurationUnit}" : "-")</span>
+                                        </div>
+                                        <div>
+                                            <small class="text-muted d-block">@(isRtl ? "التكلفة" : "Cost")</small>
+                                            <span class="esems-body">@(activity.EstimatedCost.HasValue ? activity.EstimatedCost.Value.ToString("N2") : "-")</span>
+                                        </div>
+                                        <div>
+                                            <small class="text-muted d-block">@(isRtl ? "الوحدة المالكة" : "Owning Unit")</small>
+                                            <span class="esems-body">@(activity.OwningUnit != null ? (isRtl ? activity.OwningUnit.NameAr : activity.OwningUnit.NameEn) : "-")</span>
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(activity.Tags))
+                                        {
+                                            <div>
+                                                <small class="text-muted d-block">@(isRtl ? "الوسوم" : "Tags")</small>
+                                                <span class="esems-body">@activity.Tags</span>
+                                            </div>
+                                        }
+                                        <div class="ms-auto d-flex gap-1">
+                                            <a asp-controller="Activities" asp-action="Edit" asp-route-id="@activity.Id" class="btn btn-sm btn-outline-primary" title="@Shared["Action_Edit"]">
+                                                <i data-lucide="edit" style="width: 14px; height: 14px;"></i>
+                                            </a>
+                                            <button type="button" class="btn btn-sm btn-outline-danger" title="@Shared["Action_Delete"]" onclick="confirmDeleteActivity('@activity.Id', '@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode((isRtl ? activity.NameAr : activity.NameEn) ?? ""))')">
+                                                <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Tasks Table -->
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <h6 class="mb-0" style="font-size: var(--fs-sm);">
+                                            <i data-lucide="check-square" style="width: 14px; height: 14px; color: var(--esems-color-primary);"></i>
+                                            @(isRtl ? "المهام" : "Tasks") (@actTasks.Count)
+                                        </h6>
+                                        <a asp-controller="Tasks" asp-action="Create" asp-route-activityId="@activity.Id" class="btn btn-sm btn-outline-primary" title="@Shared["Action_AddTask"]">
+                                            <i data-lucide="plus" style="width: 12px; height: 12px;"></i>
+                                            @Shared["Action_AddTask"]
+                                        </a>
+                                    </div>
+                                    @if (actTasks.Any())
+                                    {
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-hover mb-0">
+                                                <thead style="background: #f8f9fa;">
+                                                    <tr>
+                                                        <th style="width: 80px; font-size: var(--fs-xs); color: #005B99 !important; font-weight: 600;">@(isRtl ? "الكود" : "Code")</th>
+                                                        <th style="font-size: var(--fs-xs); color: #005B99 !important; font-weight: 600;">@(isRtl ? "الاسم" : "Name")</th>
+                                                        <th class="text-center" style="width: 80px; font-size: var(--fs-xs); color: #005B99 !important; font-weight: 600;">@(isRtl ? "القناة" : "Channel")</th>
+                                                        <th class="text-center" style="width: 90px; font-size: var(--fs-xs); color: #005B99 !important; font-weight: 600;">@(isRtl ? "الحالة" : "Status")</th>
+                                                        <th class="text-center" style="width: 90px; font-size: var(--fs-xs); color: #005B99 !important; font-weight: 600;">@(isRtl ? "الأتمتة" : "Automation")</th>
+                                                        <th class="text-end" style="width: 80px; font-size: var(--fs-xs); color: #005B99 !important; font-weight: 600;">@(isRtl ? "إجراءات" : "Actions")</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var task in actTasks)
+                                                    {
+                                                        <tr>
+                                                            <td><span class="badge bg-secondary" style="font-size: var(--fs-xs);">@task.Code</span></td>
+                                                            <td>
+                                                                <div class="fw-medium" style="font-size: var(--fs-sm);">@(isRtl ? task.NameAr : task.NameEn)</div>
+                                                                @if (!string.IsNullOrWhiteSpace(isRtl ? task.NameEn : task.NameAr))
+                                                                {
+                                                                    <small class="text-muted" style="font-size: var(--fs-xs);">@(isRtl ? task.NameEn : task.NameAr)</small>
+                                                                }
+                                                            </td>
+                                                            <td class="text-center"><span class="badge bg-info text-white" style="font-size: var(--fs-xs);">@task.ChannelType</span></td>
+                                                            <td class="text-center"><span class="badge bg-secondary" style="font-size: var(--fs-xs);">@task.ProcedureStatus</span></td>
+                                                            <td class="text-center"><span class="badge bg-secondary" style="font-size: var(--fs-xs);">@task.AutomationStatus</span></td>
+                                                            <td class="text-end">
+                                                                <a asp-controller="Tasks" asp-action="Edit" asp-route-id="@task.Id" class="btn btn-sm btn-outline-primary p-1" title="@Shared["Action_Edit"]">
+                                                                    <i data-lucide="edit" style="width: 12px; height: 12px;"></i>
+                                                                </a>
+                                                                <button type="button" class="btn btn-sm btn-outline-danger p-1" title="@Shared["Action_Delete"]" onclick="confirmDeleteTask('@task.Id', '@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode((isRtl ? task.NameAr : task.NameEn) ?? ""))')">
+                                                                    <i data-lucide="trash-2" style="width: 12px; height: 12px;"></i>
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <p class="text-muted text-center py-2 mb-0" style="font-size: var(--fs-sm);">@Shared["Text_NoTasks"]</p>
+                                    }
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="text-center py-4">
+                    <i data-lucide="layers" style="width: 40px; height: 40px; color: #cbd5e1;"></i>
+                    <p class="text-muted mt-2 mb-0">@Shared["Text_NoActivities"]</p>
+                </div>
+            }
+        </div>
+    </div>
+</section>
+
+
+<!-- ===================== TAB: LINKED ITEMS ===================== -->
+<section id="pd-tab-linked" class="pd-tabpanel d-none" role="tabpanel">
+    <!-- Linked Services -->
+    <div class="card mb-3">
+        <div class="card-header d-flex align-items-center justify-content-between gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <i data-lucide="briefcase" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                <span class="esems-card-title">@(isRtl ? "الخدمات المرتبطة" : "Linked Services")</span>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge badge-secondary">@totalServices</span>
+                @if (User.HasClaim("Permission", "CanEdit"))
+                {
+                    <button onclick="openLinkServiceModal()" class="btn btn-sm btn-primary" title="@(isRtl ? "ربط خدمة" : "Link Service")">
+                        <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
+                    </button>
+                }
+            </div>
+        </div>
+        <div class="card-body">
+            @if (Model.ProcessServices != null && Model.ProcessServices.Any(ps => ps.IsActive))
+            {
+                <div class="list-group list-group-flush">
+                    @foreach (var ps in Model.ProcessServices.Where(ps => ps.IsActive).OrderBy(ps => ps.Criticality))
+                    {
+                        var svc = ps.Service;
+                        if (svc != null)
+                        {
+                            var critClass = ps.Criticality switch { 1 => "danger", 2 => "warning", 3 => "info", _ => "secondary" };
+                            var critLabel = ps.Criticality switch { 1 => (isRtl ? "حرج" : "Critical"), 2 => (isRtl ? "عالي" : "High"), 3 => (isRtl ? "متوسط" : "Medium"), _ => (isRtl ? "منخفض" : "Low") };
+                            <div class="list-group-item px-0">
+                                <div class="d-flex justify-content-between align-items-start gap-2">
+                                    <a asp-controller="Services" asp-action="Details" asp-route-id="@svc.Id" class="flex-grow-1 text-decoration-none">
+                                        <div class="d-flex justify-content-between align-items-start mb-1">
+                                            <span class="esems-body fw-medium">@svc.Code</span>
+                                            <div class="d-flex gap-1">
+                                                <span class="badge badge-@critClass">@critLabel</span>
+                                                @if (ps.IsMandatory)
+                                                {
+                                                    <span class="badge badge-danger">@(isRtl ? "إلزامي" : "Mandatory")</span>
+                                                }
+                                            </div>
+                                        </div>
+                                        <small class="esems-caption text-muted d-block">@svc.Name</small>
+                                        @if (!string.IsNullOrEmpty(ps.Notes))
+                                        {
+                                            <small class="esems-caption text-muted d-block mt-1">
+                                                <i data-lucide="file-text" style="width: 12px; height: 12px;"></i> @ps.Notes
+                                            </small>
+                                        }
+                                    </a>
+                                    @if (User.HasClaim("Permission", "CanEdit"))
+                                    {
+                                        <div class="d-flex gap-1">
+                                            <button onclick="editProcessService('@Model.Id', '@svc.Id', @ps.Criticality, @ps.IsMandatory.ToString().ToLower(), '@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(ps.Notes ?? ""))')" class="btn btn-sm btn-link text-primary p-0" title="Edit">
+                                                <i data-lucide="edit-2" style="width: 14px; height: 14px;"></i>
+                                            </button>
+                                            <button onclick="unlinkService('@Model.Id', '@svc.Id')" class="btn btn-sm btn-link text-danger p-0" title="Unlink">
+                                                <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="esems-body-secondary text-center py-3 mb-0">@(isRtl ? "لا توجد خدمات مرتبطة" : "No linked services")</p>
+            }
+        </div>
+    </div>
+
+    <!-- Linked Assets -->
+    <div class="card mb-3">
+        <div class="card-header d-flex align-items-center justify-content-between gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <i data-lucide="package" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                <span class="esems-card-title">@(isRtl ? "الأصول المرتبطة" : "Linked Assets")</span>
+            </div>
+            <span class="badge badge-secondary">@linkedAssets.Count</span>
+        </div>
+        <div class="card-body">
+            @if (linkedAssets.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:140px;">@(isRtl ? "رمز الأصل" : "Asset Tag")</th>
+                                <th>@(isRtl ? "الاسم" : "Name")</th>
+                                <th class="text-end" style="width:56px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var asset in linkedAssets.OrderBy(a => a.AssetTag))
+                            {
+                                <tr>
+                                    <td><span class="badge bg-secondary">@asset.AssetTag</span></td>
+                                    <td class="esems-body fw-medium">@(isRtl ? asset.NameAr : asset.NameEn)</td>
+                                    <td class="text-end">
+                                        <a asp-controller="Assets" asp-action="Details" asp-route-id="@asset.Id" class="btn btn-sm btn-link text-primary p-0" title="@(isRtl ? "عرض" : "View")">
+                                            <i data-lucide="eye" style="width:16px;height:16px;"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <p class="esems-body-secondary text-center py-3 mb-0">@(isRtl ? "لا توجد أصول مرتبطة" : "No linked assets")</p>
+            }
+        </div>
+    </div>
+
+    <!-- Linked Documents -->
+    <div class="card">
+        <div class="card-header d-flex align-items-center justify-content-between gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <i data-lucide="folder-open" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                <span class="esems-card-title">@(isRtl ? "الوثائق المرتبطة" : "Linked Documents")</span>
+            </div>
+            <span class="badge badge-secondary">@linkedDocCount</span>
+        </div>
+        <div class="card-body">
+            @if (linkedDocCount == 0)
+            {
+                <p class="esems-body-secondary text-center py-3 mb-0">@(isRtl ? "لا توجد وثائق مرتبطة" : "No linked documents")</p>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>@(isRtl ? "الملف" : "File")</th>
+                                <th>@(isRtl ? "فئة الوثيقة" : "Document Category")</th>
+                                <th>@(isRtl ? "نوع الوثيقة" : "Document Type")</th>
+                                <th>@(isRtl ? "اللغة" : "Language")</th>
+                                <th class="text-end" style="width:56px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var pd in linkedDocuments)
+                            {
+                                var doc = pd.UserDocument;
+                                var fileName = doc?.OriginalName ?? "(file)";
+                                var fileSize = doc?.FileSize ?? 0;
+                                var downloadUrl = doc != null ? $"/api/MySpace/{doc.Id}/download" : "#";
+                                var sizeText = fileSize >= 1024 * 1024
+                                    ? $"{fileSize / 1024.0 / 1024.0:F1} MB"
+                                    : $"{fileSize / 1024.0:F1} KB";
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <i data-lucide="file-text" style="width:16px;height:16px;color:var(--esems-color-primary);"></i>
+                                            <div>
+                                                <div class="esems-body fw-medium">@fileName</div>
+                                                <small class="esems-caption text-muted">@sizeText</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        @if (pd.DocumentCategory != null)
+                                        {
+                                            @(isRtl ? pd.DocumentCategory.NameAr : pd.DocumentCategory.NameEn)
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (pd.DocumentType != null)
+                                        {
+                                            @(isRtl ? pd.DocumentType.NameAr : pd.DocumentType.NameEn)
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(pd.DocumentLanguage))
+                                        {
+                                            @pd.DocumentLanguage
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        <a href="@downloadUrl" class="btn btn-sm btn-link text-primary p-0" title="@(isRtl ? "تنزيل" : "Download")">
+                                            <i data-lucide="download" style="width:16px;height:16px;"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</section>
+
+
+<!-- ===================== TAB: RISKS (full list) ===================== -->
+<section id="pd-tab-risks" class="pd-tabpanel d-none" role="tabpanel">
+    <div class="card">
+        <div class="card-header d-flex align-items-center justify-content-between gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <i data-lucide="shield-alert" style="width: 18px; height: 18px; color: var(--esems-color-danger);"></i>
+                <span class="esems-card-title">@(isRtl ? "جميع المخاطر" : "All Risks")</span>
+            </div>
+            <span class="badge badge-secondary">@allRisks.Count</span>
+        </div>
+        <div class="card-body">
+            @if (allRisks.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>@(isRtl ? "الاسم" : "Name")</th>
+                                <th class="text-center" style="width:90px;">@(isRtl ? "الاحتمالية" : "Likelihood")</th>
+                                <th class="text-center" style="width:90px;">@(isRtl ? "التأثير" : "Impact")</th>
+                                <th class="text-center" style="width:80px;">@(isRtl ? "النقاط" : "Score")</th>
+                                <th class="text-center" style="width:110px;">@(isRtl ? "المستوى" : "Level")</th>
+                                <th>@(isRtl ? "المالك" : "Owner")</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var risk in allRisks)
+                            {
+                                var riskScore = risk.Likelihood * risk.Impact;
+                                var levelClass = riskScore switch { >= 15 => "danger", >= 10 => "warning", >= 5 => "info", _ => "success" };
+                                var levelLabel = riskScore switch { >= 15 => (isRtl ? "حرج" : "Critical"), >= 10 => (isRtl ? "عالي" : "High"), >= 5 => (isRtl ? "متوسط" : "Medium"), _ => (isRtl ? "منخفض" : "Low") };
+                                <tr>
+                                    <td class="esems-body fw-medium">@(isRtl ? risk.NameAr : risk.NameEn)</td>
+                                    <td class="text-center">@risk.Likelihood</td>
+                                    <td class="text-center">@risk.Impact</td>
+                                    <td class="text-center fw-semibold">@riskScore</td>
+                                    <td class="text-center"><span class="badge badge-@levelClass">@levelLabel</span></td>
+                                    <td>
+                                        @if (risk.Owner != null)
+                                        {
+                                            <small class="text-muted">
+                                                <i data-lucide="user" style="width:12px;height:12px;"></i>
+                                                @risk.Owner.GetLocalizedFullName()
+                                            </small>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <p class="esems-body-secondary text-center py-3 mb-0">@(isRtl ? "لا توجد مخاطر" : "No risks identified")</p>
+            }
+        </div>
+    </div>
+    @* External-system risks — appended below the local risks table. Renders nothing when
+       no external risk system is configured for this tenant. *@
+    <div class="mt-3">
+        @await Html.PartialAsync("Integrations/_LinkedRisks", new LinkedPanelArgs {
+            EntityType = LinkedEntityType.Process,
+            EntityId   = Model.Id,
+            AnchorId   = "linked-risks-process"
+        })
+    </div>
+</section>
+
+
+<!-- ===================== TAB: PERFORMANCE (only when integration enabled) ===================== -->
+@if (PerfProvider.IsEnabled)
+{
+    <section id="pd-tab-performance" class="pd-tabpanel d-none" role="tabpanel">
+        @await Html.PartialAsync("Integrations/_LinkedKpis", new LinkedPanelArgs {
+            EntityType = LinkedEntityType.Process,
+            EntityId   = Model.Id,
+            AnchorId   = "linked-kpis-process"
+        })
+    </section>
+}
+
+
+<!-- ===================== TAB: BPMN ===================== -->
+<section id="pd-tab-bpmn" class="pd-tabpanel d-none" role="tabpanel">
+    @if (string.IsNullOrWhiteSpace(Model.BpmnDiagram))
+    {
+        <div class="card" id="bpmnEmptyCard">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i data-lucide="git-branch" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                <span class="esems-card-title">@(isRtl ? "مخطط العملية (BPMN)" : "Process Diagram (BPMN)")</span>
+            </div>
+            <div class="card-body text-center py-5">
+                <div class="d-inline-flex align-items-center justify-content-center mb-3"
+                     style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#eef2ff,#f5f3ff);">
+                    <i data-lucide="workflow" style="width:28px;height:28px;color:#6366f1;"></i>
+                </div>
+                <h5 class="fw-semibold mb-2">@(isRtl ? "لا يوجد مخطط BPMN لهذه العملية بعد" : "No BPMN diagram for this process yet")</h5>
+                <p class="text-muted mb-4" style="max-width:520px;margin:0 auto;">
+                    @(isRtl
+                        ? "ارسم مخطط سير العملية يدويًا أو دع الذكاء الاصطناعي يولّده لك من اسم العملية ووصفها."
+                        : "Draw the workflow manually, or let AI generate one for you from the process name and description.")
+                </p>
+                <a href="~/AI/Diagrams?processId=@Model.Id" class="btn btn-primary">
+                    <i data-lucide="pen-tool" style="width:16px;height:16px;"></i>
+                    @(isRtl ? "ارسم مخطط BPMN" : "Draw BPMN Diagram")
+                </a>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card mb-3" id="bpmnCard">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center gap-2">
+                    <i data-lucide="git-branch" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                    <span class="esems-card-title">@(isRtl ? "مخطط العملية (BPMN)" : "Process Diagram (BPMN)")</span>
+                    <span id="editModeIndicator" class="badge bg-warning text-dark d-none ms-2">
+                        <i data-lucide="edit-3" style="width: 12px; height: 12px;"></i>
+                        @Shared["BPMN_EditMode"]
+                    </span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <button id="btnEditDiagram" class="btn btn-sm btn-primary" title="@Shared["Action_Edit"]">
+                        <i data-lucide="edit" style="width: 16px; height: 16px;"></i>
+                        @Shared["Action_Edit"]
+                    </button>
+                    <button id="btnSaveDiagram" class="btn btn-sm btn-success d-none" title="@Shared["Button_Save"]">
+                        <i data-lucide="save" style="width: 16px; height: 16px;"></i>
+                        <span class="btn-text">@Shared["Button_Save"]</span>
+                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                    </button>
+                    <button id="btnCancelEdit" class="btn btn-sm btn-secondary d-none" title="@Shared["Button_Cancel"]">
+                        <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+                        @Shared["Button_Cancel"]
+                    </button>
+                    <div class="vr mx-1"></div>
+                    <button id="btnZoomIn" class="btn btn-sm btn-outline-secondary" title="@Shared["BPMN_ZoomIn"]">
+                        <i data-lucide="zoom-in" style="width: 16px; height: 16px;"></i>
+                    </button>
+                    <button id="btnZoomOut" class="btn btn-sm btn-outline-secondary" title="@Shared["BPMN_ZoomOut"]">
+                        <i data-lucide="zoom-out" style="width: 16px; height: 16px;"></i>
+                    </button>
+                    <button id="btnFitView" class="btn btn-sm btn-outline-secondary" title="@Shared["BPMN_FitToView"]">
+                        <i data-lucide="maximize-2" style="width: 16px; height: 16px;"></i>
+                    </button>
+                    <button id="btnDownloadSvg" class="btn btn-sm btn-outline-primary" title="@Shared["BPMN_DownloadSVG"]">
+                        <i data-lucide="download" style="width: 16px; height: 16px;"></i>
+                        SVG
+                    </button>
+                    <button id="btnDownloadPng" class="btn btn-sm btn-outline-success" title="@Shared["BPMN_DownloadPNG"]">
+                        <i data-lucide="image" style="width: 16px; height: 16px;"></i>
+                        PNG
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div id="bpmnCanvas" style="height: 500px; background: #fafafa; border-radius: 0 0 8px 8px;"></div>
+            </div>
+        </div>
+
+        <!-- BPMN Version History Section -->
+        <div class="card" id="versionHistoryCard">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center gap-2">
+                    <i data-lucide="history" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                    <span class="esems-card-title">@Shared["Section_VersionHistory"]</span>
+                </div>
+                <button id="btnRefreshVersions" class="btn btn-sm btn-outline-secondary" title="@Shared["Button_Refresh"]">
+                    <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="versionHistoryLoading" class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+                <div id="versionHistoryEmpty" class="text-center text-muted py-4 d-none">
+                    <i data-lucide="file-x" style="width: 48px; height: 48px; opacity: 0.5;"></i>
+                    <p class="mt-2">@Shared["Text_NoVersionHistory"]</p>
+                </div>
+                <div id="versionHistoryTable" class="d-none">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead style="background: #f8f9fa;">
+                                <tr>
+                                    <th style="width: 80px; color: #005B99 !important; font-weight: 600;">@Shared["Column_Version"]</th>
+                                    <th style="color: #005B99 !important; font-weight: 600;">@Shared["Column_CreatedDate"]</th>
+                                    <th style="color: #005B99 !important; font-weight: 600;">@Shared["Column_CreatedBy"]</th>
+                                    <th style="color: #005B99 !important; font-weight: 600;">@Shared["Column_ChangeDescription"]</th>
+                                    <th style="width: 100px; color: #005B99 !important; font-weight: 600;">@Shared["Column_FileSize"]</th>
+                                    <th class="text-end" style="width: 150px; color: #005B99 !important; font-weight: 600;">@Shared["Column_Actions"]</th>
+                                </tr>
+                            </thead>
+                            <tbody id="versionHistoryBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</section>
+
+</div>
+
+<!-- View Version Modal -->
+<div class="modal fade" id="viewVersionModal" tabindex="-1" aria-labelledby="viewVersionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="viewVersionModalLabel">
+                    <i data-lucide="eye" style="width: 20px; height: 20px;"></i>
+                    <span id="viewVersionTitle">@Shared["Action_ViewVersion"]</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div id="viewVersionCanvas" style="height: 500px; background: #fafafa;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">@Shared["Button_Close"]</button>
+                <button type="button" class="btn btn-warning" id="btnRestoreFromModal">
+                    <i data-lucide="rotate-ccw" style="width: 16px; height: 16px;"></i>
+                    @Shared["Action_RestoreVersion"]
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Link Service Modal -->
+<div id="linkServiceModal" class="modal fade" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">@(isRtl ? "ربط خدمة بالعملية" : "Link Service to Process")</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="availableServicesContainer">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="text-muted mt-2">@(isRtl ? "جاري تحميل الخدمات..." : "Loading available services...")</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit ProcessService Modal -->
+<div id="editProcessServiceModal" class="modal fade" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">@(isRtl ? "تعديل علاقة الخدمة" : "Edit Service Relationship")</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editProcessServiceForm">
+                <div class="modal-body">
+                    <input type="hidden" id="editPSProcessId" />
+                    <input type="hidden" id="editPSServiceId" />
+
+                    <div class="mb-3">
+                        <label class="form-label">@(isRtl ? "الأهمية" : "Criticality")</label>
+                        <select id="editPSCriticality" class="form-select">
+                            <option value="1">1 - @(isRtl ? "حرج" : "Critical")</option>
+                            <option value="2">2 - @(isRtl ? "عالي" : "High")</option>
+                            <option value="3">3 - @(isRtl ? "متوسط" : "Medium")</option>
+                            <option value="4">4 - @(isRtl ? "منخفض" : "Low")</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input type="checkbox" id="editPSIsMandatory" class="form-check-input">
+                            <label class="form-check-label" for="editPSIsMandatory">@(isRtl ? "إلزامي للعملية" : "Mandatory for Process")</label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">@(isRtl ? "ملاحظات" : "Notes")</label>
+                        <textarea id="editPSNotes" rows="3" class="form-control" placeholder="@(isRtl ? "ملاحظات إضافية..." : "Additional notes...")"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">@(isRtl ? "إلغاء" : "Cancel")</button>
+                    <button type="submit" class="btn btn-primary">@(isRtl ? "حفظ التغييرات" : "Save Changes")</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@* F-CC-002: surface change requests linked to this process so the
+   lifecycle is discoverable from the entity that triggers a change. *@
+@{
+    ViewData["CR_TargetKind"] = "process";
+    ViewData["CR_TargetId"] = Model.Id;
+}
+<partial name="_RelatedChangeRequests" />
+
+<form id="deleteActivityForm" asp-controller="Activities" asp-action="Delete" method="post" style="display:none;">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="id" id="deleteActivityId" />
+</form>
+<form id="deleteTaskForm" asp-controller="Tasks" asp-action="Delete" method="post" style="display:none;">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="id" id="deleteTaskId" />
+</form>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        // ===== Tab switcher (deep-linkable via #hash) =====
+        function pdShowTab(name) {
+            document.querySelectorAll('.pd-tabpanel').forEach(p => p.classList.add('d-none'));
+            document.querySelectorAll('.pd-tab').forEach(t => t.classList.remove('active'));
+            const panel = document.getElementById('pd-tab-' + name);
+            const tab = document.querySelector('.pd-tab[data-pdtab="' + name + '"]');
+            if (panel) panel.classList.remove('d-none');
+            if (tab) tab.classList.add('active');
+            try { history.replaceState(null, '', '#' + name); } catch (e) {}
+            if (window.lucide) lucide.createIcons();
+            // Lazy-init / re-fit BPMN canvas when its tab becomes visible.
+            // Initial load is deferred until here so the SVG canvas isn't
+            // sized 0×0 (which would crash bpmn-js's fit-viewport with
+            // "Failed to execute 'scale' on 'SVGMatrix'").
+            if (name === 'bpmn' && typeof window.__pdLoadBpmn === 'function') {
+                setTimeout(() => window.__pdLoadBpmn(), 60);
+            }
+        }
+        // Restore tab from URL hash on load
+        document.addEventListener('DOMContentLoaded', function () {
+            const h = (location.hash || '').replace('#','');
+            if (h && document.getElementById('pd-tab-' + h)) pdShowTab(h);
+        });
+    </script>
+    <script nonce="@Context.CspNonce()">
+        lucide.createIcons();
+
+        // UX helpers
+        function showErr(msg) { Swal.fire({ icon:'error', title:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Js_Error"].Value)), text:msg, confirmButtonColor:'#005B99' }); }
+        async function confirmDestructive(text) {
+            const r = await Swal.fire({ icon:'warning', title:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_AreYouSure"].Value)), text,
+                showCancelButton:true, confirmButtonText:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Label_Yes"].Value)), cancelButtonText:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Button_Cancel"].Value)),
+                confirmButtonColor:'#dc2626', cancelButtonColor:'#64748b' });
+            return r.isConfirmed;
+        }
+
+        // ── Process Optimizer ────────────────────────────
+        async function runProcessOptimizer(processId) {
+            var container = document.getElementById('optimizerContent');
+            var btn = document.getElementById('btnOptimize');
+            container.style.display = 'block';
+            container.innerHTML = '<div class="text-center py-4"><div class="spinner-border" style="color: #a855f7;"></div><p class="text-muted mt-2 small">@Html.Raw(Shared["ProcessOptimizer_Analyzing"].Value)</p></div>';
+            btn.disabled = true;
+
+            var token = document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]');
+            try {
+                var res = await fetch('/AI/OptimizeProcess', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token ? token.value : '' },
+                    body: JSON.stringify({ processId: processId })
+                });
+                var data = await res.json();
+                if (data.success) {
+                    renderOptimization(data.optimization, processId);
+                } else {
+                    container.innerHTML = '<div class="alert alert-warning mb-0">' + (data.error || 'Optimization failed') + '</div>';
+                }
+            } catch(e) {
+                container.innerHTML = '<div class="alert alert-danger mb-0">@Html.Raw(Shared["Error_ProcessingRequest"].Value)</div>';
+            }
+            btn.disabled = false;
+        }
+
+        function renderOptimization(opt, processId) {
+            var container = document.getElementById('optimizerContent');
+            var isRtl = @(isRtl ? "true" : "false");
+
+            // If string fallback (AI didn't return valid JSON)
+            if (typeof opt === 'string') {
+                if (typeof marked !== 'undefined') {
+                    container.innerHTML = '<div class="prose">' + marked.parse(opt) + '</div>';
+                } else {
+                    container.innerHTML = '<div class="p-3 bg-light rounded"><pre class="mb-0" style="white-space: pre-wrap;">' + opt + '</pre></div>';
+                }
+                return;
+            }
+
+            var html = '';
+
+            // ROI Summary banner
+            var roi = opt.roiSummary || {};
+            html += '<div class="alert mb-3 d-flex flex-wrap gap-3" style="background: linear-gradient(135deg, rgba(52,195,143,0.08), rgba(52,195,143,0.15)); border: 1px solid rgba(52,195,143,0.25); border-radius: 10px;">';
+            html += '<div><i data-lucide="trending-up" style="width:14px;height:14px;color:#34C38F;"></i> <strong>' + (isRtl ? 'الوفورات المقدرة' : 'Est. Savings') + ':</strong> ' + (roi.totalEstimatedCostSavings || 0).toLocaleString() + ' AED</div>';
+            html += '<div><i data-lucide="clock" style="width:14px;height:14px;color:#50A5F1;"></i> <strong>' + (isRtl ? 'توفير الوقت' : 'Time Savings') + ':</strong> ' + (roi.totalEstimatedTimeSavingsHours || 0) + (isRtl ? ' ساعة/سنة' : 'h/year') + '</div>';
+            html += '<div><i data-lucide="calendar" style="width:14px;height:14px;color:#F1B44C;"></i> <strong>' + (isRtl ? 'فترة الاسترداد' : 'Payback') + ':</strong> ' + (roi.paybackPeriodMonths || '?') + (isRtl ? ' شهر' : ' months') + '</div>';
+            html += '</div>';
+
+            // 3 categories
+            var categories = [
+                { key: 'quickWins', icon: 'zap', color: '#34C38F', label: isRtl ? 'مكاسب سريعة (أقل من شهر)' : 'Quick Wins (< 1 month)' },
+                { key: 'mediumTerm', icon: 'clock', color: '#F1B44C', label: isRtl ? 'متوسطة المدى (1-3 أشهر)' : 'Medium-Term (1-3 months)' },
+                { key: 'longTerm', icon: 'target', color: '#50A5F1', label: isRtl ? 'طويلة المدى (3+ أشهر)' : 'Long-Term (3+ months)' }
+            ];
+
+            for (var c = 0; c < categories.length; c++) {
+                var cat = categories[c];
+                var items = opt[cat.key] || [];
+                if (!items.length) continue;
+
+                html += '<h6 class="d-flex align-items-center gap-2 mt-3 mb-2">';
+                html += '<i data-lucide="' + cat.icon + '" style="width:16px;height:16px;color:' + cat.color + ';"></i>';
+                html += '<span class="badge" style="background:' + cat.color + '; color: white;">' + items.length + '</span> ' + cat.label + '</h6>';
+
+                for (var i = 0; i < items.length; i++) {
+                    var item = items[i];
+                    var createUrl = (window.SP_PATHBASE || '') + '/Improvements/Wizard?processId=' + processId +
+                        '&title=' + encodeURIComponent(item.title || '') +
+                        '&description=' + encodeURIComponent(item.description || '') +
+                        '&estimatedCostSavings=' + (item.estimatedCostSavings || 0);
+
+                    html += '<div class="card mb-2" style="border-' + (isRtl ? 'right' : 'left') + ': 3px solid ' + cat.color + '; border-radius: 8px;">';
+                    html += '<div class="card-body py-2 px-3">';
+                    html += '<div class="d-flex justify-content-between align-items-start gap-2">';
+                    html += '<div class="flex-grow-1">';
+                    html += '<strong class="d-block mb-1">' + (item.title || '') + '</strong>';
+                    html += '<p class="text-muted small mb-1">' + (item.description || '') + '</p>';
+                    html += '<div class="d-flex flex-wrap gap-2" style="font-size: var(--fs-xs);">';
+                    html += '<span class="text-success"><i data-lucide="banknote" style="width:12px;height:12px;"></i> ' + (item.estimatedCostSavings || 0).toLocaleString() + ' AED</span>';
+                    html += '<span class="text-info"><i data-lucide="clock" style="width:12px;height:12px;"></i> ' + (item.estimatedTimeSavingsHours || 0) + 'h</span>';
+                    html += '<span class="badge bg-secondary">' + (item.effortLevel || '') + '</span>';
+                    html += '</div></div>';
+                    html += '<a href="' + createUrl + '" class="btn btn-sm btn-outline-primary flex-shrink-0" style="border-radius: 6px;" title="' + (isRtl ? 'إنشاء مبادرة' : 'Create Initiative') + '">';
+                    html += '<i data-lucide="plus" style="width:14px;height:14px;"></i></a>';
+                    html += '</div></div></div>';
+                }
+            }
+
+            container.innerHTML = html;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function confirmDeleteActivity(id, name) {
+            Swal.fire({
+                title: '@Shared["Confirm_Delete"]',
+                text: '@Shared["Confirm_DeleteMessage"]',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#005B99',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: '@Shared["Button_Delete"]',
+                cancelButtonText: '@Shared["Button_Cancel"]'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('deleteActivityId').value = id;
+                    document.getElementById('deleteActivityForm').submit();
+                }
+            });
+        }
+
+        function confirmDeleteTask(id, name) {
+            Swal.fire({
+                title: '@Shared["Confirm_Delete"]',
+                text: '@Shared["Confirm_DeleteMessage"]',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#005B99',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: '@Shared["Button_Delete"]',
+                cancelButtonText: '@Shared["Button_Cancel"]'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('deleteTaskId').value = id;
+                    document.getElementById('deleteTaskForm').submit();
+                }
+            });
+        }
+
+        // ===== PROCESS-SERVICE LINKING =====
+        const processId = '@Model.Id';
+        let linkServiceModalInstance, editProcessServiceModalInstance;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            linkServiceModalInstance = new bootstrap.Modal(document.getElementById('linkServiceModal'));
+            editProcessServiceModalInstance = new bootstrap.Modal(document.getElementById('editProcessServiceModal'));
+        });
+
+        function openLinkServiceModal() {
+            linkServiceModalInstance.show();
+            loadAvailableServices();
+        }
+
+        async function loadAvailableServices() {
+            try {
+                const response = await fetch(`/Processes/GetAvailableServices?processId=${processId}`);
+                const services = await response.json();
+                const container = document.getElementById('availableServicesContainer');
+
+                if (services.length === 0) {
+                    container.innerHTML = `<div class="text-center py-4"><i data-lucide="briefcase" style="width: 48px; height: 48px;" class="text-muted"></i><p class="text-muted mt-2">All services are already linked to this process.</p></div>`;
+                    lucide.createIcons();
+                    return;
+                }
+
+                container.innerHTML = '<div class="list-group">' + services.map(s => `
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <span class="fw-medium">${s.nameEn || s.nameAr}</span>
+                                ${s.nameAr && s.nameAr !== s.nameEn ? `<small class="text-muted d-block">${s.nameAr}</small>` : ''}
+                            </div>
+                            <button onclick="linkService('${s.id}')" class="btn btn-sm btn-primary">Link</button>
+                        </div>
+                    </div>
+                `).join('') + '</div>';
+                lucide.createIcons();
+            } catch (error) {
+                console.error('Error loading services:', error);
+                document.getElementById('availableServicesContainer').innerHTML = `<div class="alert alert-danger">Error loading services. Please try again.</div>`;
+            }
+        }
+
+        async function linkService(serviceId) {
+            try {
+                const response = await fetch('/Processes/LinkService', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ processId, serviceId, criticality: 3, isMandatory: true })
+                });
+                const result = await response.json();
+                if (result.success) { linkServiceModalInstance.hide(); location.reload(); }
+                else { showErr(result.message || 'Error linking service'); }
+            } catch (error) { console.error('Error linking service:', error); showErr('Error linking service.'); }
+        }
+
+        async function unlinkService(processId, serviceId) {
+            if (!(await confirmDestructive('Are you sure you want to unlink this service from the process?'))) return;
+            try {
+                const response = await fetch('/Processes/UnlinkService', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ processId, serviceId })
+                });
+                const result = await response.json();
+                if (result.success) { location.reload(); }
+                else { showErr(result.message || 'Error unlinking service'); }
+            } catch (error) { console.error('Error unlinking service:', error); showErr('Error unlinking service.'); }
+        }
+
+        function editProcessService(processId, serviceId, criticality, isMandatory, notes) {
+            document.getElementById('editPSProcessId').value = processId;
+            document.getElementById('editPSServiceId').value = serviceId;
+            document.getElementById('editPSCriticality').value = criticality;
+            document.getElementById('editPSIsMandatory').checked = isMandatory;
+            document.getElementById('editPSNotes').value = notes || '';
+            editProcessServiceModalInstance.show();
+        }
+
+        document.getElementById('editProcessServiceForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const pId = document.getElementById('editPSProcessId').value;
+            const sId = document.getElementById('editPSServiceId').value;
+            const criticality = document.getElementById('editPSCriticality').value;
+            const isMandatory = document.getElementById('editPSIsMandatory').checked;
+            const notes = document.getElementById('editPSNotes').value;
+
+            try {
+                const response = await fetch('/Processes/UpdateProcessService', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ processId: pId, serviceId: sId, criticality, isMandatory, notes })
+                });
+                const result = await response.json();
+                if (result.success) { editProcessServiceModalInstance.hide(); location.reload(); }
+                else { showErr(result.message || 'Error updating relationship'); }
+            } catch (error) { console.error('Error updating relationship:', error); showErr('Error updating relationship.'); }
+        });
+
+        // Pure JS toggle — no Bootstrap Collapse involved
+        function toggleActivity(headerEl) {
+            var panel = headerEl.nextElementSibling;
+            var chevron = headerEl.querySelector('.activity-chevron');
+            if (!panel) return;
+
+            if (panel.style.display === 'none' || panel.style.display === '') {
+                panel.style.display = 'block';
+                if (chevron) chevron.style.transform = 'rotate(90deg)';
+                lucide.createIcons();
+            } else {
+                panel.style.display = 'none';
+                if (chevron) chevron.style.transform = 'rotate(0deg)';
+            }
+        }
+    </script>
+    @if (!string.IsNullOrWhiteSpace(Model.BpmnDiagram))
+    {
+        <!-- bpmn-js viewer and modeler -->
+        <link rel="stylesheet" href="~/lib/bpmn-js/diagram-js.css" asp-append-version="true">
+        <link rel="stylesheet" href="~/lib/bpmn-js/bpmn-js.css" asp-append-version="true">
+        <link rel="stylesheet" href="~/lib/bpmn-js/bpmn-embedded.css" asp-append-version="true">
+        <style>
+            /* Hide bpmn.io watermark */
+            .bjs-powered-by { display: none !important; }
+        </style>
+        <script src="~/lib/bpmn-js/bpmn-navigated-viewer.production.min.js" asp-append-version="true"></script>
+        <script src="~/lib/bpmn-js/bpmn-modeler.production.min.js" asp-append-version="true"></script>
+        <script nonce="@Context.CspNonce()">
+            (function() {
+                const bpmnXml = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.BpmnDiagram));
+                const processId = '@Model.Id';
+
+                let viewer = null;
+                let modeler = null;
+                let isEditMode = false;
+                let currentBpmnInstance = null;
+
+                // Initialize viewer
+                viewer = new BpmnJS({
+                    container: '#bpmnCanvas'
+                });
+                currentBpmnInstance = viewer;
+
+                async function loadDiagram() {
+                    try {
+                        const result = await currentBpmnInstance.importXML(bpmnXml);
+                        if (result && result.warnings && result.warnings.length) {
+                            console.warn('BPMN import warnings:', result.warnings);
+                        }
+                        const canvas = currentBpmnInstance.get('canvas');
+                        canvas.zoom('fit-viewport');
+                    } catch (err) {
+                        console.error('Error loading BPMN diagram:', err);
+                        const detail = (err && (err.message || err.toString())) || 'unknown error';
+                        const warnings = (err && err.warnings && err.warnings.length)
+                            ? '<br><small class="text-muted">' + err.warnings.slice(0, 3).map(w => (w.message || w.error || String(w))).join('<br>') + '</small>'
+                            : '';
+                        document.getElementById('bpmnCanvas').innerHTML =
+                            '<div class="d-flex flex-column align-items-center justify-content-center h-100 text-muted p-3 text-center">' +
+                            '<i data-lucide="alert-circle" class="mb-2"></i>' +
+                            '<div>Error loading diagram</div>' +
+                            '<small class="text-danger mt-1" style="max-width:80%;word-break:break-word;">' + detail + '</small>' +
+                            warnings + '</div>';
+                        lucide.createIcons();
+                    }
+                }
+
+                async function enableEditMode() {
+                    try {
+                        isEditMode = true;
+
+                        // Get current XML from viewer
+                        const { xml } = await viewer.saveXML({ format: true });
+
+                        // Destroy viewer
+                        viewer.destroy();
+
+                        // Create modeler
+                        modeler = new BpmnJS({
+                            container: '#bpmnCanvas',
+                            keyboard: { bindTo: document }
+                        });
+                        currentBpmnInstance = modeler;
+
+                        // Load diagram in modeler
+                        await modeler.importXML(xml);
+                        const canvas = modeler.get('canvas');
+                        canvas.zoom('fit-viewport');
+
+                        // Update UI
+                        document.getElementById('btnEditDiagram').classList.add('d-none');
+                        document.getElementById('btnSaveDiagram').classList.remove('d-none');
+                        document.getElementById('btnCancelEdit').classList.remove('d-none');
+                        document.getElementById('editModeIndicator').classList.remove('d-none');
+                        document.getElementById('bpmnCard').style.border = '2px solid #ffc107';
+                        lucide.createIcons();
+                    } catch (err) {
+                        console.error('Error enabling edit mode:', err);
+                        Swal.fire({
+                            icon: 'error',
+                            title: '@(isRtl ? "خطأ!" : "Error!")',
+                            text: '@(isRtl ? "خطأ في تفعيل وضع التعديل" : "Error enabling edit mode")' + ': ' + err.message,
+                            confirmButtonText: '@(isRtl ? "حسناً" : "OK")'
+                        });
+                    }
+                }
+
+                async function disableEditMode() {
+                    try {
+                        isEditMode = false;
+
+                        // Destroy modeler
+                        if (modeler) {
+                            modeler.destroy();
+                            modeler = null;
+                        }
+
+                        // Recreate viewer
+                        viewer = new BpmnJS({
+                            container: '#bpmnCanvas'
+                        });
+                        currentBpmnInstance = viewer;
+
+                        // Load original diagram
+                        await viewer.importXML(bpmnXml);
+                        const canvas = viewer.get('canvas');
+                        canvas.zoom('fit-viewport');
+
+                        // Update UI
+                        document.getElementById('btnEditDiagram').classList.remove('d-none');
+                        document.getElementById('btnSaveDiagram').classList.add('d-none');
+                        document.getElementById('btnCancelEdit').classList.add('d-none');
+                        document.getElementById('editModeIndicator').classList.add('d-none');
+                        document.getElementById('bpmnCard').style.border = '';
+                        lucide.createIcons();
+                    } catch (err) {
+                        console.error('Error disabling edit mode:', err);
+                    }
+                }
+
+                async function saveDiagram() {
+                    const saveBtn = document.getElementById('btnSaveDiagram');
+                    const btnText = saveBtn.querySelector('.btn-text');
+                    const spinner = saveBtn.querySelector('.spinner-border');
+
+                    try {
+                        // Show loading state
+                        saveBtn.disabled = true;
+                        btnText.classList.add('d-none');
+                        spinner.classList.remove('d-none');
+
+                        // Get updated XML from modeler
+                        const { xml } = await modeler.saveXML({ format: true });
+
+                        // Validate BPMN XML
+                        if (!xml || !xml.includes('bpmn:definitions')) {
+                            throw new Error('@(isRtl ? "مخطط BPMN غير صالح" : "Invalid BPMN diagram")');
+                        }
+
+                        // Send to server
+                        const response = await fetch('/Processes/UpdateBpmnDiagram/' + processId, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
+                            },
+                            body: JSON.stringify({ bpmnXml: xml })
+                        });
+
+                        const result = await response.json();
+
+                        if (response.ok && result.success) {
+                            // Show success message
+                            Swal.fire({
+                                icon: 'success',
+                                title: '@(isRtl ? "نجح!" : "Success!")',
+                                text: '@(isRtl ? "تم حفظ المخطط بنجاح" : "Diagram saved successfully")',
+                                confirmButtonText: '@(isRtl ? "حسناً" : "OK")',
+                                timer: 2000,
+                                timerProgressBar: true
+                            }).then(() => {
+                                location.reload(); // Reload to show updated diagram
+                            });
+                        } else {
+                            throw new Error(result.message || '@(isRtl ? "خطأ غير معروف" : "Unknown error")');
+                        }
+                    } catch (err) {
+                        console.error('Error saving diagram:', err);
+
+                        // Show error message
+                        Swal.fire({
+                            icon: 'error',
+                            title: '@(isRtl ? "خطأ!" : "Error!")',
+                            text: '@(isRtl ? "خطأ في حفظ المخطط" : "Error saving diagram")' + ': ' + err.message,
+                            confirmButtonText: '@(isRtl ? "حسناً" : "OK")'
+                        });
+
+                        // Reset button state
+                        saveBtn.disabled = false;
+                        btnText.classList.remove('d-none');
+                        spinner.classList.add('d-none');
+                    }
+                }
+
+                // Defer the initial BPMN load until the BPMN tab is actually
+                // visible. Calling fit-viewport on a 0×0 SVG (because the tab
+                // panel starts with d-none) produces a non-finite SVGMatrix
+                // scale and crashes with "Failed to execute 'scale' on
+                // 'SVGMatrix'". The tab switcher invokes window.__pdLoadBpmn()
+                // on first reveal.
+                let bpmnInitialized = false;
+                window.__pdLoadBpmn = async function () {
+                    if (bpmnInitialized) {
+                        // Already loaded — just re-fit in case container was resized.
+                        try { currentBpmnInstance.get('canvas').zoom('fit-viewport'); } catch (e) {}
+                        return;
+                    }
+                    bpmnInitialized = true;
+                    await loadDiagram();
+                };
+                // If the page already loaded with #bpmn in the URL, the tab
+                // was switched before this script ran; load now.
+                if ((location.hash || '').replace('#','') === 'bpmn') {
+                    window.__pdLoadBpmn();
+                }
+
+                // Edit mode controls
+                document.getElementById('btnEditDiagram')?.addEventListener('click', enableEditMode);
+                document.getElementById('btnSaveDiagram')?.addEventListener('click', saveDiagram);
+                document.getElementById('btnCancelEdit')?.addEventListener('click', disableEditMode);
+
+                // Zoom controls
+                document.getElementById('btnZoomIn')?.addEventListener('click', () => {
+                    const canvas = currentBpmnInstance.get('canvas');
+                    canvas.zoom(canvas.zoom() * 1.2);
+                });
+
+                document.getElementById('btnZoomOut')?.addEventListener('click', () => {
+                    const canvas = currentBpmnInstance.get('canvas');
+                    canvas.zoom(canvas.zoom() / 1.2);
+                });
+
+                document.getElementById('btnFitView')?.addEventListener('click', () => {
+                    const canvas = currentBpmnInstance.get('canvas');
+                    canvas.zoom('fit-viewport');
+                });
+
+                document.getElementById('btnDownloadSvg')?.addEventListener('click', async () => {
+                    try {
+                        const { svg } = await currentBpmnInstance.saveSVG();
+                        const blob = new Blob([svg], { type: 'image/svg+xml' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = '@(Model.Code)_diagram.svg';
+                        a.click();
+                        URL.revokeObjectURL(url);
+                    } catch (err) {
+                        console.error('Error exporting SVG:', err);
+                        Swal.fire({
+                            icon: 'error',
+                            title: '@(isRtl ? "خطأ!" : "Error!")',
+                            text: '@Shared["BPMN_ExportError"]',
+                            confirmButtonText: '@(isRtl ? "حسناً" : "OK")'
+                        });
+                    }
+                });
+
+                // PNG Export functionality
+                document.getElementById('btnDownloadPng')?.addEventListener('click', async () => {
+                    try {
+                        const { svg } = await currentBpmnInstance.saveSVG();
+
+                        // Create canvas and convert SVG to PNG
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        const img = new Image();
+
+                        // Create blob URL for SVG
+                        const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+                        const svgUrl = URL.createObjectURL(svgBlob);
+
+                        img.onload = function() {
+                            // Scale for better quality
+                            const scale = 2;
+                            canvas.width = img.width * scale;
+                            canvas.height = img.height * scale;
+
+                            // Fill white background
+                            ctx.fillStyle = '#ffffff';
+                            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                            // Draw SVG
+                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                            // Convert to PNG and download
+                            canvas.toBlob(function(blob) {
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = '@(Model.Code)_diagram.png';
+                                a.click();
+                                URL.revokeObjectURL(url);
+                            }, 'image/png', 1.0);
+
+                            URL.revokeObjectURL(svgUrl);
+                        };
+
+                        img.onerror = function() {
+                            console.error('Error loading SVG for PNG conversion');
+                            Swal.fire({
+                                icon: 'error',
+                                title: '@(isRtl ? "خطأ!" : "Error!")',
+                                text: '@Shared["BPMN_ExportError"]',
+                                confirmButtonText: '@(isRtl ? "حسناً" : "OK")'
+                            });
+                        };
+
+                        img.src = svgUrl;
+                    } catch (err) {
+                        console.error('Error exporting PNG:', err);
+                        Swal.fire({
+                            icon: 'error',
+                            title: '@(isRtl ? "خطأ!" : "Error!")',
+                            text: '@Shared["BPMN_ExportError"]',
+                            confirmButtonText: '@(isRtl ? "حسناً" : "OK")'
+                        });
+                    }
+                });
+
+                // Version History functionality
+                let currentVersionId = null;
+                let versionViewer = null;
+
+                async function loadVersionHistory() {
+                    const loading = document.getElementById('versionHistoryLoading');
+                    const empty = document.getElementById('versionHistoryEmpty');
+                    const table = document.getElementById('versionHistoryTable');
+                    const tbody = document.getElementById('versionHistoryBody');
+
+                    loading.classList.remove('d-none');
+                    empty.classList.add('d-none');
+                    table.classList.add('d-none');
+
+                    try {
+                        const response = await fetch('/Processes/GetBpmnVersions?processId=@Model.Id');
+                        const data = await response.json();
+
+                        loading.classList.add('d-none');
+
+                        if (!data.success || !data.versions || data.versions.length === 0) {
+                            empty.classList.remove('d-none');
+                            return;
+                        }
+
+                        tbody.innerHTML = data.versions.map(v => `
+                            <tr>
+                                <td>
+                                    <span class="badge ${v.isCurrent ? 'bg-success' : 'bg-secondary'}">
+                                        v${v.versionNumber}
+                                        ${v.isCurrent ? ' <i data-lucide="check" style="width:12px;height:12px;"></i>' : ''}
+                                    </span>
+                                </td>
+                                <td>${new Date(v.createdAt).toLocaleString()}</td>
+                                <td>${v.createdByName || '-'}</td>
+                                <td>${v.changeDescription || '-'}</td>
+                                <td>${v.formattedSize}</td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-outline-primary me-1" onclick="viewVersion('${v.id}')" title="@Shared["Action_ViewVersion"]">
+                                        <i data-lucide="eye" style="width:14px;height:14px;"></i>
+                                    </button>
+                                    ${!v.isCurrent ? `<button class="btn btn-sm btn-outline-warning" onclick="restoreVersion('${v.id}')" title="@Shared["Action_RestoreVersion"]">
+                                        <i data-lucide="rotate-ccw" style="width:14px;height:14px;"></i>
+                                    </button>` : ''}
+                                </td>
+                            </tr>
+                        `).join('');
+
+                        table.classList.remove('d-none');
+                        lucide.createIcons();
+                    } catch (err) {
+                        console.error('Error loading version history:', err);
+                        loading.classList.add('d-none');
+                        empty.classList.remove('d-none');
+                    }
+                }
+
+                async function viewVersion(versionId) {
+                    currentVersionId = versionId;
+                    const modal = new bootstrap.Modal(document.getElementById('viewVersionModal'));
+
+                    try {
+                        const response = await fetch(`/Processes/GetBpmnVersion?versionId=${versionId}`);
+                        const data = await response.json();
+
+                        if (!data.success || !data.version) {
+                            Swal.fire({ icon: 'error', title: '@(isRtl ? "خطأ!" : "Error!")', text: '@Shared["Error_NotFound"]' });
+                            return;
+                        }
+
+                        document.getElementById('viewVersionTitle').textContent = `@Shared["Action_ViewVersion"] - v${data.version.versionNumber}`;
+                        document.getElementById('btnRestoreFromModal').style.display = data.version.isCurrent ? 'none' : 'inline-flex';
+
+                        modal.show();
+
+                        // Initialize viewer after modal is shown
+                        setTimeout(async () => {
+                            const container = document.getElementById('viewVersionCanvas');
+                            container.innerHTML = '';
+
+                            if (versionViewer) {
+                                versionViewer.destroy();
+                            }
+
+                            versionViewer = new BpmnJS({ container: container });
+                            await versionViewer.importXML(data.version.bpmnXml);
+                            versionViewer.get('canvas').zoom('fit-viewport');
+                        }, 300);
+                    } catch (err) {
+                        console.error('Error viewing version:', err);
+                        Swal.fire({ icon: 'error', title: '@(isRtl ? "خطأ!" : "Error!")', text: '@Shared["Error_ProcessingRequest"]' });
+                    }
+                }
+
+                async function restoreVersion(versionId) {
+                    const result = await Swal.fire({
+                        title: '@Shared["Confirm_RestoreVersion"]',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonColor: '#005B99',
+                        confirmButtonText: '@Shared["Action_RestoreVersion"]',
+                        cancelButtonText: '@Shared["Button_Cancel"]'
+                    });
+
+                    if (!result.isConfirmed) return;
+
+                    try {
+                        const response = await fetch(`/Processes/RestoreBpmnVersion?versionId=${versionId}`, { method: 'POST' });
+                        const data = await response.json();
+
+                        if (data.success) {
+                            Swal.fire({ icon: 'success', title: '@Shared["Success_VersionRestored"]', timer: 1500, showConfirmButton: false });
+                            bootstrap.Modal.getInstance(document.getElementById('viewVersionModal'))?.hide();
+                            location.reload();
+                        } else {
+                            Swal.fire({ icon: 'error', title: '@(isRtl ? "خطأ!" : "Error!")', text: data.error || '@Shared["Error_ProcessingRequest"]' });
+                        }
+                    } catch (err) {
+                        console.error('Error restoring version:', err);
+                        Swal.fire({ icon: 'error', title: '@(isRtl ? "خطأ!" : "Error!")', text: '@Shared["Error_ProcessingRequest"]' });
+                    }
+                }
+
+                // Event listeners for version history
+                document.getElementById('btnRefreshVersions')?.addEventListener('click', loadVersionHistory);
+                document.getElementById('btnRestoreFromModal')?.addEventListener('click', () => {
+                    if (currentVersionId) restoreVersion(currentVersionId);
+                });
+
+                // Load version history on page load
+                loadVersionHistory();
+            })();
+        </script>
+    }
+}

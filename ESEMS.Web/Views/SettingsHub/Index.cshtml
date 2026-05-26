@@ -1,0 +1,179 @@
+@using ESEMS.Web.Controllers
+@using ESEMS.Web.Models.Workflow
+@using ESEMS.Web.Models.Common
+@inject IStringLocalizer<SharedResource> Shared
+@{
+    ViewData["Title"] = Shared["Title_SettingsHub"].Value;
+    var activeTab = ViewBag.ActiveTab as string ?? "general";
+    var configs = (List<ApprovalConfiguration>)ViewBag.Configs;
+    var entities = ((string Key, string LabelEn, string LabelAr, string Icon, string Color)[])ViewBag.Entities;
+    var settings = ViewBag.Settings as List<AppSetting> ?? new List<AppSetting>();
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ar";
+    ViewBag.BannerIcon = "settings";
+    ViewBag.BannerTitle = Shared["Title_SettingsHub"].Value;
+    ViewBag.BannerSubtitle = Shared["Text_SettingsHubSubtitle"].Value;
+}
+
+@await Html.PartialAsync("_ModuleBanner")
+
+<!-- Toast host. F-CC-007: cap max-height to viewport minus header and
+     enable overflow-y so a burst of toasts doesn't run off-screen. Inner
+     toasts re-enable pointer events; the host itself stays non-blocking. -->
+<div id="toastHost" class="fixed top-20 end-6 z-[60] space-y-2 pointer-events-none"
+     style="max-height: calc(100vh - 6rem); overflow-y: auto; max-width: min(420px, calc(100vw - 3rem));"></div>
+
+<!-- PManagement-style Bootstrap nav-tabs.
+     F-CC-011 fix: tabs were overflowing the viewport on screens < 768 px with
+     no scroll affordance, hiding 4 of 9 tabs entirely. We now wrap the <ul>
+     in a horizontally-scrollable container with momentum scrolling on iOS
+     and a subtle right/left fade so the user can see there's more. -->
+<div class="sh-tabs-scroll" style="position:relative;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:thin;">
+<ul class="nav nav-tabs mb-0 flex-nowrap" role="tablist" style="border-bottom:2px solid #dee2e6;white-space:nowrap;min-width:max-content;">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link @(activeTab=="general"?"active":"")" data-bs-toggle="tab" data-bs-target="#tab-general" type="button" role="tab">
+            <i data-lucide="sliders" style="width:16px;height:16px;margin-inline-end:4px;"></i>@Shared["Tab_General"]
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link @(activeTab=="email"?"active":"")" data-bs-toggle="tab" data-bs-target="#tab-email" type="button" role="tab">
+            <i data-lucide="mail" style="width:16px;height:16px;margin-inline-end:4px;"></i>@Shared["Tab_EmailAlerts"]
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link @(activeTab=="integrations"?"active":"")" data-bs-toggle="tab" data-bs-target="#tab-integrations" type="button" role="tab">
+            <i data-lucide="plug" style="width:16px;height:16px;margin-inline-end:4px;"></i>@Shared["Tab_Integrations"]
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link @(activeTab=="approvals"?"active":"")" data-bs-toggle="tab" data-bs-target="#tab-approvals" type="button" role="tab">
+            <i data-lucide="shield-check" style="width:16px;height:16px;margin-inline-end:4px;"></i>@Shared["Tab_Approvals"]
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link @(activeTab=="roles"?"active":"")" data-bs-toggle="tab" data-bs-target="#tab-roles" type="button" role="tab">
+            <i data-lucide="key-round" style="width:16px;height:16px;margin-inline-end:4px;"></i>@Shared["Tab_RoleGroups"]
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link @(activeTab=="import"?"active":"")" data-bs-toggle="tab" data-bs-target="#tab-import" type="button" role="tab">
+            <i data-lucide="database" style="width:16px;height:16px;margin-inline-end:4px;"></i>@Shared["Tab_DataImport"]
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link @(activeTab=="activity"?"active":"")" data-bs-toggle="tab" data-bs-target="#tab-activity" type="button" role="tab">
+            <i data-lucide="scroll-text" style="width:16px;height:16px;margin-inline-end:4px;"></i>@Shared["Tab_ActivityLogs"]
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link @(activeTab=="systeminfo"?"active":"")" data-bs-toggle="tab" data-bs-target="#tab-systeminfo" type="button" role="tab">
+            <i data-lucide="activity" style="width:16px;height:16px;margin-inline-end:4px;"></i>@Shared["Tab_SystemInfo"]
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link @(activeTab=="about"?"active":"")" data-bs-toggle="tab" data-bs-target="#tab-about" type="button" role="tab">
+            <i data-lucide="info" style="width:16px;height:16px;margin-inline-end:4px;"></i>@Shared["Tab_About"]
+        </button>
+    </li>
+</ul>
+</div>
+
+<div class="tab-content border border-top-0 rounded-bottom bg-white p-4">
+    <!-- TAB 1: General -->
+    <div class="tab-pane fade @(activeTab=="general"?"show active":"")" id="tab-general" role="tabpanel">
+        @await Html.PartialAsync("_GeneralPartial", settings)
+    </div>
+
+    <!-- TAB 2: Email & Alerts -->
+    <div class="tab-pane fade @(activeTab=="email"?"show active":"")" id="tab-email" role="tabpanel">
+        @await Html.PartialAsync("_EmailAlertsPartial", settings)
+    </div>
+
+    <!-- TAB 3: Integrations -->
+    <div class="tab-pane fade @(activeTab=="integrations"?"show active":"")" id="tab-integrations" role="tabpanel">
+        @await Html.PartialAsync("_IntegrationsPartial", settings)
+    </div>
+
+    <!-- TAB 4: Approvals -->
+    <div class="tab-pane fade @(activeTab=="approvals"?"show active":"")" id="tab-approvals" role="tabpanel">
+        @await Html.PartialAsync("_ApprovalsPartial")
+    </div>
+
+    <!-- TAB 4b: Role Groups -->
+    <div class="tab-pane fade @(activeTab=="roles"?"show active":"")" id="tab-roles" role="tabpanel">
+        @await Html.PartialAsync("_RoleGroupsPartial")
+    </div>
+
+    <!-- TAB 5: Data (import + export) -->
+    <div class="tab-pane fade @(activeTab=="import"?"show active":"")" id="tab-import" role="tabpanel">
+        @await Html.PartialAsync("_DataImportPartial")
+    </div>
+
+    <!-- TAB 6: Activity Logs -->
+    <div class="tab-pane fade @(activeTab=="activity"?"show active":"")" id="tab-activity" role="tabpanel">
+        @await Html.PartialAsync("_ActivityLogsPartial")
+    </div>
+
+    <!-- TAB 7: System Info -->
+    <div class="tab-pane fade @(activeTab=="systeminfo"?"show active":"")" id="tab-systeminfo" role="tabpanel">
+        @await Html.PartialAsync("_SystemInfoPartial")
+    </div>
+
+    <!-- TAB 8: About -->
+    <div class="tab-pane fade @(activeTab=="about"?"show active":"")" id="tab-about" role="tabpanel">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="rounded-lg border border-gray-200 p-4">
+                <div class="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">@Shared["Label_Product"]</div>
+                <div class="text-lg font-bold text-gray-900">ESEMS</div>
+                <div class="text-xs text-gray-500">Enterprise Service Excellence Management System</div>
+            </div>
+            <div class="rounded-lg border border-gray-200 p-4">
+                <div class="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">@Shared["Label_Version"]</div>
+                <div class="text-lg font-bold text-gray-900">1.0.0</div>
+            </div>
+            <div class="rounded-lg border border-gray-200 p-4">
+                <div class="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">@Shared["Label_Environment"]</div>
+                <div class="text-lg font-bold text-gray-900">@((ViewBag.Environment as string) ?? "Development")</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rule editor modal (Approvals tab) -->
+@await Html.PartialAsync("_RuleModal")
+
+<!-- Embedded anti-forgery + data payloads for JS -->
+<form id="antiForgeryForm">@Html.AntiForgeryToken()</form>
+<script nonce="@Context.CspNonce()" id="hubUsers" type="application/json">
+    @Html.Raw(System.Text.Json.JsonSerializer.Serialize(ViewBag.Users))
+</script>
+<script nonce="@Context.CspNonce()" id="hubRules" type="application/json">
+    @Html.Raw(System.Text.Json.JsonSerializer.Serialize(configs.Select(c => new {
+        c.Id, c.EntityType, c.RuleName, c.Priority,
+        c.MinCostSavings, c.MaxCostSavings,
+        c.MinImpactScore, c.MaxImpactScore,
+        c.MinDurationDays, c.MaxDurationDays,
+        c.Horizon, c.InnovationType,
+        c.Level1ApproverType, c.Level1ApproverUserId, c.Level1ApproverName,
+        c.Level2Required, c.Level2ApproverType, c.Level2ApproverUserId, c.Level2ApproverName
+    })))
+</script>
+
+@section Scripts {
+<script nonce="@Context.CspNonce()">
+// Shared toast helper used by all tab partials
+window.ShubToast = function(kind, msg) {
+    var host = document.getElementById('toastHost');
+    if (!host) return;
+    var el = document.createElement('div');
+    var bg = kind === 'success' ? 'bg-green-600' : (kind === 'info' ? 'bg-blue-600' : 'bg-red-600');
+    el.className = bg + ' text-white px-4 py-3 rounded-lg shadow-lg text-sm font-semibold pointer-events-auto';
+    el.textContent = msg;
+    host.appendChild(el);
+    setTimeout(function() { el.remove(); }, 2800);
+};
+window.ShubToken = function() {
+    return document.querySelector('#antiForgeryForm input[name=__RequestVerificationToken]').value;
+};
+</script>
+@await Html.PartialAsync("_ApprovalsScripts")
+}

@@ -1,0 +1,200 @@
+@inject IStringLocalizer<SharedResource> Shared
+@using System.Globalization
+@using System.Security.Claims
+@{
+    var culture = CultureInfo.CurrentUICulture.Name;
+    var isRtl = culture.StartsWith("ar");
+    var dir = isRtl ? "rtl" : "ltr";
+    var lang = isRtl ? "ar" : "en";
+
+    var isAuthenticated = User?.Identity?.IsAuthenticated == true;
+    var displayName = isAuthenticated ? (User.Identity?.Name ?? Shared["Label_User"].Value) : Shared["Label_Guest"].Value;
+    var userEmail = isAuthenticated
+        ? (User.FindFirst(ClaimTypes.Email)?.Value ?? User.Identity?.Name ?? "admin@company.com")
+        : "admin@company.com";
+    var roles = isAuthenticated
+        ? string.Join(", ", User.Claims
+            .Where(c => c.Type == ClaimTypes.Role)
+            .Select(c => c.Value)
+            .Distinct())
+        : string.Empty;
+
+    ViewData["Title"] ??= "Dashboard";
+    var pageTitle = ViewData["Title"]?.ToString() ?? "Dashboard";
+    ViewBag.DisplayName = displayName;
+    ViewBag.UserRole = roles;
+}
+<!DOCTYPE html>
+<html lang="@lang" dir="@dir">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="path-base" content="@Context.Request.PathBase" />
+    <title>@pageTitle - ESEMS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Poppins:300,400,500,600,700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap" />
+    @if (isRtl)
+    {
+        <link rel="stylesheet" href="~/css/skote/bootstrap.min.rtl.css" asp-append-version="true" />
+        <link href="~/css/skote/icons.min.css" rel="stylesheet" type="text/css" asp-append-version="true" />
+        <link rel="stylesheet" href="~/css/skote/app.min.rtl.css" asp-append-version="true" />
+    }
+    else
+    {
+        <link rel="stylesheet" href="~/css/skote/bootstrap.min.css" asp-append-version="true" />
+        <link href="~/css/skote/icons.min.css" rel="stylesheet" type="text/css" asp-append-version="true" />
+        <link rel="stylesheet" href="~/css/skote/app.min.css" asp-append-version="true" />
+    }
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    @* FA + Boxicons removed (FIX-4); no usages in this layout. *@
+    <script src="~/lib/tailwind/tailwind-play.min.js" asp-append-version="true"></script>
+    <script nonce="@Context.CspNonce()">
+        tailwind.config = {
+            corePlugins: { preflight: false },
+            theme: { extend: { colors: { primary: { 50: '#e6f0f7', 100: '#cce1ef', 200: '#99c3df', 300: '#66a5cf', 400: '#3387bf', 500: '#005B99', 600: '#00497a', 700: '#00375c', 800: '#00253d', 900: '#00121f' }, sidebar: '#005B99' } } }
+        }
+    </script>
+    <script src="~/lib/lucide/lucide.min.js" asp-append-version="true"></script>
+    <script nonce="@Context.CspNonce()">
+        // CSP-safe inline event-handler polyfill. See _Layout.cshtml for rationale.
+        (function () {
+            ['click','change','input','submit','keydown','keyup','focus','blur'].forEach(function (evtName) {
+                var attrName = 'on' + evtName;
+                var useCapture = (evtName === 'focus' || evtName === 'blur');
+                document.addEventListener(evtName, function (e) {
+                    var el = e.target;
+                    while (el && el !== document.body && el.nodeType === 1) {
+                        var code = el.getAttribute && el.getAttribute(attrName);
+                        if (code) {
+                            try { (new Function('event', code)).call(el, e); }
+                            catch (err) { console.error('inline ' + attrName + ' polyfill error:', err, code); }
+                            return;
+                        }
+                        el = el.parentElement;
+                    }
+                }, useCapture);
+            });
+        })();
+    </script>
+    <link href="~/lib/datatables/dataTables.bootstrap5.min.css" rel="stylesheet" asp-append-version="true" />
+    <style>
+        :root { --esems-topbar-height: 70px; }
+        body { overflow: hidden; }
+        /* Body font-family is set globally in site.css with the Arabic font stack ahead of Poppins. */
+        /* Hide all sidebar elements */
+        .vertical-menu, .sidebar, #sidebar-menu, .left-side-menu, .navbar-brand-box,
+        [data-simplebar], .simplebar-content-wrapper, .menu-title, .metismenu,
+        .hamburger-icon, .navbar-toggle, #vertical-menu-btn { display: none !important; }
+        /* Remove any left margin/padding from main content */
+        .main-content, .page-content, #layout-wrapper { margin-left: 0 !important; padding-left: 0 !important; }
+        .app-shell-no-sidebar { margin-top: var(--esems-topbar-height); height: calc(100vh - var(--esems-topbar-height)); }
+        .main-content-no-sidebar { height: calc(100vh - var(--esems-topbar-height)); margin: 0 !important; width: 100% !important; }
+        .header-logo-container { display: flex; align-items: center; }
+        .page-header-logo { width: auto; height: auto; object-fit: contain; }
+        .page-header-logo.logo-left { max-height: 50px; max-width: 180px; }
+        .page-header-logo.logo-right { max-height: 60px; max-width: 200px; }
+        @("@")media (max-width: 768px) { .page-header-logo.logo-left { max-height: 60px; max-width: 150px; } .page-header-logo.logo-right { max-height: 40px; max-width: 100px; } }
+        .font-size-16 { font-size: var(--fs-base) !important; }
+        .font-size-18 { font-size: var(--fs-lg) !important; }
+        .waves-effect { position: relative; cursor: pointer; display: inline-block; overflow: hidden; user-select: none; transition: all 0.3s ease-out; }
+        .card { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        /* Full width header */
+        #page-topbar { left: 0 !important; width: 100% !important; }
+        .navbar-header { width: 100% !important; max-width: 100% !important; }
+    </style>
+    @RenderSection("Styles", required: false)
+</head>
+<body data-sidebar="dark">
+    <!-- TOP HEADER BAR -->
+    <header id="page-topbar" role="banner" style="background: #fff;">
+        <div class="navbar-header erm-topbar-logo-row" style="background: #fff;">
+            @if (isRtl)
+            {
+                <div class="d-flex align-items-center justify-content-between w-100 px-3" dir="ltr">
+                    <div class="header-logo-container"><img src="~/L2.png" alt="@Shared["Alt_LogoSystem"]" class="page-header-logo logo-left" /></div>
+                    <div class="header-logo-container"><img src="~/L1.png" alt="@Shared["Alt_LogoEntity"]" class="page-header-logo logo-right" /></div>
+                </div>
+            }
+            else
+            {
+                <div class="d-flex align-items-center justify-content-between w-100 px-3 py-2">
+                    <div class="header-logo-container"><img src="~/L2.png" alt="@Shared["Alt_LogoSystem"]" class="page-header-logo logo-left" /></div>
+                    <div class="header-logo-container"><img src="~/L1.png" alt="@Shared["Alt_LogoEntity"]" class="page-header-logo logo-right" /></div>
+                </div>
+            }
+        </div>
+    </header>
+    <form id="antiForgeryForm" method="post" style="display:none;">@Html.AntiForgeryToken()</form>
+    <div id="appShell" class="app-shell-no-sidebar flex">
+        <div class="main-content main-content-no-sidebar flex-1 flex flex-col">
+            <main class="flex-1 overflow-y-auto p-6 bg-gray-50">
+                @if (TempData["Success"] != null) { <div class="mb-4 flex items-center gap-3 bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg" role="alert"><i data-lucide="check-circle" class="h-5 w-5 text-green-500" aria-hidden="true"></i><span class="flex-1">@TempData["Success"]</span><button type="button" class="text-green-500 hover:text-green-700" onclick="this.parentElement.remove()" aria-label="@Shared["Action_Close"]"><i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i></button></div> }
+                @if (TempData["Error"] != null) { <div class="mb-4 flex items-center gap-3 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg" role="alert"><i data-lucide="alert-circle" class="h-5 w-5 text-red-500" aria-hidden="true"></i><span class="flex-1">@TempData["Error"]</span><button type="button" class="text-red-500 hover:text-red-700" onclick="this.parentElement.remove()" aria-label="@Shared["Action_Close"]"><i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i></button></div> }
+                @RenderBody()
+            </main>
+        </div>
+    </div>
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    <script src="~/lib/datatables/jquery.dataTables.min.js" asp-append-version="true"></script>
+    <script src="~/lib/datatables/dataTables.bootstrap5.min.js" asp-append-version="true"></script>
+    <script src="~/lib/sweetalert2/sweetalert2.all.min.js" asp-append-version="true"></script>
+    <script src="~/lib/chartjs/chart.umd.js" asp-append-version="true"></script>
+    <script nonce="@Context.CspNonce()">
+        window.ESEMS = window.ESEMS || {};
+        window.ESEMS.Localization = {
+            'Confirm_AreYouSure': '@Shared["Confirm_AreYouSure"]',
+            'Confirm_DeleteTextPrefix': '@Shared["Confirm_DeleteTextPrefix"]',
+            'Confirm_YesDelete': '@Shared["Confirm_YesDelete"]',
+            'Button_Cancel': '@Shared["Button_Cancel"]',
+            'Button_Close': '@Shared["Button_Close"]'
+        };
+    </script>
+    <script src="~/js/localization.js" asp-append-version="true"></script>
+    <script nonce="@Context.CspNonce()">
+        lucide.createIcons();
+        document.addEventListener('DOMContentLoaded', function() {
+            const topbar = document.getElementById('page-topbar');
+            function syncTopbarHeight() {
+                if (!topbar) return;
+                const h = topbar.offsetHeight || 0;
+                if (h > 0) document.documentElement.style.setProperty('--esems-topbar-height', h + 'px');
+            }
+            syncTopbarHeight();
+            window.addEventListener('resize', syncTopbarHeight);
+        });
+        function SetLanguage(culture) {
+            const tokenEl = document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]');
+            const antiForgeryToken = tokenEl ? tokenEl.value : '';
+            // PathBase-aware (matches _Layout): strip the PathBase prefix from the
+            // returnUrl and target pathBase + '/Base/ChangeLanguage' so language
+            // switching works under sub-app hosting (e.g. /App).
+            const pathBaseMeta = document.querySelector('meta[name="path-base"]');
+            const pathBase = (pathBaseMeta && pathBaseMeta.getAttribute('content')) || '';
+            const fullPath = window.location.pathname + window.location.search + window.location.hash;
+            const returnUrl = pathBase && fullPath.indexOf(pathBase) === 0
+                ? fullPath.substring(pathBase.length) || '/'
+                : fullPath;
+            fetch(pathBase + '/Base/ChangeLanguage', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': antiForgeryToken },
+                body: JSON.stringify({ culture: culture, returnUrl: returnUrl })
+            })
+            .then(r => { if (!r.ok) throw new Error('HTTP error! Status: ' + r.status); return r.json(); })
+            .then(data => {
+                if (data && data.success) {
+                    const target = data.redirectUrl || '/';
+                    const final = target.startsWith('http') ? target : pathBase + (target.startsWith('/') ? target : '/' + target);
+                    window.location.href = final;
+                }
+            })
+            .catch(err => console.error('SetLanguage error:', err));
+        }
+    </script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
+

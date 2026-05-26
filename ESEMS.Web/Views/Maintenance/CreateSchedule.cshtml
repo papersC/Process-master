@@ -1,0 +1,255 @@
+@model MaintenanceSchedule
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = Shared["Title_CreateMaintenanceSchedule"].Value;
+    var step1 = isRtl ? "البيانات الأساسية" : "Basics";
+    var step2 = isRtl ? "الجدولة والتكلفة" : "Schedule & Cost";
+}
+
+<partial name="_WizardStyles" />
+
+<div class="wiz-pageheader">
+    <h1 class="wiz-pagetitle"><i data-lucide="calendar-plus" style="width:20px;height:20px;color:#005B99;"></i>@ViewData["Title"]</h1>
+    <div style="display:inline-flex;align-items:center;gap:.85rem;">
+        <span class="wiz-stepcount">@(isRtl ? "الخطوة" : "Step") <b id="stepCounter">1</b> @(isRtl ? "من" : "of") 2</span>
+        <a asp-action="Schedules" class="wiz-cancellink"><i data-lucide="x" style="width:14px;height:14px;"></i> @Shared["Button_Cancel"]</a>
+    </div>
+</div>
+
+<form asp-action="CreateSchedule" method="post" id="wizardForm" novalidate>
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" style="margin-bottom:.6rem;padding:.6rem .8rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.375rem;color:#b91c1c;font-size: var(--fs-xs);"></div>
+
+    <div class="wiz-grid">
+        <aside class="wiz-rail">
+            <ul class="wiz-steps" id="wizardSteps">
+                <li class="wiz-step active" data-step="1" onclick="wizGoTo(1)">
+                    <span class="wiz-stepnum">1</span>
+                    <span class="wiz-steptext">
+                        <span class="wiz-steptitle">@step1</span>
+                        <span class="wiz-stepsub">@(isRtl ? "الأصل، النوع، الاسم" : "Asset, type, name")</span>
+                    </span>
+                </li>
+                <li class="wiz-step" data-step="2" onclick="wizGoTo(2)">
+                    <span class="wiz-stepnum">2</span>
+                    <span class="wiz-steptext">
+                        <span class="wiz-steptitle">@step2</span>
+                        <span class="wiz-stepsub">@(isRtl ? "الوتيرة والتكلفة" : "Frequency & cost")</span>
+                    </span>
+                </li>
+            </ul>
+        </aside>
+
+        <section class="wiz-main">
+            <!-- Step 1 -->
+            <div class="wiz-step-content active" data-step="1">
+                <div class="wiz-stephdr"><i data-lucide="info" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 1: @step1</h2></div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="AssetId" class="pc-label">@Shared["Label_Asset"] <span class="req">*</span></label>
+                        <select asp-for="AssetId" id="AssetSel" asp-items="@ViewBag.Assets" class="pc-select">
+                            <option value="">@Shared["Text_SelectAsset"]</option>
+                        </select>
+                        <span asp-validation-for="AssetId" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="Type" class="pc-label">@Shared["Label_MaintenanceType"] <span class="req">*</span></label>
+                        <select asp-for="Type" id="TypeSel" asp-items="@ViewBag.MaintenanceTypes" class="pc-select">
+                            <option value="">@Shared["Text_SelectType"]</option>
+                        </select>
+                        <span asp-validation-for="Type" class="pc-err"></span>
+                    </div>
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="NameEn" class="pc-label">@Shared["Label_NameEnglish"] <span class="req">*</span></label>
+                        <input asp-for="NameEn" class="pc-input" placeholder="@(isRtl ? "مثال: Quarterly HVAC Inspection" : "e.g., Quarterly HVAC Inspection")" />
+                        <span asp-validation-for="NameEn" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NameAr" class="pc-label">@Shared["Label_NameArabic"] <span class="req">*</span></label>
+                        <input asp-for="NameAr" dir="rtl" class="pc-input" />
+                        <span asp-validation-for="NameAr" class="pc-err"></span>
+                    </div>
+                </div>
+
+                <div class="pc-grid-2">
+                    <div>
+                        <label asp-for="DescriptionEn" class="pc-label">@Shared["Label_DescriptionEnglish"]</label>
+                        <textarea asp-for="DescriptionEn" rows="3" class="pc-textarea"></textarea>
+                    </div>
+                    <div>
+                        <label asp-for="DescriptionAr" class="pc-label">@Shared["Label_DescriptionArabic"]</label>
+                        <textarea asp-for="DescriptionAr" dir="rtl" rows="3" class="pc-textarea"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="wiz-step-content" data-step="2">
+                <div class="wiz-stephdr"><i data-lucide="calendar-clock" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 2: @step2</h2></div>
+
+                <div class="pc-grid-3 pc-row">
+                    <div>
+                        <label asp-for="FrequencyDays" class="pc-label">@Shared["Label_FrequencyDays"] <span class="req">*</span></label>
+                        <input asp-for="FrequencyDays" type="number" min="1" id="FreqInp" class="pc-input" />
+                        <span asp-validation-for="FrequencyDays" class="pc-err"></span>
+                        <div class="pc-help">@Shared["Text_DaysBetweenMaintenanceSchedule"]</div>
+                    </div>
+                    <div>
+                        <label asp-for="NextScheduledDate" class="pc-label">@Shared["Label_NextScheduledDate"] <span class="req">*</span></label>
+                        <input asp-for="NextScheduledDate" type="date" id="NextDateInp" class="pc-input" />
+                        <span asp-validation-for="NextScheduledDate" class="pc-err"></span>
+                    </div>
+                    <div style="display:flex;align-items:end;">
+                        <label class="pc-checkbox-row">
+                            <input asp-for="IsActive" id="IsActiveInp" />
+                            <span style="font-size: var(--fs-xs);color:#374151;">@Shared["Label_ActiveSchedule"]</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="EstimatedDurationHours" class="pc-label">@Shared["Label_EstimatedDurationHours"]</label>
+                        <input asp-for="EstimatedDurationHours" type="number" step="0.5" min="0" id="DurInp" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="EstimatedCost" class="pc-label">@Shared["Label_EstimatedCostAED"]</label>
+                        <input asp-for="EstimatedCost" type="number" step="0.01" min="0" id="CostInp" class="pc-input" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="wiz-footer">
+                <button type="button" class="pc-btn pc-btn-ghost" id="prevBtn" disabled>
+                    <i data-lucide="@(isRtl ? "chevron-right" : "chevron-left")" style="width:16px;height:16px;"></i>
+                    @(isRtl ? "السابق" : "Previous")
+                </button>
+                <button type="button" class="pc-btn pc-btn-primary" id="nextBtn">
+                    @(isRtl ? "التالي" : "Next")
+                    <i data-lucide="@(isRtl ? "chevron-left" : "chevron-right")" style="width:16px;height:16px;"></i>
+                </button>
+            </div>
+        </section>
+
+        <aside class="wiz-summary">
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="calendar-check"></i><h3>@(isRtl ? "ملخص الجدول" : "Schedule Summary")</h3></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="package"></i> @Shared["Label_Asset"]</span><span class="wiz-sum-pill" id="sumAsset">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="wrench"></i> @Shared["Label_MaintenanceType"]</span><span class="wiz-sum-pill" id="sumType">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="repeat"></i> @Shared["Label_FrequencyDays"]</span><span class="wiz-sum-pill" id="sumFreq">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="calendar"></i> @Shared["Label_NextScheduledDate"]</span><span class="wiz-sum-pill" id="sumNext">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="circle"></i> @Shared["Label_ActiveSchedule"]</span><span class="wiz-sum-pill wiz-sum-pill-on" id="sumActive">@(isRtl ? "نعم" : "Yes")</span></div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="dollar-sign"></i><h3>@(isRtl ? "التكلفة المتوقعة" : "Estimated Cost")</h3></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="clock"></i> @Shared["Label_EstimatedDurationHours"]</span><span class="wiz-sum-pill" id="sumDur">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="banknote"></i> @Shared["Label_EstimatedCostAED"]</span><span class="wiz-sum-pill" id="sumCost">—</span></div>
+            </div>
+
+            <div class="wiz-sum-actions">
+                <button type="submit" class="pc-btn pc-btn-primary pc-btn-block" id="submitBtn" disabled
+                        title="@(isRtl ? "أكمل جميع الخطوات لتفعيل الزر" : "Complete all steps to enable")">
+                    <i data-lucide="save" style="width:16px;height:16px;"></i>
+                    @Shared["Button_Save"]
+                </button>
+                <a asp-action="Schedules" class="pc-btn pc-btn-ghost pc-btn-block">
+                    <i data-lucide="x" style="width:16px;height:16px;"></i>
+                    @Shared["Button_Cancel"]
+                </a>
+            </div>
+        </aside>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+        const isRtl = @Html.Raw(isRtl ? "true" : "false");
+        const TOTAL_STEPS = 2;
+        let currentStep = 1, highestVisited = 1;
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const submitBtn = document.getElementById('submitBtn');
+        const stepCounterEl = document.getElementById('stepCounter');
+
+        function validateStep(n) {
+            if (n !== 1) return true;
+            const errors = [];
+            const mark = (id, label) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (!(el.value || '').trim()) { el.classList.add('invalid'); errors.push(label); }
+                else { el.classList.remove('invalid'); }
+            };
+            mark('AssetSel', isRtl ? "الأصل مطلوب" : "Asset is required");
+            mark('TypeSel',  isRtl ? "النوع مطلوب" : "Maintenance type is required");
+            mark('NameEn',   isRtl ? "الاسم بالإنجليزية مطلوب" : "English name is required");
+            mark('NameAr',   isRtl ? "الاسم بالعربية مطلوب"   : "Arabic name is required");
+            if (errors.length) {
+                Swal.fire({ icon:'warning', title: isRtl ? "حقول مطلوبة" : "Required Fields", html: errors.join('<br>'), confirmButtonColor:'#005B99' });
+                return false;
+            }
+            return true;
+        }
+
+        function showStep(n) {
+            currentStep = Math.max(1, Math.min(TOTAL_STEPS, n));
+            highestVisited = Math.max(highestVisited, currentStep);
+            document.querySelectorAll('.wiz-step').forEach(el => {
+                const s = parseInt(el.dataset.step, 10);
+                el.classList.toggle('active', s === currentStep);
+                el.classList.toggle('completed', s < highestVisited && s !== currentStep);
+            });
+            document.querySelectorAll('.wiz-step-content').forEach(p => {
+                p.classList.toggle('active', parseInt(p.dataset.step, 10) === currentStep);
+            });
+            prevBtn.disabled = (currentStep === 1);
+            nextBtn.classList.toggle('d-none', currentStep === TOTAL_STEPS);
+            if (submitBtn) submitBtn.disabled = (currentStep !== TOTAL_STEPS);
+            if (stepCounterEl) stepCounterEl.textContent = currentStep;
+            if (window.lucide) lucide.createIcons();
+        }
+        window.wizGoTo = function (n) {
+            if (n <= currentStep) { showStep(n); return; }
+            if (n === currentStep + 1) { if (validateStep(currentStep)) showStep(n); return; }
+            if (validateStep(currentStep)) showStep(currentStep + 1);
+        };
+        prevBtn.addEventListener('click', () => showStep(currentStep - 1));
+        nextBtn.addEventListener('click', () => { if (validateStep(currentStep)) showStep(currentStep + 1); });
+
+        function refresh() {
+            const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v || '—'; };
+            const asset = document.getElementById('AssetSel');
+            const type  = document.getElementById('TypeSel');
+            set('sumAsset', asset?.value ? asset.options[asset.selectedIndex]?.text?.trim() : '');
+            set('sumType',  type?.value  ? type.options[type.selectedIndex]?.text?.trim()  : '');
+            const f = (document.getElementById('FreqInp')?.value || '').trim();
+            set('sumFreq', f && f !== '0' ? `${f} ${isRtl ? "يوم" : "days"}` : '');
+            set('sumNext', (document.getElementById('NextDateInp')?.value || '').trim());
+            const a = !!document.getElementById('IsActiveInp')?.checked;
+            const sa = document.getElementById('sumActive');
+            sa.textContent = a ? (isRtl ? 'نعم' : 'Yes') : (isRtl ? 'لا' : 'No');
+            sa.className = 'wiz-sum-pill ' + (a ? 'wiz-sum-pill-on' : 'wiz-sum-pill-off');
+            const d = (document.getElementById('DurInp')?.value || '').trim();
+            set('sumDur',  d && d !== '0' ? `${d} ${isRtl ? "س" : "h"}` : '');
+            const c = (document.getElementById('CostInp')?.value || '').trim();
+            set('sumCost', c && c !== '0' ? `${Number(c).toLocaleString()} AED` : '');
+        }
+        ['AssetSel','TypeSel','FreqInp','NextDateInp','IsActiveInp','DurInp','CostInp'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', refresh);
+            document.getElementById(id)?.addEventListener('input', refresh);
+        });
+        document.getElementById('wizardForm').addEventListener('submit', function (e) {
+            if (!validateStep(1)) { e.preventDefault(); showStep(1); }
+        });
+
+        showStep(1);
+        refresh();
+    </script>
+}

@@ -1,0 +1,402 @@
+@inject IStringLocalizer<SharedResource> Shared
+
+<div class="mb-3">
+    <h5 class="fw-bold mb-1">@Shared["Heading_DataImport"]</h5>
+    <p class="text-muted small mb-0">@Shared["Help_DataImport"]</p>
+</div>
+
+<div class="alert alert-info small py-2 mb-3">
+    <i data-lucide="info" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+    @Shared["Help_DataImportWorkflow"]
+</div>
+
+<!-- Quick link to full import page -->
+<div class="d-flex justify-content-end mb-3">
+    <a asp-controller="Import" asp-action="Index" class="btn btn-sm btn-outline-primary">
+        <i data-lucide="external-link" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+        @Shared["Button_OpenFullImportPage"]
+    </a>
+</div>
+
+@* F-028: persistent import results log. The transient toast still fires for
+   quick feedback, but the full list of row errors/warnings is rendered here so
+   a large import with many issues leaves a durable record (was: toast showed
+   max 3 then vanished). Populated by DataImport.upload(); dismiss with the ×. *@
+<div id="importResultLog" class="mb-3" hidden></div>
+
+<div class="row g-3">
+    <!-- Processes -->
+    <div class="col-md-6 col-lg-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="mx-auto mb-3 d-flex align-items-center justify-content-center rounded-circle" style="width:56px;height:56px;background:#f1f5f9;">
+                    <i data-lucide="workflow" style="width:28px;height:28px;color:#475569;"></i>
+                </div>
+                <h6 class="fw-bold mb-1">@Shared["Label_Processes"]</h6>
+                <p class="text-muted small mb-3">@Shared["Help_ImportProcesses"]</p>
+                <a asp-controller="Import" asp-action="DownloadProcessesTemplate" class="btn btn-sm btn-outline-secondary w-100 mb-2">
+                    <i data-lucide="download" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                    @Shared["Button_DownloadTemplate"]
+                </a>
+                <label class="btn btn-sm btn-primary w-100 mb-0">
+                    <i data-lucide="upload" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                    @Shared["Button_Upload"]
+                    <input type="file" accept=".xlsx,.xls" hidden onchange="DataImport.upload('processes', this.files[0])" />
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Services -->
+    <div class="col-md-6 col-lg-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="mx-auto mb-3 d-flex align-items-center justify-content-center rounded-circle" style="width:56px;height:56px;background:#f1f5f9;">
+                    <i data-lucide="package" style="width:28px;height:28px;color:#475569;"></i>
+                </div>
+                <h6 class="fw-bold mb-1">@Shared["Label_Services"]</h6>
+                <p class="text-muted small mb-3">@Shared["Help_ImportServices"]</p>
+                <a asp-controller="Import" asp-action="DownloadServicesTemplate" class="btn btn-sm btn-outline-secondary w-100 mb-2">
+                    <i data-lucide="download" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                    @Shared["Button_DownloadTemplate"]
+                </a>
+                <label class="btn btn-sm btn-primary w-100 mb-0">
+                    <i data-lucide="upload" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                    @Shared["Button_Upload"]
+                    <input type="file" accept=".xlsx,.xls" hidden onchange="DataImport.upload('services', this.files[0])" />
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Assets -->
+    <div class="col-md-6 col-lg-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="mx-auto mb-3 d-flex align-items-center justify-content-center rounded-circle" style="width:56px;height:56px;background:#f1f5f9;">
+                    <i data-lucide="box" style="width:28px;height:28px;color:#475569;"></i>
+                </div>
+                <h6 class="fw-bold mb-1">@Shared["Label_Assets"]</h6>
+                <p class="text-muted small mb-3">@Shared["Help_ImportAssets"]</p>
+                <a asp-controller="Import" asp-action="DownloadAssetsTemplate" class="btn btn-sm btn-outline-secondary w-100 mb-2">
+                    <i data-lucide="download" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                    @Shared["Button_DownloadTemplate"]
+                </a>
+                <label class="btn btn-sm btn-primary w-100 mb-0">
+                    <i data-lucide="upload" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                    @Shared["Button_Upload"]
+                    <input type="file" accept=".xlsx,.xls" hidden onchange="DataImport.upload('assets', this.files[0])" />
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Risks -->
+    <div class="col-md-6 col-lg-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="mx-auto mb-3 d-flex align-items-center justify-content-center rounded-circle" style="width:56px;height:56px;background:#f1f5f9;">
+                    <i data-lucide="alert-triangle" style="width:28px;height:28px;color:#475569;"></i>
+                </div>
+                <h6 class="fw-bold mb-1">@Shared["Label_Risks"]</h6>
+                <p class="text-muted small mb-3">@Shared["Help_ImportRisks"]</p>
+                <a asp-controller="Import" asp-action="DownloadRisksTemplate" class="btn btn-sm btn-outline-secondary w-100 mb-2">
+                    <i data-lucide="download" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                    @Shared["Button_DownloadTemplate"]
+                </a>
+                <label class="btn btn-sm btn-primary w-100 mb-0">
+                    <i data-lucide="upload" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                    @Shared["Button_Upload"]
+                    <input type="file" accept=".xlsx,.xls" hidden onchange="DataImport.upload('risks', this.files[0])" />
+                </label>
+            </div>
+        </div>
+    </div>
+</div>
+
+@{
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+}
+
+<!-- Legacy MBRHE Asset Register — 4-column client xlsx import -->
+<div class="mt-4">
+    <h6 class="fw-bold mb-2">
+        <i data-lucide="archive" style="width:16px;height:16px;margin-inline-end:4px;"></i>
+        @(isRtl ? "استيراد سجلات العميل (تنسيق قديم)" : "Legacy client imports")
+    </h6>
+    <div class="alert alert-info small py-2 mb-3">
+        <i data-lucide="info" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+        @(isRtl
+            ? "الترتيب الموصى به: استورد «الهيكل التنظيمي» أولاً ثم «الأصول» — يُربط كل أصل بإدارته المالكة بالاسم. كتالوج الخدمات وخريطة APQC مستقلان. استوردت بترتيب خاطئ؟ استخدم «حذف هذا الاستيراد» أدناه ثم أعد الاستيراد."
+            : "Recommended order: import Org Structure first, then Assets — each asset links to its owning department by name. Services and APQC are self-contained. Imported in the wrong order? Use “Delete this import” below, then re-import.")
+    </div>
+    <div class="row g-3">
+        <div class="col-md-6 col-lg-4">
+            <div class="card shadow-sm h-100 border-secondary-subtle">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <i data-lucide="building-2" style="width:22px;height:22px;color:#475569;"></i>
+                        <h6 class="fw-bold mb-0">@(isRtl ? "سجل أصول المؤسسة (MBRHE)" : "MBRHE Asset Register")</h6>
+                    </div>
+                    <p class="text-muted small mb-3">
+                        @(isRtl
+                            ? "ملف العميل بأربعة أعمدة فقط (الاسم، الوصف، التصنيف، الوحدة المالكة). يُحوّل تلقائياً: التصنيف Digital → فئة أصل معلوماتي، Physical → مشروع إسكاني، مع توليد رقم الأصل واستنتاج عدد المساكن من الاسم."
+                            : "The client's 4-column xlsx (Asset Name, Description, Classification, Owner). Mapped automatically: Digital → information-asset category, Physical → housing-project category, with auto-generated AssetTag and unit-count parsed from the name.")
+                    </p>
+                    <label class="btn btn-sm btn-primary w-100 mb-0">
+                        <i data-lucide="upload" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                        @Shared["Button_Upload"]
+                        <input type="file" accept=".xlsx,.xls" hidden onchange="DataImport.upload('mbrhe-assets', this.files[0])" />
+                    </label>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <div class="card shadow-sm h-100 border-secondary-subtle">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <i data-lucide="network" style="width:22px;height:22px;color:#475569;"></i>
+                        <h6 class="fw-bold mb-0">@(isRtl ? "الهيكل التنظيمي والمهام (MBRHE)" : "MBRHE Org Structure + Functional Tasks")</h6>
+                    </div>
+                    <p class="text-muted small mb-3">
+                        @(isRtl
+                            ? "ملف العميل بورقتين: «الهيكل التنظيمي» (38 وحدة بهيكل شجري) و«المهام الوظيفية» (283+ مهمة موزعة على الوحدات). يُنشئ وحدات تنظيمية مع روابط الوحدة الأم والنوع، ومسؤوليات لكل وحدة."
+                            : "The client's two-sheet xlsx: \"Org Structure\" (38 units with parent linkage + type) and \"Functional Tasks\" (283+ tasks grouped under each unit). Creates OrganizationUnit rows with ParentId resolved from the parent-name column, plus OrganizationUnitResponsibility rows for the tasks.")
+                    </p>
+                    <label class="btn btn-sm btn-primary w-100 mb-0">
+                        <i data-lucide="upload" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                        @Shared["Button_Upload"]
+                        <input type="file" accept=".xlsx,.xls" hidden onchange="DataImport.upload('mbrhe-org', this.files[0])" />
+                    </label>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <div class="card shadow-sm h-100 border-secondary-subtle">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <i data-lucide="book-open" style="width:22px;height:22px;color:#475569;"></i>
+                        <h6 class="fw-bold mb-0">@(isRtl ? "كتالوج خدمات المؤسسة (MBRHE)" : "MBRHE Services Catalog")</h6>
+                    </div>
+                    <p class="text-muted small mb-3">
+                        @(isRtl
+                            ? "ملف العميل بـ 22 عموداً ثنائي اللغة (الورقة \"MBRHE Services\"). يُنشئ خدمة كاملة مع محتوى الكتالوج (الجمهور المستهدف، الشروط، السياسات، الإجراء، القنوات، الرسوم)، ويُنشئ فئات الخدمات المفقودة تلقائياً."
+                            : "The client's 22-column bilingual xlsx (sheet \"MBRHE Services\"). Creates a full Service + ServiceCatalogInfo sidecar (target audience, pre-conditions, policies, procedure, channels, fees), and auto-creates missing service categories.")
+                    </p>
+                    <label class="btn btn-sm btn-primary w-100 mb-0">
+                        <i data-lucide="upload" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                        @Shared["Button_Upload"]
+                        <input type="file" accept=".xlsx,.xls" hidden onchange="DataImport.upload('mbrhe-services', this.files[0])" />
+                    </label>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <div class="card shadow-sm h-100 border-secondary-subtle">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <i data-lucide="git-branch" style="width:22px;height:22px;color:#475569;"></i>
+                        <h6 class="fw-bold mb-0">@(isRtl ? "خريطة عمليات APQC" : "APQC Process Mapping")</h6>
+                    </div>
+                    <p class="text-muted small mb-3">
+                        @(isRtl
+                            ? "ملف العميل الكبير (225 صفاً × 25 عموداً) يغطي التسلسل الهرمي الثلاثي لـ APQC. يُنشئ الفئات (L1) ومجموعات العمليات (L2) والعمليات (L3) مع التصنيف ومستوى الأتمتة ووضع الحالي/المقترح. الروابط مع الوحدات والأنظمة والخدمات والشركاء تُترك للإكمال لاحقاً."
+                            : "The client's 225-row × 25-col denormalized APQC hierarchy. Creates Categories (L1), ProcessGroups (L2), and Processes (L3) with classification, automation level, automability, and Current/Proposed status. Cross-entity links (Org Units, Digital Systems, Linked Services, Government Partners, Strategic Objectives) deferred to follow-up.")
+                    </p>
+                    <label class="btn btn-sm btn-primary w-100 mb-0">
+                        <i data-lucide="upload" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                        @Shared["Button_Upload"]
+                        <input type="file" accept=".xlsx,.xls" hidden onchange="DataImport.upload('mbrhe-apqc', this.files[0])" />
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent legacy imports — undo a run -->
+<div class="mt-4">
+    <h6 class="fw-bold mb-2">
+        <i data-lucide="history" style="width:16px;height:16px;margin-inline-end:4px;"></i>
+        @(isRtl ? "عمليات الاستيراد الأخيرة" : "Recent imports")
+    </h6>
+    <p class="text-muted small mb-3">
+        @(isRtl
+            ? "تراجَع عن أي عملية استيراد قديمة لحذف جميع الصفوف التي أنشأتها، حتى تتمكن من تصحيح الملف وإعادة الاستيراد. تبقى الصفوف المرتبطة ببيانات أخرى دون حذف."
+            : "Undo a legacy import to delete every row it created — so you can fix the file and re-import. Rows that are now referenced by other data are kept.")
+    </p>
+    <div id="recentImportsList" class="d-flex flex-column gap-2">
+        <div class="text-muted small">@(isRtl ? "جارٍ التحميل…" : "Loading…")</div>
+    </div>
+</div>
+
+<!-- Export section -->
+<div class="mt-4">
+    <h6 class="fw-bold mb-2"><i data-lucide="download-cloud" style="width:16px;height:16px;margin-inline-end:4px;"></i>@Shared["Heading_Export"]</h6>
+    <p class="text-muted small mb-3">@Shared["Help_Export"]</p>
+    <div class="d-flex flex-wrap gap-2">
+        <a asp-controller="Import" asp-action="ExportProcesses" class="btn btn-sm btn-outline-primary"><i data-lucide="workflow" style="width:14px;height:14px;margin-inline-end:4px;"></i>@Shared["Label_Processes"]</a>
+        <a asp-controller="Import" asp-action="ExportServices" class="btn btn-sm btn-outline-primary"><i data-lucide="package" style="width:14px;height:14px;margin-inline-end:4px;"></i>@Shared["Label_Services"]</a>
+        <a asp-controller="Import" asp-action="ExportAssets" class="btn btn-sm btn-outline-primary"><i data-lucide="box" style="width:14px;height:14px;margin-inline-end:4px;"></i>@Shared["Label_Assets"]</a>
+        <a asp-controller="Import" asp-action="ExportRisks" class="btn btn-sm btn-outline-primary"><i data-lucide="alert-triangle" style="width:14px;height:14px;margin-inline-end:4px;"></i>@Shared["Label_Risks"]</a>
+    </div>
+</div>
+
+<script nonce="@Context.CspNonce()">
+window.DataImport = (function() {
+    var IS_RTL = @(isRtl ? "true" : "false");
+    var T = IS_RTL ? {
+        deleteBtn: 'حذف هذا الاستيراد',
+        confirm:   'سيتم حذف جميع الصفوف التي أنشأها هذا الاستيراد. هل أنت متأكد؟',
+        none:      'لا توجد عمليات استيراد حديثة يمكن التراجع عنها.',
+        loadFail:  'تعذّر تحميل عمليات الاستيراد الأخيرة.',
+        rows:      'صف',
+        skipped:   'تم تخطّي',
+        deleting:  'جارٍ الحذف…',
+        errorsLabel:   'أخطاء الصفوف',
+        warningsLabel: 'تحذيرات',
+        rowWord:       'صف',
+        dismiss:       'إغلاق'
+    } : {
+        deleteBtn: 'Delete this import',
+        confirm:   'This will delete every row this import created. Continue?',
+        none:      'No recent imports to undo.',
+        loadFail:  'Couldn’t load recent imports.',
+        rows:      'rows',
+        skipped:   'skipped',
+        deleting:  'Deleting…',
+        errorsLabel:   'Row errors',
+        warningsLabel: 'Warnings',
+        rowWord:       'row',
+        dismiss:       'Dismiss'
+    };
+
+    function esc(s) {
+        return (s == null ? '' : String(s)).replace(/[&<>"']/g, function(c) {
+            return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', '\'':'&#39;' })[c];
+        });
+    }
+
+    async function upload(kind, file) {
+        if (!file) return;
+        ShubToast('info', '@Html.Raw(Shared["Toast_UploadStarted"].Value)');
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', ShubToken());
+        fd.append('kind', kind);
+        fd.append('file', file);
+        try {
+            var r = await fetch('/SettingsHub/ImportUpload', { method: 'POST', body: fd });
+            var d = await r.json();
+            if (d.success) ShubToast((d.warnings && d.warnings.length) ? 'info' : 'success', d.message || '@Html.Raw(Shared["Toast_UploadQueued"].Value)');
+            else ShubToast('error', d.error || '@Html.Raw(Shared["Js_UploadFailed"].Value)');
+            renderResult(kind, d); // F-028: persist the full error/warning list
+        } catch (e) {
+            ShubToast('error', e.message);
+            renderResult(kind, { success: false, error: e.message });
+        }
+        loadRecent();
+    }
+
+    // F-028: render the full, non-disappearing import outcome (summary + every
+    // row error and warning) into #importResultLog. esc() guards all messages.
+    function renderResult(kind, d) {
+        var panel = document.getElementById('importResultLog');
+        if (!panel) return;
+        var ok = !!d.success;
+        var hasWarn = d.warnings && d.warnings.length;
+        var headClass = ok ? (hasWarn ? 'warning' : 'success') : 'danger';
+        var summary = esc(d.message || d.error || '');
+        var html = '<div class="d-flex justify-content-between align-items-start gap-2">'
+            + '<div class="fw-semibold small">' + esc(kind) + ' — ' + summary + '</div>'
+            + '<button type="button" class="btn-close" style="font-size:.6rem;" aria-label="' + esc(T.dismiss) + '" data-dismiss-log></button>'
+            + '</div>';
+        function list(items, label, color) {
+            if (!items || !items.length) return '';
+            return '<div class="mt-2 small fw-semibold" style="color:' + color + ';">' + esc(label) + ' (' + items.length + ')</div>'
+                + '<ul class="small mb-0 ps-3" style="max-height:160px;overflow:auto;color:' + color + ';">'
+                + items.map(function (e) { return '<li>' + esc(T.rowWord) + ' ' + esc(e.row) + ': ' + esc(e.message) + '</li>'; }).join('')
+                + '</ul>';
+        }
+        html += list(d.errors, T.errorsLabel, '#b91c1c');
+        html += list(d.warnings, T.warningsLabel, '#b45309');
+        panel.className = 'mb-3 alert alert-' + headClass;
+        panel.innerHTML = html;
+        panel.hidden = false;
+        if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+    }
+
+    function render(items) {
+        var list = document.getElementById('recentImportsList');
+        if (!list) return;
+        if (!items || !items.length) {
+            list.innerHTML = '<div class="text-muted small">' + esc(T.none) + '</div>';
+            return;
+        }
+        list.innerHTML = items.map(function(it) {
+            var when = '';
+            try { when = new Date(it.createdAt).toLocaleString(); } catch (e) {}
+            var meta = esc(it.imported) + ' ' + esc(T.rows)
+                + (it.skipped ? ' · ' + esc(it.skipped) + ' ' + esc(T.skipped) : '')
+                + (it.fileName ? ' · ' + esc(it.fileName) : '')
+                + (when ? ' · ' + esc(when) : '');
+            return '<div class="d-flex align-items-center justify-content-between border rounded p-2">'
+                +   '<div class="me-2">'
+                +     '<div class="fw-semibold small">' + esc(it.kindLabel) + '</div>'
+                +     '<div class="text-muted" style="font-size:.75rem;">' + meta + '</div>'
+                +   '</div>'
+                +   '<button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" data-revert-id="' + esc(it.id) + '">'
+                +     '<i data-lucide="trash-2" style="width:14px;height:14px;margin-inline-end:4px;"></i>' + esc(T.deleteBtn)
+                +   '</button>'
+                + '</div>';
+        }).join('');
+        if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+    }
+
+    async function loadRecent() {
+        var list = document.getElementById('recentImportsList');
+        if (!list) return;
+        try {
+            var r = await fetch('/SettingsHub/RecentImports', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            var d = await r.json();
+            render(d.items || []);
+        } catch (e) {
+            list.innerHTML = '<div class="text-danger small">' + esc(T.loadFail) + '</div>';
+        }
+    }
+
+    async function revert(id, btn) {
+        if (!window.confirm(T.confirm)) return;
+        if (btn) { btn.disabled = true; btn.textContent = T.deleting; }
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', ShubToken());
+        fd.append('id', id);
+        try {
+            var r = await fetch('/SettingsHub/RevertImport', { method: 'POST', body: fd });
+            var d = await r.json();
+            if (d.success) ShubToast('success', d.message || 'Done.');
+            else ShubToast('error', d.error || 'Undo failed.');
+        } catch (e) { ShubToast('error', e.message); }
+        loadRecent();
+    }
+
+    // Delegated click for the dynamically-rendered delete buttons (CSP-safe — no inline handlers).
+    document.addEventListener('click', function(ev) {
+        if (!ev.target || !ev.target.closest) return;
+        // F-028: dismiss the persistent import results log.
+        if (ev.target.closest('[data-dismiss-log]')) {
+            var panel = document.getElementById('importResultLog');
+            if (panel) { panel.hidden = true; panel.innerHTML = ''; }
+            return;
+        }
+        var btn = ev.target.closest('[data-revert-id]');
+        if (!btn) return;
+        ev.preventDefault();
+        revert(btn.getAttribute('data-revert-id'), btn);
+    });
+
+    if (document.readyState !== 'loading') loadRecent();
+    else document.addEventListener('DOMContentLoaded', loadRecent);
+
+    return { upload: upload, loadRecent: loadRecent, revert: revert };
+})();
+</script>

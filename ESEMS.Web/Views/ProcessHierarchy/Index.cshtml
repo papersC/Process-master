@@ -1,0 +1,539 @@
+@model IEnumerable<OrganizationUnit>
+@using ESEMS.Web.Models.APQC
+@using Process = ESEMS.Web.Models.APQC.Process
+@inject IStringLocalizer<SharedResource> Shared
+@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    ViewData["Title"] = Shared["Title_ProcessHierarchy"].Value;
+    // F-026: detect RTL from the *UI* culture, matching the rest of the app
+    // (SearchController, BaseController.IsArabic, etc.). CurrentCulture governs
+    // number/date formatting and can differ from the UI language, which would
+    // mis-flip the layout when the two cultures diverge.
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+
+    var serviceCountsByUnit = ViewBag.ServiceCountsByUnit as Dictionary<string, int> ?? new Dictionary<string, int>();
+    var allUnits = (Model ?? Enumerable.Empty<OrganizationUnit>()).ToList();
+
+    // Recursive count helpers — same memoized pattern as the old view, but
+    // exposed as locals here so the tree renderer can reuse them.
+    var procDeepCache = new Dictionary<int, int>();
+    var servDeepCache = new Dictionary<int, int>();
+
+    int DirectServiceCount(OrganizationUnit u)
+        => (u != null && serviceCountsByUnit.TryGetValue(u.Id.ToString(), out var c)) ? c : 0;
+
+    int ProcessDeep(OrganizationUnit u)
+    {
+        if (u == null) return 0;
+        if (procDeepCache.TryGetValue(u.Id, out var cached)) return cached;
+        var total = u.OwnedProcesses?.Count ?? 0;
+        if (u.Children != null)
+            foreach (var ch in u.Children) total += ProcessDeep(ch);
+        procDeepCache[u.Id] = total;
+        return total;
+    }
+
+    int ServiceDeep(OrganizationUnit u)
+    {
+        if (u == null) return 0;
+        if (servDeepCache.TryGetValue(u.Id, out var cached)) return cached;
+        var total = DirectServiceCount(u);
+        if (u.Children != null)
+            foreach (var ch in u.Children) total += ServiceDeep(ch);
+        servDeepCache[u.Id] = total;
+        return total;
+    }
+
+    // Tree roots = units whose parent is missing or not in the loaded set.
+    // Renders any shape — no hardcoded CEO / CSS / HSG codes.
+    var unitIds = new HashSet<int>(allUnits.Select(u => u.Id));
+    var roots = allUnits
+        .Where(u => u.ParentId == null || !unitIds.Contains(u.ParentId.Value))
+        .OrderBy(u => u.Level).ThenBy(u => u.DisplayOrder)
+        .ToList();
+
+    // Flat list (id + display name) for the Parent dropdown. Pre-built so
+    // the JS edit pane can populate without an extra round trip.
+    var flatList = allUnits
+        .OrderBy(u => u.Level).ThenBy(u => u.DisplayOrder)
+        .Select(u => new {
+            id = u.Id,
+            name = isRtl ? (u.NameAr ?? u.NameEn) : (u.NameEn ?? u.NameAr),
+            level = u.Level,
+            parentId = u.ParentId
+        })
+        .ToList();
+
+    string LevelName(int lvl)
+        => isRtl
+            ? (lvl == 0 ? "قطاع" : lvl == 1 ? "إدارة" : lvl == 2 ? "قسم" : lvl == 3 ? "وحدة" : "وحدة فرعية")
+            : (lvl == 0 ? "Sector" : lvl == 1 ? "Department" : lvl == 2 ? "Section" : lvl == 3 ? "Function" : "Sub-Function");
+}
+
+@functions {
+    // Recursive renderer kept inside @functions so the parameters explicit.
+    public static string RenderNode(OrganizationUnit u, Func<OrganizationUnit, int> deepProc, Func<OrganizationUnit, int> deepSvc, Func<int, string> levelName, bool isRtl, int depth)
+    {
+        if (u == null) return string.Empty;
+        var sb = new System.Text.StringBuilder();
+        var name = isRtl ? (u.NameAr ?? u.NameEn) : (u.NameEn ?? u.NameAr);
+        var hasChildren = u.Children != null && u.Children.Count > 0;
+        var procCount = deepProc(u);
+        var svcCount = deepSvc(u);
+
+        sb.Append("<li class=\"oh-node\" data-id=\"").Append(System.Net.WebUtility.HtmlEncode(u.Id.ToString())).Append("\"")
+          .Append(" data-parent-id=\"").Append(System.Net.WebUtility.HtmlEncode(u.ParentId?.ToString() ?? string.Empty)).Append("\"")
+          .Append(" data-level=\"").Append(u.Level).Append("\">");
+
+        sb.Append("<div class=\"oh-row\">");
+        sb.Append("<button type=\"button\" class=\"oh-toggle\" aria-label=\"toggle\"")
+          .Append(hasChildren ? "" : " disabled")
+          .Append(">")
+          .Append(hasChildren ? "<svg width=\"10\" height=\"10\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\"><path d=\"M9 18l6-6-6-6\"/></svg>" : "")
+          .Append("</button>");
+
+        sb.Append("<button type=\"button\" class=\"oh-name\" data-action=\"select\">")
+          .Append("<span class=\"oh-name-text\" title=\"").Append(System.Net.WebUtility.HtmlEncode(name ?? string.Empty)).Append("\">").Append(System.Net.WebUtility.HtmlEncode(name ?? string.Empty)).Append("</span>")
+          .Append("<span class=\"oh-code\">").Append(System.Net.WebUtility.HtmlEncode(u.Code ?? string.Empty)).Append("</span>")
+          .Append("</button>");
+
+        sb.Append("<span class=\"oh-counts\">")
+          .Append("<span class=\"oh-count\" title=\"Processes\"><svg width=\"10\" height=\"10\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"6\" cy=\"6\" r=\"3\"/><circle cx=\"6\" cy=\"18\" r=\"3\"/><circle cx=\"18\" cy=\"12\" r=\"3\"/><line x1=\"6\" y1=\"9\" x2=\"6\" y2=\"15\"/><line x1=\"9\" y1=\"6\" x2=\"15\" y2=\"12\"/><line x1=\"9\" y1=\"18\" x2=\"15\" y2=\"12\"/></svg>").Append(procCount).Append("</span>")
+          .Append("<span class=\"oh-count\" title=\"Services\"><svg width=\"10\" height=\"10\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><rect x=\"3\" y=\"7\" width=\"18\" height=\"13\" rx=\"2\"/><path d=\"M8 7V5a4 4 0 0 1 8 0v2\"/></svg>").Append(svcCount).Append("</span>")
+          .Append("</span>");
+
+        sb.Append("</div>");
+
+        if (hasChildren)
+        {
+            sb.Append("<ul class=\"oh-children oh-collapsed\">");
+            foreach (var ch in u.Children.OrderBy(x => x.DisplayOrder))
+                sb.Append(RenderNode(ch, deepProc, deepSvc, levelName, isRtl, depth + 1));
+            sb.Append("</ul>");
+        }
+        sb.Append("</li>");
+        return sb.ToString();
+    }
+}
+
+<div class="oh-shell">
+    <div class="oh-pageheader">
+        <div class="oh-header-title">
+            <i data-lucide="list-tree" class="w-5 h-5" style="color:#005B99" aria-hidden="true"></i>
+            <h1>@Shared["Title_ProcessHierarchy"]</h1>
+        </div>
+        <div class="oh-header-actions">
+            <button type="button" id="ohExpandAll" class="oh-btn oh-btn-ghost" title="@(isRtl ? "توسيع الكل" : "Expand all")">
+                <i data-lucide="chevrons-down" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                <span>@(isRtl ? "توسيع الكل" : "Expand")</span>
+            </button>
+            <button type="button" id="ohCollapseAll" class="oh-btn oh-btn-ghost" title="@(isRtl ? "طي الكل" : "Collapse all")">
+                <i data-lucide="chevrons-up" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                <span>@(isRtl ? "طي الكل" : "Collapse")</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="oh-body">
+        <!-- LEFT: editable tree -->
+        <aside class="oh-tree-pane">
+            <div class="oh-search-box">
+                <i data-lucide="search" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                <input type="text" id="ohSearch" placeholder="@(isRtl ? "ابحث في الوحدات..." : "Search units, codes, processes...")" autocomplete="off" />
+            </div>
+            <div class="oh-tree-scroll">
+                @if (!roots.Any())
+                {
+                    <div class="oh-empty">
+                        <i data-lucide="inbox" class="w-7 h-7" aria-hidden="true"></i>
+                        <p>@(isRtl ? "لم يتم العثور على وحدات" : "No organization units found.")</p>
+                    </div>
+                }
+                else
+                {
+                    <ul class="oh-tree" id="ohTree">
+                        @foreach (var root in roots)
+                        {
+                            @Html.Raw(RenderNode(root,
+                                u => ProcessDeep(u),
+                                u => ServiceDeep(u),
+                                lvl => LevelName(lvl),
+                                isRtl,
+                                0))
+                        }
+                    </ul>
+                }
+            </div>
+        </aside>
+
+        <!-- RIGHT: read-only summary + shortcuts.
+             Editing the hierarchy itself (rename/reparent/delete unit) lives in
+             the Organization Units admin menu — this pane only navigates there.
+             Quick-create for Service / Process / child Unit is intentionally
+             surfaced inline so people can build the tree in one place. -->
+        <main class="oh-detail-pane">
+            <div id="ohEmptyState" class="oh-empty oh-empty-detail">
+                <i data-lucide="mouse-pointer-click" class="w-8 h-8" aria-hidden="true"></i>
+                <p>@(isRtl ? "اختر وحدة من الشجرة لعرض تفاصيلها وإجراءاتها." : "Select a unit from the tree to view its details and quick actions.")</p>
+            </div>
+
+            <section id="ohSummary" class="oh-summary" style="display:none;">
+                <header class="oh-summary-header">
+                    <span id="ohFormCode" class="oh-form-code">—</span>
+                    <span id="ohFormLevelLabel" class="oh-level-label">—</span>
+                    <span id="ohActiveBadge" class="oh-active-badge oh-active-on" style="display:none;">@(isRtl ? "نشطة" : "Active")</span>
+                    <span id="ohInactiveBadge" class="oh-active-badge oh-active-off" style="display:none;">@(isRtl ? "غير نشطة" : "Inactive")</span>
+                </header>
+
+                <div class="oh-summary-grid">
+                    <div class="oh-info">
+                        <span class="oh-info-label">@(isRtl ? "الاسم (إنجليزي)" : "Name (English)")</span>
+                        <strong id="ohSumNameEn">—</strong>
+                    </div>
+                    <div class="oh-info">
+                        <span class="oh-info-label">@(isRtl ? "الاسم (عربي)" : "Name (Arabic)")</span>
+                        <strong id="ohSumNameAr" dir="rtl">—</strong>
+                    </div>
+                    <div class="oh-info">
+                        <span class="oh-info-label">@(isRtl ? "الوحدة الأم" : "Parent")</span>
+                        <strong id="ohSumParent">—</strong>
+                    </div>
+                    <div class="oh-info">
+                        <span class="oh-info-label">@(isRtl ? "ترتيب العرض" : "Display order")</span>
+                        <strong id="ohSumOrder">—</strong>
+                    </div>
+                    <div class="oh-info">
+                        <span class="oh-info-label">@(isRtl ? "البريد الإلكتروني" : "Email")</span>
+                        <strong id="ohSumEmail">—</strong>
+                    </div>
+                    <div class="oh-info">
+                        <span class="oh-info-label">@(isRtl ? "الهاتف" : "Phone")</span>
+                        <strong id="ohSumPhone">—</strong>
+                    </div>
+                </div>
+
+                <div class="oh-counts-strip">
+                    <div class="oh-mini-stat">
+                        <span class="oh-mini-label">@(isRtl ? "العمليات (شامل التفرعات)" : "Processes (deep)")</span>
+                        <strong id="ohStatProcesses">—</strong>
+                    </div>
+                    <div class="oh-mini-stat">
+                        <span class="oh-mini-label">@(isRtl ? "الخدمات (شامل التفرعات)" : "Services (deep)")</span>
+                        <strong id="ohStatServices">—</strong>
+                    </div>
+                    <div class="oh-mini-stat">
+                        <span class="oh-mini-label">@(isRtl ? "الوحدات الفرعية المباشرة" : "Direct children")</span>
+                        <strong id="ohStatChildren">—</strong>
+                    </div>
+                </div>
+
+                <div class="oh-action-grid">
+                    <a id="ohActAddService" href="#" class="oh-action-card oh-action-primary">
+                        <i data-lucide="briefcase" class="w-5 h-5" aria-hidden="true"></i>
+                        <span class="oh-action-title">@(isRtl ? "إنشاء خدمة هنا" : "Create service here")</span>
+                        <span class="oh-action-sub">@(isRtl ? "وحدة الملكية مسبقة الاختيار" : "Owning unit pre-selected")</span>
+                    </a>
+                    <a id="ohActAddProcess" href="#" class="oh-action-card oh-action-primary">
+                        <i data-lucide="git-branch" class="w-5 h-5" aria-hidden="true"></i>
+                        <span class="oh-action-title">@(isRtl ? "إنشاء عملية هنا" : "Create process here")</span>
+                        <span class="oh-action-sub">@(isRtl ? "وحدة الملكية مسبقة الاختيار" : "Owning unit pre-selected")</span>
+                    </a>
+                </div>
+
+                <details id="ohOwnedDetails" class="oh-owned">
+                    <summary>@(isRtl ? "العمليات والوحدات الفرعية المباشرة" : "Directly owned processes and child units")</summary>
+                    <div class="oh-owned-grid">
+                        <div>
+                            <h4 class="oh-owned-h">@(isRtl ? "العمليات" : "Processes") <span id="ohOwnedProcCount" class="oh-owned-count">0</span></h4>
+                            <ul id="ohOwnedProcList" class="oh-owned-list"></ul>
+                        </div>
+                        <div>
+                            <h4 class="oh-owned-h">@(isRtl ? "الوحدات الفرعية" : "Child units") <span id="ohOwnedChildCount" class="oh-owned-count">0</span></h4>
+                            <ul id="ohOwnedChildList" class="oh-owned-list"></ul>
+                        </div>
+                    </div>
+                </details>
+            </section>
+        </main>
+    </div>
+</div>
+
+@section Styles {
+    <style>
+        .oh-shell { display: flex; flex-direction: column; gap: .75rem; height: calc(100vh - 130px); }
+        .oh-pageheader { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .25rem 0 .55rem; border-bottom: 1px solid #e5e7eb; flex-wrap: wrap; }
+        .oh-header-title { display: flex; align-items: center; gap: .5rem; }
+        .oh-header-title h1 { font-size: var(--fs-lg); font-weight: 700; margin: 0; color: #1f2937; }
+        .oh-header-actions { display: flex; gap: .35rem; }
+
+        .oh-btn { display: inline-flex; align-items: center; gap: .35rem; padding: .35rem .65rem; border-radius: 6px; border: 1px solid #d1d5db; background: #fff; color: #374151; font-size: var(--fs-sm); font-weight: 500; cursor: pointer; text-decoration: none; transition: background .15s, border-color .15s, color .15s; }
+        .oh-btn:hover { background: #f3f5f8; }
+        .oh-btn-sm { padding: .2rem .5rem; font-size: var(--fs-xs); }
+        .oh-btn-primary { background: #005B99; border-color: #005B99; color: #fff; }
+        .oh-btn-primary:hover { background: #004580; color: #fff; }
+        .oh-btn-ghost { background: transparent; }
+        .oh-btn-danger { background: #fff; border-color: #fecaca; color: #991b1b; }
+        .oh-btn-danger:hover { background: #fee2e2; color: #7f1d1d; }
+
+        .oh-body { display: grid; grid-template-columns: minmax(320px, 38%) 1fr; gap: 1rem; flex: 1; min-height: 0; }
+        @@media (max-width: 1023px) { .oh-body { grid-template-columns: 1fr; } }
+
+        /* ── Tree pane ─────────────────────────── */
+        .oh-tree-pane { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+        .oh-search-box { display: flex; align-items: center; gap: .4rem; padding: .55rem .75rem; border-bottom: 1px solid #f1f5f9; }
+        .oh-search-box i { color: #94a3b8; flex-shrink: 0; }
+        .oh-search-box input { flex: 1; border: 0; outline: 0; font-size: var(--fs-sm); background: transparent; }
+        .oh-tree-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: .35rem 0; }
+        .oh-tree { list-style: none; margin: 0; padding: 0; }
+        .oh-tree ul { list-style: none; margin: 0; padding-inline-start: 1.1rem; border-inline-start: 1px dashed #e5e7eb; }
+        .oh-children.oh-collapsed { display: none; }
+        .oh-node { padding: 1px 0; }
+        .oh-row { display: flex; align-items: center; gap: .25rem; padding: .15rem .55rem; border-radius: 4px; transition: background .12s; }
+        .oh-row:hover { background: #f8fafc; }
+        .oh-row.oh-selected { background: #eff6ff; }
+        .oh-toggle { background: transparent; border: 0; cursor: pointer; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; color: #64748b; padding: 0; flex-shrink: 0; }
+        .oh-toggle[disabled] { visibility: hidden; }
+        .oh-toggle.oh-open svg { transform: rotate(90deg); }
+        .oh-toggle svg { transition: transform .15s ease; }
+        .oh-name { background: transparent; border: 0; cursor: pointer; display: flex; align-items: center; gap: .35rem; flex: 1; min-width: 0; padding: .2rem 0; text-align: start; font-size: var(--fs-sm); color: #1f2937; }
+        .oh-name-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .oh-code { font-size: var(--fs-xs); color: #94a3b8; font-weight: 500; flex-shrink: 0; }
+        .oh-level-label { font-size: var(--fs-xs); color: #6b7280; font-weight: 500; padding-inline-start: .35rem; border-inline-start: 1px solid #e5e7eb; }
+        .oh-counts { display: inline-flex; gap: .35rem; flex-shrink: 0; }
+        .oh-count { display: inline-flex; align-items: center; gap: .15rem; font-size: var(--fs-xs); color: #6b7280; padding: 0 .3rem; background: #f8fafc; border-radius: 3px; line-height: 1.5; }
+        .oh-count svg { color: #94a3b8; }
+
+        .oh-empty { text-align: center; padding: 2rem 1rem; color: #94a3b8; font-size: var(--fs-sm); }
+        .oh-empty svg, .oh-empty i { margin: 0 auto .5rem; display: block; opacity: .4; }
+        .oh-empty p { margin: 0; }
+        .oh-empty-detail { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; }
+
+        /* ── Detail pane ───────────────────────── */
+        .oh-detail-pane { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; min-height: 0; overflow-y: auto; }
+
+        .oh-summary-header { display: flex; align-items: center; gap: .5rem; padding-bottom: .55rem; border-bottom: 1px solid #f1f5f9; margin-bottom: .9rem; flex-wrap: wrap; }
+        .oh-form-code { font-size: var(--fs-base); font-weight: 700; color: #1f2937; }
+        .oh-active-badge { font-size: var(--fs-xs); padding: .15rem .5rem; border-radius: 999px; font-weight: 600; margin-inline-start: auto; }
+        .oh-active-on { background: #dcfce7; color: #15803D; }
+        .oh-active-off { background: #fee2e2; color: #991b1b; }
+
+        .oh-summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .65rem .9rem; margin-bottom: .85rem; }
+        .oh-info { display: flex; flex-direction: column; gap: .1rem; min-width: 0; }
+        .oh-info-label { font-size: var(--fs-xs); color: #6b7280; }
+        .oh-info strong { font-size: var(--fs-sm); color: #1f2937; font-weight: 600; word-break: break-word; }
+        @@media (max-width: 1279px) { .oh-summary-grid { grid-template-columns: repeat(2, 1fr); } }
+
+        .oh-counts-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; margin-bottom: .9rem; padding-top: .75rem; border-top: 1px dashed #e5e7eb; }
+        .oh-mini-stat { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 5px; padding: .5rem .65rem; display: flex; flex-direction: column; gap: .15rem; }
+        .oh-mini-label { font-size: var(--fs-xs); color: #6b7280; }
+        .oh-mini-stat strong { font-size: var(--fs-lg); color: #005B99; }
+
+        /* Action shortcut tiles — primary entry points to the admin pages */
+        .oh-action-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .55rem; margin-bottom: .9rem; }
+        .oh-action-card { display: flex; flex-direction: column; gap: .15rem; padding: .65rem .75rem; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; color: #1f2937; text-decoration: none; transition: border-color .15s, background .15s, transform .05s; cursor: pointer; }
+        .oh-action-card > i { color: #6b7280; }
+        .oh-action-title { font-size: var(--fs-sm); font-weight: 600; }
+        .oh-action-sub { font-size: var(--fs-xs); color: #6b7280; }
+        .oh-action-card:hover { border-color: #005B99; background: #f0f7fc; color: #1f2937; }
+        .oh-action-card:hover > i { color: #005B99; }
+        .oh-action-card:active { transform: scale(.99); }
+        .oh-action-card.oh-action-primary { border-color: #c7e1f2; background: #f5fbff; }
+        .oh-action-card.oh-action-primary > i { color: #005B99; }
+        .oh-action-card.oh-action-primary:hover { background: #e6f3fb; border-color: #005B99; }
+        @@media (max-width: 1279px) { .oh-action-grid { grid-template-columns: 1fr; } }
+
+        /* Owned-children expander (collapsed by default to keep the pane compact) */
+        .oh-owned > summary { cursor: pointer; padding: .35rem 0; font-size: var(--fs-sm); font-weight: 600; color: #374151; list-style: none; }
+        .oh-owned > summary::-webkit-details-marker { display: none; }
+        .oh-owned > summary::before { content: '▸'; display: inline-block; margin-inline-end: .35rem; transition: transform .15s; color: #94a3b8; }
+        .oh-owned[open] > summary::before { transform: rotate(90deg); }
+        .oh-owned-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: .55rem 0 .25rem; }
+        @@media (max-width: 1279px) { .oh-owned-grid { grid-template-columns: 1fr; } }
+        .oh-owned-h { font-size: var(--fs-xs); font-weight: 600; color: #6b7280; margin: 0 0 .35rem; text-transform: uppercase; letter-spacing: .03em; }
+        .oh-owned-count { display: inline-flex; align-items: center; justify-content: center; min-width: 1.4em; height: 1.4em; padding: 0 .35rem; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 10px; font-weight: 600; margin-inline-start: .35rem; text-transform: none; }
+        .oh-owned-list { list-style: none; padding: 0; margin: 0; max-height: 220px; overflow-y: auto; border: 1px solid #f1f5f9; border-radius: 6px; }
+        .oh-owned-list li { border-bottom: 1px solid #f8fafc; }
+        .oh-owned-list li:last-child { border-bottom: none; }
+        .oh-owned-list a { display: block; padding: .35rem .55rem; font-size: var(--fs-xs); color: #1f2937; text-decoration: none; }
+        .oh-owned-list a:hover { background: #f8fafc; color: #005B99; }
+        .oh-owned-list:empty::after { content: attr(data-empty); display: block; padding: .5rem; font-size: var(--fs-xs); color: #94a3b8; text-align: center; }
+    </style>
+}
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        // Flat unit list pre-rendered server-side so the Parent dropdown
+        // can be filtered without an extra round trip.
+        window.OH_FLAT_LIST = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(flatList));
+
+        // URL templates for the create-* shortcuts. Per-selection we
+        // substitute the unit id into the query string so the create
+        // forms land with the owning unit pre-selected.
+        window.OH_URLS = {
+            createSvc:   '@Url.Action("Create",  "Services")',
+            createProc:  '@Url.Action("Create",  "Processes")',
+            procDetails: '@Url.Action("Details", "Processes")'
+        };
+
+        (function () {
+            const isRtl = @(isRtl ? "true" : "false");
+            const tree = document.getElementById('ohTree');
+            const search = document.getElementById('ohSearch');
+            const empty = document.getElementById('ohEmptyState');
+            const summary = document.getElementById('ohSummary');
+
+            // Expand / collapse with arrow rotation
+            tree?.addEventListener('click', function (e) {
+                const tg = e.target.closest('.oh-toggle');
+                if (tg && !tg.disabled) {
+                    const ul = tg.closest('.oh-row')?.nextElementSibling;
+                    if (ul && ul.classList.contains('oh-children')) {
+                        ul.classList.toggle('oh-collapsed');
+                        tg.classList.toggle('oh-open');
+                    }
+                    return;
+                }
+                const sel = e.target.closest('.oh-name');
+                if (sel) {
+                    const node = sel.closest('.oh-node');
+                    if (node) loadDetail(node);
+                }
+            });
+
+            document.getElementById('ohExpandAll')?.addEventListener('click', () => {
+                tree?.querySelectorAll('.oh-children').forEach(u => u.classList.remove('oh-collapsed'));
+                tree?.querySelectorAll('.oh-toggle').forEach(t => { if (!t.disabled) t.classList.add('oh-open'); });
+            });
+            document.getElementById('ohCollapseAll')?.addEventListener('click', () => {
+                tree?.querySelectorAll('.oh-children').forEach(u => u.classList.add('oh-collapsed'));
+                tree?.querySelectorAll('.oh-toggle').forEach(t => t.classList.remove('oh-open'));
+            });
+
+            // Search — client-side filter; matches against the visible
+            // text of each .oh-name. Hides nodes whose subtree has no match.
+            let searchTimer;
+            search?.addEventListener('input', () => {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(filterTree, 120);
+            });
+            function filterTree() {
+                const q = (search.value || '').trim().toLowerCase();
+                const nodes = tree.querySelectorAll('.oh-node');
+                if (!q) {
+                    nodes.forEach(n => { n.style.display = ''; n.dataset.matched = ''; });
+                    return;
+                }
+                // First pass: mark nodes that match directly
+                nodes.forEach(n => {
+                    const nameTxt = n.querySelector('.oh-name-text')?.textContent || '';
+                    const code = n.querySelector('.oh-code')?.textContent || '';
+                    n.dataset.matched = (nameTxt.toLowerCase().includes(q) || code.toLowerCase().includes(q)) ? '1' : '0';
+                });
+                // Second pass: a node is visible if it matches OR any descendant matches
+                function visit(node) {
+                    let any = node.dataset.matched === '1';
+                    const children = node.querySelectorAll(':scope > .oh-children > .oh-node');
+                    children.forEach(c => { if (visit(c)) any = true; });
+                    node.style.display = any ? '' : 'none';
+                    if (any && children.length > 0) {
+                        node.querySelector(':scope > .oh-row > .oh-toggle')?.classList.add('oh-open');
+                        node.querySelector(':scope > .oh-children')?.classList.remove('oh-collapsed');
+                    }
+                    return any;
+                }
+                tree.querySelectorAll(':scope > .oh-node').forEach(visit);
+            }
+
+            // Load + render the unit summary on selection.
+            async function loadDetail(node) {
+                const id = node.dataset.id;
+                tree.querySelectorAll('.oh-row.oh-selected').forEach(r => r.classList.remove('oh-selected'));
+                node.querySelector(':scope > .oh-row')?.classList.add('oh-selected');
+
+                try {
+                    const res = await fetch('@Url.Action("GetUnitDetails", "ProcessHierarchy")?id=' + encodeURIComponent(id), { credentials: 'same-origin' });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    const j = await res.json();
+                    if (!j.success) throw new Error(j.message || 'Failed to load');
+                    const u = j.unit;
+
+                    // Header
+                    document.getElementById('ohFormCode').textContent = u.code || '—';
+                    document.getElementById('ohFormLevelLabel').textContent = levelName(u.level);
+                    document.getElementById('ohActiveBadge').style.display   = u.isActive ? '' : 'none';
+                    document.getElementById('ohInactiveBadge').style.display = u.isActive ? 'none' : '';
+
+                    // Info grid
+                    document.getElementById('ohSumNameEn').textContent = u.nameEn || '—';
+                    document.getElementById('ohSumNameAr').textContent = u.nameAr || '—';
+                    document.getElementById('ohSumOrder').textContent  = (u.displayOrder ?? 0);
+                    document.getElementById('ohSumEmail').textContent  = u.email || '—';
+                    document.getElementById('ohSumPhone').textContent  = u.phone || '—';
+                    const parent = u.parentId ? window.OH_FLAT_LIST.find(x => x.id === u.parentId) : null;
+                    document.getElementById('ohSumParent').textContent = parent ? parent.name : (isRtl ? '(الجذر)' : '(Root)');
+
+                    // Counts strip
+                    document.getElementById('ohStatProcesses').textContent = u.processes?.length ?? 0;
+                    document.getElementById('ohStatServices').textContent  = (u.children || []).reduce((a, c) => a + (c.serviceCount || 0), 0);
+                    document.getElementById('ohStatChildren').textContent  = u.children?.length ?? 0;
+
+                    // Quick-create shortcuts — drop the unit id into the query
+                    // string so Services/Create + Processes/Create open with
+                    // the owning unit pre-selected.
+                    const enc = encodeURIComponent(u.id);
+                    document.getElementById('ohActAddService').href = window.OH_URLS.createSvc  + '?owningUnitId=' + enc;
+                    document.getElementById('ohActAddProcess').href = window.OH_URLS.createProc + '?owningUnitId=' + enc;
+
+                    // Owned processes + child units quick-list
+                    const procList = document.getElementById('ohOwnedProcList');
+                    procList.innerHTML = '';
+                    (u.processes || []).forEach(p => {
+                        const li = document.createElement('li');
+                        const a  = document.createElement('a');
+                        a.href = window.OH_URLS.procDetails + '/' + encodeURIComponent(p.id);
+                        a.textContent = (p.code ? '[' + p.code + '] ' : '') + (p.name || '');
+                        li.appendChild(a);
+                        procList.appendChild(li);
+                    });
+                    document.getElementById('ohOwnedProcCount').textContent = (u.processes || []).length;
+
+                    const childList = document.getElementById('ohOwnedChildList');
+                    childList.innerHTML = '';
+                    (u.children || []).forEach(c => {
+                        const li = document.createElement('li');
+                        const a  = document.createElement('a');
+                        a.href = '#';
+                        a.dataset.target = c.id;
+                        a.textContent = (c.code ? '[' + c.code + '] ' : '') + (c.name || '');
+                        a.addEventListener('click', (ev) => {
+                            ev.preventDefault();
+                            const target = tree.querySelector('.oh-node[data-id="' + c.id + '"]');
+                            if (target) {
+                                target.querySelector(':scope > .oh-row .oh-name')?.click();
+                                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }
+                        });
+                        li.appendChild(a);
+                        childList.appendChild(li);
+                    });
+                    document.getElementById('ohOwnedChildCount').textContent = (u.children || []).length;
+
+                    empty.style.display = 'none';
+                    summary.style.display = '';
+                    if (window.lucide) lucide.createIcons();
+                } catch (e) {
+                    empty.style.display = '';
+                    summary.style.display = 'none';
+                    console.error('ProcessHierarchy: failed to load unit', e);
+                }
+            }
+
+            function levelName(lvl) {
+                if (isRtl) return ['قطاع', 'إدارة', 'قسم', 'وحدة', 'وحدة فرعية'][lvl] || 'وحدة';
+                return ['Sector', 'Department', 'Section', 'Function', 'Sub-Function'][lvl] || 'Unit';
+            }
+
+            if (window.lucide) lucide.createIcons();
+        })();
+    </script>
+}

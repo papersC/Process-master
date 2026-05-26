@@ -1,0 +1,148 @@
+@model ESEMS.Web.Models.APQC.OrganizationUnitResponsibility
+@{
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = isRtl ? "تعديل المسؤولية" : "Edit Responsibility";
+    var unit = Model.OrganizationUnit;
+    var unitName = unit == null ? "" : (isRtl ? unit.NameAr : unit.NameEn);
+}
+
+<style>
+    .pc-shell { max-width: 880px; }
+    .pc-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; border: none; }
+    .pc-btn-primary { background: #005B99; color: #fff; } .pc-btn-primary:hover { background: #003d6b; color: #fff; }
+    .pc-btn-ghost { background: transparent; color: #374151; border: 1px solid #d1d5db; } .pc-btn-ghost:hover { background: #f9fafb; }
+    .pc-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; padding: .9rem 1rem; margin-bottom: .6rem; }
+    .pc-card-h { display: flex; align-items: center; gap: .5rem; padding-bottom: .55rem; margin-bottom: .75rem; border-bottom: 1px solid #f1f5f9; }
+    .pc-card-h h2 { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .45rem; }
+    .pc-label { display: block; font-size: var(--fs-xs); font-weight: 600; color: #374151; margin-bottom: .25rem; }
+    .pc-label .req { color: #dc2626; }
+    .pc-input, .pc-select, .pc-textarea, textarea.pc-input { width: 100%; padding: .42rem .65rem; border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-sm); background: #fff; color: #111827; font-family: inherit; }
+    .pc-input:focus, .pc-textarea:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .pc-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+    @@media (max-width: 768px) { .pc-grid-2 { grid-template-columns: 1fr; } }
+    .pc-row { margin-bottom: .65rem; }
+    .pc-err { font-size: var(--fs-xs); color: #dc2626; margin-top: .2rem; display: block; }
+    .pc-help { font-size: var(--fs-xs); color: #6b7280; margin-top: .2rem; }
+    .pc-checkbox-row { display: inline-flex; align-items: center; gap: .45rem; cursor: pointer; }
+    .pc-checkbox-row input { width: 1rem; height: 1rem; accent-color: #005B99; }
+    .pc-actions { display: flex; align-items: center; gap: .5rem; justify-content: flex-end; padding-top: .35rem; border-top: 1px solid #f1f5f9; margin-top: .5rem; }
+</style>
+
+<div class="pc-shell">
+    <div class="esems-page-header">
+        <div class="esems-page-header-content">
+            <h1 class="esems-page-title mb-1">@ViewData["Title"]</h1>
+            <p class="esems-page-subtitle mb-0">
+                @(isRtl ? "الوحدة التنظيمية" : "Organization Unit"):
+                <a asp-action="Details" asp-route-id="@Model.OrganizationUnitId" class="text-decoration-none">@unitName</a>
+            </p>
+        </div>
+        <div class="esems-page-header-actions">
+            <a asp-action="Details" asp-route-id="@Model.OrganizationUnitId" class="btn btn-outline-secondary">
+                <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" style="width: 16px; height: 16px;"></i>
+                @Shared["Action_Back"]
+            </a>
+        </div>
+    </div>
+
+    <form asp-action="EditResponsibility" method="post">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="Id" />
+        <input type="hidden" asp-for="OrganizationUnitId" />
+        <input type="hidden" asp-for="CreatedAt" />
+        <input type="hidden" asp-for="CreatedById" />
+        <input type="hidden" asp-for="Version" />
+
+        <div asp-validation-summary="ModelOnly" style="margin-bottom:.6rem;padding:.6rem .8rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.375rem;color:#b91c1c;font-size: var(--fs-xs);"></div>
+
+        <div class="pc-card">
+            <div class="pc-card-h">
+                <h2><i data-lucide="clipboard-check" style="width:16px;height:16px;color:#005B99;"></i>@(isRtl ? "تفاصيل المسؤولية" : "Responsibility Details")</h2>
+            </div>
+
+            <div class="pc-grid-2 pc-row">
+                @if (isRtl)
+                {
+                    <div>
+                        <label asp-for="NameAr" class="pc-label">@(isRtl ? "العنوان (عربي)" : "Title (Arabic)") <span class="req">*</span></label>
+                        <input asp-for="NameAr" dir="rtl" class="pc-input" maxlength="200" />
+                        <span asp-validation-for="NameAr" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NameEn" class="pc-label">@(isRtl ? "العنوان (إنجليزي)" : "Title (English)") <span class="req">*</span></label>
+                        <input asp-for="NameEn" class="pc-input" maxlength="200" />
+                        <span asp-validation-for="NameEn" class="pc-err"></span>
+                    </div>
+                }
+                else
+                {
+                    <div>
+                        <label asp-for="NameEn" class="pc-label">Title (English) <span class="req">*</span></label>
+                        <input asp-for="NameEn" class="pc-input" maxlength="200" />
+                        <span asp-validation-for="NameEn" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NameAr" class="pc-label">Title (Arabic) <span class="req">*</span></label>
+                        <input asp-for="NameAr" dir="rtl" class="pc-input" maxlength="200" />
+                        <span asp-validation-for="NameAr" class="pc-err"></span>
+                    </div>
+                }
+            </div>
+
+            <div class="pc-grid-2 pc-row">
+                @if (isRtl)
+                {
+                    <div>
+                        <label asp-for="DescriptionAr" class="pc-label">@(isRtl ? "الوصف (عربي)" : "Description (Arabic)")</label>
+                        <textarea asp-for="DescriptionAr" dir="rtl" class="pc-textarea" rows="4" maxlength="2000"></textarea>
+                    </div>
+                    <div>
+                        <label asp-for="DescriptionEn" class="pc-label">@(isRtl ? "الوصف (إنجليزي)" : "Description (English)")</label>
+                        <textarea asp-for="DescriptionEn" class="pc-textarea" rows="4" maxlength="2000"></textarea>
+                    </div>
+                }
+                else
+                {
+                    <div>
+                        <label asp-for="DescriptionEn" class="pc-label">Description (English)</label>
+                        <textarea asp-for="DescriptionEn" class="pc-textarea" rows="4" maxlength="2000"></textarea>
+                    </div>
+                    <div>
+                        <label asp-for="DescriptionAr" class="pc-label">Description (Arabic)</label>
+                        <textarea asp-for="DescriptionAr" dir="rtl" class="pc-textarea" rows="4" maxlength="2000"></textarea>
+                    </div>
+                }
+            </div>
+
+            <div class="pc-grid-2 pc-row">
+                <div>
+                    <label asp-for="DisplayOrder" class="pc-label">@(isRtl ? "ترتيب العرض" : "Display Order")</label>
+                    <input asp-for="DisplayOrder" type="number" min="1" max="999" class="pc-input" />
+                    <div class="pc-help">@(isRtl ? "الترتيب الذي تظهر به هذه المسؤولية في القائمة." : "Order in which this responsibility appears in the list.")</div>
+                </div>
+                <div style="display:flex;align-items:end;">
+                    <label class="pc-checkbox-row" style="margin-bottom:.5rem;">
+                        <input asp-for="IsActive" />
+                        <span style="font-size: var(--fs-xs); color: #374151;">@(isRtl ? "مسؤولية نشطة" : "Active responsibility")</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="pc-actions">
+                <a asp-action="Details" asp-route-id="@Model.OrganizationUnitId" class="pc-btn pc-btn-ghost">
+                    <i data-lucide="x" style="width:14px;height:14px;"></i>
+                    @Shared["Button_Cancel"]
+                </a>
+                <button type="submit" class="pc-btn pc-btn-primary">
+                    <i data-lucide="save" style="width:14px;height:14px;"></i>
+                    @Shared["Button_SaveChanges"]
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script nonce="@Context.CspNonce()">lucide.createIcons();</script>
+}

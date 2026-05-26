@@ -1,0 +1,74 @@
+@{
+    Layout = "_LayoutNoSidebar";
+    var code = ViewBag.StatusCode as int? ?? 0;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+
+    string Title() => code switch
+    {
+        404 => isRtl ? "الصفحة غير موجودة" : "Page Not Found",
+        403 => isRtl ? "الوصول مرفوض" : "Access Denied",
+        401 => isRtl ? "غير مصرح" : "Not Authenticated",
+        500 => isRtl ? "خطأ في الخادم" : "Server Error",
+        _   => isRtl ? "حدث خطأ" : "Something went wrong"
+    };
+
+    string Body() => code switch
+    {
+        404 => isRtl
+            ? "الصفحة التي تبحث عنها غير موجودة أو تم نقلها."
+            : "The page you're looking for doesn't exist or has been moved.",
+        403 => isRtl
+            ? "ليس لديك الصلاحيات اللازمة للوصول إلى هذه الصفحة."
+            : "You don't have permission to access this page.",
+        401 => isRtl
+            ? "يرجى تسجيل الدخول للمتابعة."
+            : "Please sign in to continue.",
+        500 => isRtl
+            ? "حدث خطأ في الخادم. حاول مرة أخرى بعد قليل."
+            : "Something went wrong on the server. Please try again in a moment.",
+        _   => isRtl
+            ? "لم نتمكن من إكمال طلبك."
+            : "We couldn't complete your request."
+    };
+
+    string Icon() => code switch
+    {
+        404 => "compass",
+        403 => "shield-x",
+        401 => "lock",
+        500 => "server-crash",
+        _   => "alert-triangle"
+    };
+
+    var primaryActionHref = code == 401 ? "/Account/Login" : "/";
+    var primaryActionLabel = code == 401
+        ? (isRtl ? "تسجيل الدخول" : "Sign In")
+        : (isRtl ? "العودة للرئيسية" : "Back to Home");
+
+    ViewData["Title"] = Title();
+}
+
+<div class="min-h-[70vh] flex items-center justify-center px-4 py-12">
+    <div class="max-w-md w-full text-center">
+        <div class="mx-auto mb-6 w-28 h-28 rounded-full bg-blue-50 border-4 border-blue-100 flex items-center justify-center">
+            <i data-lucide="@Icon()" class="w-14 h-14" style="color:#005B99;"></i>
+        </div>
+        <div class="text-6xl font-bold mb-2" style="color:#005B99;">@code</div>
+        <h1 class="text-2xl font-bold text-gray-900 mb-3">@Title()</h1>
+        <p class="text-gray-600 mb-8 max-w-sm mx-auto">@Body()</p>
+        <div class="flex items-center justify-center gap-3">
+            <a href="@primaryActionHref" class="inline-flex items-center gap-2 px-5 py-2.5 text-white rounded-lg font-medium transition-colors" style="background:#005B99;">
+                <i data-lucide="@(code == 401 ? "log-in" : "home")" class="w-4 h-4"></i>
+                @primaryActionLabel
+            </a>
+            <button type="button" onclick="history.back()" class="inline-flex items-center gap-2 px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors">
+                <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" class="w-4 h-4"></i>
+                @(isRtl ? "رجوع" : "Go Back")
+            </button>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">if (window.lucide) lucide.createIcons();</script>
+}

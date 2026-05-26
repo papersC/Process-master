@@ -1,0 +1,197 @@
+@model IEnumerable<ESEMS.Web.Models.APQC.BpmnLane>
+@inject IStringLocalizer<SharedResource> Shared
+@{
+    ViewData["Title"] = "BPMN Lane Review";
+    ViewBag.BannerIcon = "git-merge";
+    ViewBag.BannerTitle = "BPMN Lane Review";
+    ViewBag.BannerSubtitle = "Reconcile swimlane names from imported BPMN diagrams against the OrganizationUnit hierarchy.";
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+
+    var lanes = Model.ToList();
+    var pending     = lanes.Count(l => l.MatchMethod == ESEMS.Web.Models.APQC.BpmnLane.MatchMethods.Pending);
+    var autoCreated = lanes.Count(l => l.MatchMethod == ESEMS.Web.Models.APQC.BpmnLane.MatchMethods.AutoCreated);
+    var normalized  = lanes.Count(l => l.MatchMethod == ESEMS.Web.Models.APQC.BpmnLane.MatchMethods.Normalized);
+    var manual      = lanes.Count(l => l.MatchMethod == ESEMS.Web.Models.APQC.BpmnLane.MatchMethods.Manual);
+    var exact       = lanes.Count(l => l.MatchMethod == ESEMS.Web.Models.APQC.BpmnLane.MatchMethods.Exact);
+    var ignored     = lanes.Count(l => l.MatchMethod == ESEMS.Web.Models.APQC.BpmnLane.MatchMethods.Ignored);
+
+    var orgUnits = ViewBag.OrgUnits as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+}
+
+@await Html.PartialAsync("_ModuleBanner")
+
+<style>
+    .lr-tile { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 1rem; text-align: center; }
+    .lr-tile .v { font-size: var(--fs-xl); font-weight: 700; line-height: 1; }
+    .lr-tile .l { font-size: var(--fs-xs); color: #64748b; text-transform: uppercase; letter-spacing: .03em; margin-top: .4rem; }
+    .lr-tile.is-pending .v { color: #d97706; }
+    .lr-tile.is-auto    .v { color: #1e40af; }
+    .lr-tile.is-norm    .v { color: #0e7490; }
+    .lr-tile.is-manual  .v { color: #059669; }
+    .lr-tile.is-exact   .v { color: #059669; }
+    .lr-tile.is-ignored .v { color: #64748b; }
+
+    .method-pill { display: inline-flex; align-items: center; gap: .3rem; padding: .15rem .55rem; border-radius: 9999px; font-size: var(--fs-xs); font-weight: 600; border: 1px solid; }
+    .method-Pending     { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+    .method-Exact       { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
+    .method-Normalized  { background: #e0f2fe; color: #0e7490; border-color: #bae6fd; }
+    .method-AutoCreated { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
+    .method-Manual      { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
+    .method-Ignored     { background: #f1f5f9; color: #64748b; border-color: #e2e8f0; }
+
+    .lane-name { font-weight: 600; color: #1e293b; }
+    .lane-bpmn-id { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: var(--fs-xs); color: #64748b; }
+    .process-link { color: #005B99; text-decoration: none; font-weight: 500; }
+    .process-link:hover { text-decoration: underline; }
+    .lr-row td { padding: .65rem .75rem; vertical-align: middle; }
+    .lr-row:hover td { background: #f8fafc; }
+    .lr-select { padding: .25rem .5rem; border: 1px solid #cbd5e1; border-radius: .375rem; font-size: var(--fs-xs); min-width: 220px; }
+    .lr-action-btn { padding: .25rem .55rem; font-size: var(--fs-xs); border-radius: .25rem; border: none; cursor: pointer; }
+    .lr-action-btn.is-primary { background: #005B99; color: #fff; }
+    .lr-action-btn.is-primary:hover { background: #003d6b; }
+    .lr-action-btn.is-ghost { background: transparent; color: #64748b; border: 1px solid #cbd5e1; }
+    .lr-action-btn.is-ghost:hover { background: #f1f5f9; color: #1e293b; }
+</style>
+
+@if (TempData["LaneReconcileResult"] is string toast)
+{
+    <div class="alert alert-info py-2 px-3 mb-3" role="alert">
+        <i data-lucide="info" style="width:14px;height:14px;vertical-align:-2px;"></i>
+        <span class="small">@toast</span>
+    </div>
+}
+
+<!-- Summary tiles -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-2"><div class="lr-tile is-pending"><div class="v">@pending</div><div class="l">Pending</div></div></div>
+    <div class="col-6 col-md-2"><div class="lr-tile is-auto"><div class="v">@autoCreated</div><div class="l">Auto-Created</div></div></div>
+    <div class="col-6 col-md-2"><div class="lr-tile is-norm"><div class="v">@normalized</div><div class="l">Normalized</div></div></div>
+    <div class="col-6 col-md-2"><div class="lr-tile is-exact"><div class="v">@exact</div><div class="l">Exact</div></div></div>
+    <div class="col-6 col-md-2"><div class="lr-tile is-manual"><div class="v">@manual</div><div class="l">Manual</div></div></div>
+    <div class="col-6 col-md-2"><div class="lr-tile is-ignored"><div class="v">@ignored</div><div class="l">Ignored</div></div></div>
+</div>
+
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-0 mb-4">
+    <div class="px-4 py-3 border-bottom d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-2">
+            <i data-lucide="list-checks" style="width:18px;height:18px;color:#005B99;"></i>
+            <h5 class="fw-bold mb-0" style="color:#005B99;">All lanes</h5>
+            <span class="badge rounded-pill" style="background:#eff6ff;color:#1e40af;">@lanes.Count</span>
+        </div>
+        <a asp-action="Index" class="btn btn-sm btn-light">
+            <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+            Back to import
+        </a>
+    </div>
+
+    @if (lanes.Count == 0)
+    {
+        <div class="empty-state">
+            <span class="empty-state-icon"><i data-lucide="inbox" aria-hidden="true"></i></span>
+            <p class="empty-state-title">No lanes parsed yet</p>
+            <p class="empty-state-text">Run a BPMN import — any swimlanes the diagram contains will appear here for reconciliation against your OrganizationUnit hierarchy.</p>
+            <a asp-action="Index" class="empty-state-action">
+                <i data-lucide="play" style="width:14px;height:14px;"></i>
+                Go to importer
+            </a>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead class="table-light small">
+                    <tr>
+                        <th style="min-width:200px;">Lane</th>
+                        <th style="min-width:160px;">Process</th>
+                        <th>Method</th>
+                        <th style="min-width:200px;">Resolved org unit</th>
+                        <th style="min-width:280px;">Map to…</th>
+                        <th class="text-end" style="min-width:140px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="small">
+                    @foreach (var lane in lanes)
+                    {
+                        <tr class="lr-row">
+                            <td>
+                                <div class="lane-name">@lane.Name</div>
+                                <div class="lane-bpmn-id">@lane.BpmnId</div>
+                            </td>
+                            <td>
+                                @if (lane.Process != null)
+                                {
+                                    <a class="process-link" asp-controller="Processes" asp-action="Details" asp-route-id="@lane.Process.Id">
+                                        @(isRtl ? lane.Process.NameAr : lane.Process.NameEn)
+                                    </a>
+                                    <div class="lane-bpmn-id">@lane.Process.Code</div>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td>
+                                <span class="method-pill method-@lane.MatchMethod">@lane.MatchMethod</span>
+                            </td>
+                            <td>
+                                @if (lane.OrganizationUnit != null)
+                                {
+                                    <div>@(isRtl ? lane.OrganizationUnit.NameAr : lane.OrganizationUnit.NameEn)</div>
+                                    <div class="lane-bpmn-id">@lane.OrganizationUnit.Code · L@(lane.OrganizationUnit.Level)</div>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td>
+                                <form asp-action="MapLane" method="post" class="d-flex gap-2 align-items-center">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@lane.Id" />
+                                    <select name="organizationUnitId" class="lr-select" aria-label="Org unit to map to">
+                                        <option value="">— pick a unit —</option>
+                                        @foreach (var u in orgUnits)
+                                        {
+                                            var sel = u.Id == lane.OrganizationUnitId ? "selected" : null;
+                                            <option value="@u.Id" selected="@sel">@(isRtl ? u.NameAr : u.NameEn) (@u.Code, L@(u.Level))</option>
+                                        }
+                                    </select>
+                                    <button type="submit" class="lr-action-btn is-primary">Map</button>
+                                </form>
+                            </td>
+                            <td class="text-end">
+                                <form asp-action="MapLane" method="post" style="display:inline-block;">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@lane.Id" />
+                                    <input type="hidden" name="action" value="ignore" />
+                                    <button type="submit" class="lr-action-btn is-ghost" title="Mark as 'this isn't an org unit'">Ignore</button>
+                                </form>
+                                <form asp-action="MapLane" method="post" style="display:inline-block;">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@lane.Id" />
+                                    <input type="hidden" name="action" value="reset" />
+                                    <button type="submit" class="lr-action-btn is-ghost" title="Clear mapping and retry on next import">Reset</button>
+                                </form>
+                                @if (lane.Process != null && !string.IsNullOrEmpty(lane.Process.BpmnDiagram))
+                                {
+                                    <form asp-action="RerunReconcile" method="post" style="display:inline-block;">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="processId" value="@lane.ProcessId" />
+                                        <button type="submit" class="lr-action-btn is-ghost" title="Re-run the auto matcher against current org units">Rerun</button>
+                                    </form>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+    </script>
+}

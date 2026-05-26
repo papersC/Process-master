@@ -1,0 +1,58 @@
+@model ESEMS.Web.Models.Services.ServiceCategory
+@{
+    ViewData["Title"] = "Service Category Details";
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+}
+
+<style>
+    .pc-shell { display:flex; flex-direction:column; gap:.7rem; max-width:780px; }
+    .pc-header { display:flex; align-items:center; justify-content:space-between; padding:.25rem 0 .4rem; border-bottom:1px solid #e5e7eb; }
+    .pc-card { background:#fff; border:1px solid #e5e7eb; border-radius:.5rem; padding:.9rem 1rem; }
+    .pc-row { display:flex; gap:1rem; padding:.35rem 0; border-bottom:1px solid #f3f4f6; }
+    .pc-row:last-child { border-bottom:none; }
+    .pc-label { font-size:var(--fs-xs); font-weight:600; color:#6b7280; min-width:160px; }
+    .pc-value { font-size:var(--fs-sm); color:#111827; }
+    .pc-btn { padding:.45rem 1rem; border-radius:.375rem; font-size:var(--fs-sm); font-weight:600; cursor:pointer; border:none; text-decoration:none; display:inline-flex; align-items:center; gap:.4rem; }
+    .pc-btn-primary { background:#005B99; color:#fff; }
+    .pc-btn-secondary { background:#fff; color:#374151; border:1px solid #d1d5db; }
+</style>
+
+<div class="pc-shell">
+    <div class="pc-header">
+        <h1 style="margin:0;font-size:var(--fs-base);font-weight:600;display:flex;align-items:center;gap:.5rem;">
+            <i data-lucide="folder-tree" class="w-5 h-5" style="color:#005B99;"></i>
+            @(isRtl ? Model.NameAr : Model.NameEn)
+        </h1>
+        <div style="display:flex; gap:.5rem;">
+            <a asp-action="Edit" asp-route-id="@Model.Id" class="pc-btn pc-btn-primary"><i data-lucide="edit-3" class="w-4 h-4"></i>@(isRtl ? "تعديل" : "Edit")</a>
+            <a asp-action="Index" class="pc-btn pc-btn-secondary">@(isRtl ? "رجوع" : "Back")</a>
+        </div>
+    </div>
+
+    <div class="pc-card">
+        <div class="pc-row"><div class="pc-label">@(isRtl ? "الرمز" : "Code")</div><div class="pc-value">@Model.Code</div></div>
+        <div class="pc-row"><div class="pc-label">@(isRtl ? "الاسم (إنجليزي)" : "Name (English)")</div><div class="pc-value">@Model.NameEn</div></div>
+        <div class="pc-row"><div class="pc-label">@(isRtl ? "الاسم (عربي)" : "Name (Arabic)")</div><div class="pc-value" dir="rtl">@Model.NameAr</div></div>
+        @if (!string.IsNullOrEmpty(Model.DescriptionEn))
+        {
+            <div class="pc-row"><div class="pc-label">@(isRtl ? "الوصف" : "Description")</div><div class="pc-value">@(isRtl ? Model.DescriptionAr : Model.DescriptionEn)</div></div>
+        }
+        <div class="pc-row"><div class="pc-label">@(isRtl ? "الترتيب" : "Display Order")</div><div class="pc-value">@Model.DisplayOrder</div></div>
+        <div class="pc-row"><div class="pc-label">@(isRtl ? "الحالة" : "Status")</div><div class="pc-value">@(Model.IsActive ? (isRtl ? "نشطة" : "Active") : (isRtl ? "متوقفة" : "Inactive"))</div></div>
+        <div class="pc-row"><div class="pc-label">@(isRtl ? "الخدمات المرتبطة" : "Linked Services")</div><div class="pc-value">@Model.Services.Count</div></div>
+    </div>
+
+    @if (Model.Services.Any())
+    {
+        <div class="pc-card">
+            <h2 style="margin:0 0 .5rem 0;font-size:var(--fs-sm);font-weight:600;">@(isRtl ? "خدمات هذه الفئة" : "Services in this category")</h2>
+            <ul style="margin:0;padding-inline-start:1.25rem;">
+                @foreach (var s in Model.Services.OrderBy(s => s.Code))
+                {
+                    <li style="font-size:var(--fs-sm);"><a asp-controller="Services" asp-action="Details" asp-route-id="@s.Id">@s.Code — @(isRtl ? s.NameAr : s.NameEn)</a></li>
+                }
+            </ul>
+        </div>
+    }
+</div>

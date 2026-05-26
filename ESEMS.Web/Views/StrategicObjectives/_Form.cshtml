@@ -1,0 +1,352 @@
+@model ESEMS.Web.Models.Services.StrategicObjective
+@{
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    var parents = ViewBag.Parents as Microsoft.AspNetCore.Mvc.Rendering.SelectList;
+    var units   = ViewBag.OrganizationUnits as Microsoft.AspNetCore.Mvc.Rendering.SelectList;
+}
+
+@*
+    Strategic Objective form — 3 left-column cards (Identity / Bilingual Naming /
+    Performance Target) + sticky Summary sidebar with live preview.
+    Same pc-* visual language as Processes/Create + ProcessGroups/Create.
+    Wrapped by Create.cshtml or Edit.cshtml in a single <form>.
+*@
+
+<style>
+    /* ─── pc-* foundation (mirrored from ProcessGroups/Create) ─── */
+    .pc-shell { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: .75rem; align-items: start; }
+    @@media (max-width: 992px) { .pc-shell { grid-template-columns: 1fr; } }
+    .pc-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; border: none; }
+    .pc-btn-primary { background: #005B99; color: #fff; } .pc-btn-primary:hover { background: #003d6b; color: #fff; }
+    .pc-btn-outline { background: #fff; color: #005B99; border: 1px solid #cbd5e1; } .pc-btn-outline:hover { background: #f1f5f9; }
+    .pc-btn-ghost { background: transparent; color: #374151; border: 1px solid #d1d5db; } .pc-btn-ghost:hover { background: #f9fafb; }
+    .pc-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; padding: .9rem 1rem; margin-bottom: .6rem; }
+    .pc-card-h { display: flex; align-items: center; gap: .5rem; padding-bottom: .55rem; margin-bottom: .75rem; border-bottom: 1px solid #f1f5f9; }
+    .pc-card-h h2 { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .45rem; }
+    .pc-card-h .pc-card-sub { font-size: var(--fs-xs); color: #6b7280; margin-inline-start: auto; }
+    .pc-label { display: block; font-size: var(--fs-xs); font-weight: 600; color: #374151; margin-bottom: .25rem; }
+    .pc-label .req { color: #dc2626; }
+    .pc-input, .pc-select, .pc-textarea, textarea.pc-input { width: 100%; padding: .42rem .65rem; border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-sm); background: #fff; color: #111827; font-family: inherit; }
+    .pc-input:focus, .pc-select:focus, .pc-textarea:focus, textarea.pc-input:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .pc-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+    .pc-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .65rem; }
+    @@media (max-width: 768px) { .pc-grid-2, .pc-grid-3 { grid-template-columns: 1fr; } }
+    .pc-row { margin-bottom: .65rem; }
+    .pc-help { font-size: var(--fs-xs); color: #6b7280; margin-top: .2rem; }
+    .pc-err { font-size: var(--fs-xs); color: #dc2626; margin-top: .2rem; display: block; }
+    .pc-side { position: sticky; top: 1rem; display: flex; flex-direction: column; gap: .55rem; }
+    .pc-side-actions { display: flex; flex-direction: column; gap: .35rem; padding-top: .25rem; }
+    .pc-side-actions .pc-btn { justify-content: center; padding: .55rem .85rem; }
+    .pc-checkbox-row { display: inline-flex; align-items: center; gap: .45rem; cursor: pointer; }
+    .pc-checkbox-row input { width: 1rem; height: 1rem; accent-color: #005B99; }
+
+    /* ─── Strategic Objective specifics ─── */
+
+    /* Live-preview chips inside the Summary card. */
+    .so-sum-row { display: flex; align-items: center; justify-content: space-between; padding: .35rem 0; font-size: var(--fs-xs); color: #475569; border-bottom: 1px dashed #f1f5f9; }
+    .so-sum-row:last-child { border-bottom: none; }
+    .so-sum-row .lbl { color: #64748b; font-weight: 500; }
+    .so-sum-row .val { font-weight: 600; color: #0f172a; }
+    .so-pill { display: inline-flex; align-items: center; padding: .12rem .55rem; border-radius: 9999px; font-size: var(--fs-xs); font-weight: 700; }
+    .so-pill.l1 { background: #dbeafe; color: #1e40af; }
+    .so-pill.l2 { background: #fef3c7; color: #92400e; }
+    .so-pill.l3 { background: #dcfce7; color: #166534; }
+    .so-pill.is-active   { background: #dcfce7; color: #166534; }
+    .so-pill.is-inactive { background: #f3f4f6; color: #6b7280; }
+    .so-code-preview { font-family: ui-monospace, monospace; font-size: var(--fs-base); font-weight: 700; color: var(--esems-primary); background: #eff6ff; padding: .35rem .55rem; border-radius: .375rem; text-align: center; letter-spacing: .03em; }
+    .so-code-preview.empty { color: #94a3b8; background: #f8fafc; font-weight: 400; font-style: italic; }
+
+    /* Progress bar in the Summary card. */
+    .so-progress-wrap { padding: .35rem 0 .5rem; }
+    .so-progress-meta { display: flex; align-items: baseline; justify-content: space-between; font-size: var(--fs-xs); color: #475569; margin-bottom: .25rem; }
+    .so-progress-meta .pct { font-weight: 700; color: #0f172a; font-size: var(--fs-base); }
+    .so-progress-bar { height: 6px; background: #f1f5f9; border-radius: 9999px; overflow: hidden; }
+    .so-progress-bar > .fill { height: 100%; background: var(--esems-success); transition: width .25s ease; }
+    .so-progress-bar > .fill.over { background: var(--esems-warning); }
+</style>
+
+<div asp-validation-summary="ModelOnly" style="margin-bottom: var(--sp-3); padding: .65rem .85rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: .375rem; color: #b91c1c; font-size: var(--fs-xs);"></div>
+
+<div class="pc-shell">
+
+    @* ─────────── LEFT COLUMN — 3 grouped cards ─────────── *@
+    <main>
+        @* ─── Identity ─── *@
+        <div class="pc-card">
+            <div class="pc-card-h">
+                <h2><i data-lucide="target" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@(isRtl ? "الهوية" : "Identity")</h2>
+                <span class="pc-card-sub">@(isRtl ? "الكود، المستوى، الهدف الأب، الوحدة المالكة" : "Code, level, parent objective, owning unit")</span>
+            </div>
+
+            <div class="pc-grid-2 pc-row">
+                <div>
+                    <label asp-for="Code" class="pc-label">@(isRtl ? "الكود" : "Code") <span class="req">*</span></label>
+                    <input asp-for="Code" id="CodeInp" class="pc-input" maxlength="50" placeholder="@(isRtl ? "مثال: SO-1.1" : "e.g. SO-1.1")" autocomplete="off" />
+                    <span asp-validation-for="Code" class="pc-err"></span>
+                    <div class="pc-help">@(isRtl ? "أدخل كوداً يدوياً (مثال: SO-1.1)." : "Enter a manual code, e.g. SO-1.1.")</div>
+                </div>
+                <div>
+                    <label asp-for="Level" class="pc-label">@(isRtl ? "المستوى" : "Level") <span class="req">*</span></label>
+                    <select asp-for="Level" id="LevelSel" class="pc-select">
+                        <option value="1">@(isRtl ? "1 — استراتيجي" : "1 — Strategic")</option>
+                        <option value="2">@(isRtl ? "2 — تكتيكي"   : "2 — Tactical")</option>
+                        <option value="3">@(isRtl ? "3 — تشغيلي"   : "3 — Operational")</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="pc-grid-2 pc-row">
+                <div>
+                    <label asp-for="ParentId" class="pc-label">@(isRtl ? "الهدف الأب" : "Parent Objective")</label>
+                    <select asp-for="ParentId" asp-items="parents" class="pc-select">
+                        <option value="">@(isRtl ? "— لا يوجد —" : "— None —")</option>
+                    </select>
+                    <div class="pc-help">@(isRtl ? "اختياري — اربط هذا الهدف بهدف أعلى." : "Optional — link this objective to a higher-level one.")</div>
+                </div>
+                <div>
+                    <label asp-for="OwningUnitId" class="pc-label">@(isRtl ? "الوحدة المالكة" : "Owning Unit")</label>
+                    <select asp-for="OwningUnitId" asp-items="units" class="pc-select">
+                        <option value="">@(isRtl ? "— لا يوجد —" : "— None —")</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        @* ─── Bilingual Naming ─── *@
+        <div class="pc-card">
+            <div class="pc-card-h">
+                <h2><i data-lucide="languages" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@(isRtl ? "الأسماء والوصف" : "Naming & Description")</h2>
+                <span class="pc-card-sub">@(isRtl ? "اسم ووصف الهدف بالإنجليزية والعربية" : "Objective name + description in English and Arabic")</span>
+            </div>
+
+            <div class="pc-grid-2 pc-row">
+                @* Tab order — bilingual pairs follow visual flow.
+                   In RTL, Arabic input renders first (right side), so we swap source order. *@
+                @if (isRtl)
+                {
+                    <div>
+                        <label asp-for="NameAr" class="pc-label">@(isRtl ? "الاسم (عربي)" : "Name (Arabic)")</label>
+                        <input asp-for="NameAr" dir="rtl" class="pc-input" />
+                    </div>
+                    <div>
+                        <label asp-for="NameEn" class="pc-label">@(isRtl ? "الاسم (إنجليزي)" : "Name (English)") <span class="req">*</span></label>
+                        <input asp-for="NameEn" id="NameEnInp" class="pc-input" />
+                        <span asp-validation-for="NameEn" class="pc-err"></span>
+                    </div>
+                }
+                else
+                {
+                    <div>
+                        <label asp-for="NameEn" class="pc-label">Name (English) <span class="req">*</span></label>
+                        <input asp-for="NameEn" id="NameEnInp" class="pc-input" />
+                        <span asp-validation-for="NameEn" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NameAr" class="pc-label">Name (Arabic)</label>
+                        <input asp-for="NameAr" dir="rtl" class="pc-input" />
+                    </div>
+                }
+            </div>
+
+            <div class="pc-grid-2 pc-row">
+                @if (isRtl)
+                {
+                    <div>
+                        <label asp-for="DescriptionAr" class="pc-label">@(isRtl ? "الوصف (عربي)" : "Description (Arabic)")</label>
+                        <textarea asp-for="DescriptionAr" dir="rtl" class="pc-input" rows="3"></textarea>
+                    </div>
+                    <div>
+                        <label asp-for="DescriptionEn" class="pc-label">@(isRtl ? "الوصف (إنجليزي)" : "Description (English)")</label>
+                        <textarea asp-for="DescriptionEn" class="pc-input" rows="3"></textarea>
+                    </div>
+                }
+                else
+                {
+                    <div>
+                        <label asp-for="DescriptionEn" class="pc-label">Description (English)</label>
+                        <textarea asp-for="DescriptionEn" class="pc-input" rows="3"></textarea>
+                    </div>
+                    <div>
+                        <label asp-for="DescriptionAr" class="pc-label">Description (Arabic)</label>
+                        <textarea asp-for="DescriptionAr" dir="rtl" class="pc-input" rows="3"></textarea>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* ─── Performance Target ─── *@
+        <div class="pc-card">
+            <div class="pc-card-h">
+                <h2><i data-lucide="trending-up" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@(isRtl ? "الهدف والقياس" : "Performance Target")</h2>
+                <span class="pc-card-sub">@(isRtl ? "السنة، القيمة المستهدفة، القيمة الحالية، الوحدة، الوسوم" : "Year, target value, current value, unit, tags")</span>
+            </div>
+
+            <div class="pc-grid-3 pc-row">
+                <div>
+                    <label asp-for="TargetYear" class="pc-label">@(isRtl ? "السنة المستهدفة" : "Target Year")</label>
+                    <input asp-for="TargetYear" type="number" min="2020" max="2100" class="pc-input" />
+                </div>
+                <div>
+                    <label asp-for="TargetValue" class="pc-label">@(isRtl ? "القيمة المستهدفة" : "Target Value")</label>
+                    <input asp-for="TargetValue" id="TargetValInp" type="number" step="any" class="pc-input" />
+                </div>
+                <div>
+                    <label asp-for="CurrentValue" class="pc-label">@(isRtl ? "القيمة الحالية" : "Current Value")</label>
+                    <input asp-for="CurrentValue" id="CurrentValInp" type="number" step="any" class="pc-input" />
+                </div>
+            </div>
+
+            <div class="pc-grid-2 pc-row">
+                <div>
+                    <label asp-for="UnitOfMeasure" class="pc-label">@(isRtl ? "وحدة القياس" : "Unit of Measure")</label>
+                    <input asp-for="UnitOfMeasure" id="UnitInp" class="pc-input" placeholder="@(isRtl ? "مثال: %، درهم، ساعات" : "e.g. %, AED, hours")" />
+                </div>
+                <div>
+                    <label asp-for="Tags" class="pc-label"><i data-lucide="tag" class="w-3.5 h-3.5 inline-block" style="color:#005B99;" aria-hidden="true"></i> @(isRtl ? "الوسوم" : "Tags")</label>
+                    <input asp-for="Tags" class="pc-input" placeholder="@(isRtl ? "مثال: شريك، مشروع" : "e.g. Partner, Project")" />
+                    <div class="pc-help">@(isRtl ? "افصل الوسوم بفاصلة." : "Separate tags with commas.")</div>
+                </div>
+            </div>
+
+            <input asp-for="DisplayOrder" type="hidden" />
+            <label class="pc-checkbox-row" style="margin-top: var(--sp-2);">
+                <input asp-for="IsActive" id="IsActiveChk" />
+                <span style="font-size: var(--fs-xs); color: #374151;">@(isRtl ? "هدف نشط" : "Active objective")</span>
+            </label>
+        </div>
+    </main>
+
+    @* ─────────── RIGHT COLUMN — sticky Summary + actions ─────────── *@
+    <aside class="pc-side">
+        <div class="pc-card" style="margin-bottom: 0;">
+            <div class="pc-card-h">
+                <h2><i data-lucide="info" class="w-4 h-4" style="color:#005B99;" aria-hidden="true"></i>@(isRtl ? "ملخص" : "Summary")</h2>
+            </div>
+
+            <div class="so-sum-row">
+                <span class="lbl">@(isRtl ? "الكود" : "Code")</span>
+                <span id="sumCode" class="so-code-preview empty" style="min-width: 80px; padding: .15rem .5rem; font-size: var(--fs-xs);">—</span>
+            </div>
+            <div class="so-sum-row">
+                <span class="lbl">@(isRtl ? "المستوى" : "Level")</span>
+                <span id="sumLevel" class="so-pill l1">@(isRtl ? "استراتيجي" : "Strategic")</span>
+            </div>
+            <div class="so-sum-row">
+                <span class="lbl">@(isRtl ? "السنة" : "Year")</span>
+                <span id="sumYear" class="val">—</span>
+            </div>
+            <div class="so-sum-row">
+                <span class="lbl">@(isRtl ? "الحالة" : "Status")</span>
+                <span id="sumStatus" class="so-pill is-active">@(isRtl ? "نشط" : "Active")</span>
+            </div>
+
+            <div class="so-progress-wrap">
+                <div class="so-progress-meta">
+                    <span>@(isRtl ? "التقدم" : "Progress")</span>
+                    <span id="sumPct" class="pct">—</span>
+                </div>
+                <div class="so-progress-bar"><div id="sumBar" class="fill" style="width: 0%;"></div></div>
+                <div id="sumProgressMeta" style="margin-top: .35rem; font-size: var(--fs-xs); color: #94a3b8;">@(isRtl ? "أدخل القيمة المستهدفة والقيمة الحالية لرؤية التقدم." : "Enter target + current to see progress.")</div>
+            </div>
+        </div>
+
+        <div class="pc-side-actions">
+            <button type="submit" class="pc-btn pc-btn-primary">
+                <i data-lucide="save" class="w-4 h-4" aria-hidden="true"></i>
+                @(isRtl ? "حفظ" : "Save")
+            </button>
+            <a asp-action="Index" class="pc-btn pc-btn-ghost">
+                <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
+                @(isRtl ? "إلغاء" : "Cancel")
+            </a>
+        </div>
+    </aside>
+</div>
+
+<script nonce="@Context.CspNonce()">
+    // ─── Live Summary preview ───────────────────────────────────────────
+    // Mirrors form values into the sticky Summary sidebar so the user can
+    // see exactly what they're about to save without scrolling back up.
+    (function () {
+        var isRtl = @Html.Raw(isRtl ? "true" : "false");
+        var levelLabels = isRtl
+            ? { 1: 'استراتيجي', 2: 'تكتيكي', 3: 'تشغيلي' }
+            : { 1: 'Strategic', 2: 'Tactical', 3: 'Operational' };
+
+        var $code  = document.getElementById('CodeInp');
+        var $lvl   = document.getElementById('LevelSel');
+        var $yr    = document.querySelector('input[name="TargetYear"]');
+        var $tgt   = document.getElementById('TargetValInp');
+        var $cur   = document.getElementById('CurrentValInp');
+        var $unit  = document.getElementById('UnitInp');
+        var $act   = document.getElementById('IsActiveChk');
+
+        var $sumCode   = document.getElementById('sumCode');
+        var $sumLevel  = document.getElementById('sumLevel');
+        var $sumYear   = document.getElementById('sumYear');
+        var $sumStatus = document.getElementById('sumStatus');
+        var $sumPct    = document.getElementById('sumPct');
+        var $sumBar    = document.getElementById('sumBar');
+        var $sumMeta   = document.getElementById('sumProgressMeta');
+
+        function refreshCode() {
+            var v = ($code.value || '').trim();
+            if (v) {
+                $sumCode.textContent = v;
+                $sumCode.classList.remove('empty');
+            } else {
+                $sumCode.textContent = '—';
+                $sumCode.classList.add('empty');
+            }
+        }
+
+        function refreshLevel() {
+            var lvl = parseInt($lvl.value, 10) || 1;
+            $sumLevel.textContent = levelLabels[lvl] || levelLabels[1];
+            $sumLevel.className = 'so-pill l' + lvl;
+        }
+
+        function refreshYear() {
+            $sumYear.textContent = ($yr && $yr.value) ? $yr.value : '—';
+        }
+
+        function refreshStatus() {
+            var on = $act.checked;
+            $sumStatus.textContent = on ? (isRtl ? 'نشط' : 'Active') : (isRtl ? 'غير نشط' : 'Inactive');
+            $sumStatus.className = 'so-pill ' + (on ? 'is-active' : 'is-inactive');
+        }
+
+        function refreshProgress() {
+            var t = parseFloat($tgt.value);
+            var c = parseFloat($cur.value);
+            if (!isFinite(t) || t === 0 || !isFinite(c)) {
+                $sumPct.textContent = '—';
+                $sumBar.style.width = '0%';
+                $sumBar.classList.remove('over');
+                $sumMeta.textContent = isRtl ? 'أدخل القيمة المستهدفة والقيمة الحالية لرؤية التقدم.' : 'Enter target + current to see progress.';
+                return;
+            }
+            var pct = (c / t) * 100;
+            $sumPct.textContent = pct.toFixed(1) + '%';
+            $sumBar.style.width = Math.min(100, Math.max(0, pct)) + '%';
+            $sumBar.classList.toggle('over', pct > 100);
+            var unit = ($unit.value || '').trim();
+            $sumMeta.textContent = c + (unit ? ' ' + unit : '') + ' / ' + t + (unit ? ' ' + unit : '');
+        }
+
+        if ($code) $code.addEventListener('input',  refreshCode);
+        if ($lvl)  $lvl .addEventListener('change', refreshLevel);
+        if ($yr)   $yr  .addEventListener('input',  refreshYear);
+        if ($tgt)  $tgt .addEventListener('input',  refreshProgress);
+        if ($cur)  $cur .addEventListener('input',  refreshProgress);
+        if ($unit) $unit.addEventListener('input',  refreshProgress);
+        if ($act)  $act .addEventListener('change', refreshStatus);
+
+        // Initial sync — Edit mode pre-populates from the model.
+        refreshCode();
+        refreshLevel();
+        refreshYear();
+        refreshStatus();
+        refreshProgress();
+    })();
+</script>

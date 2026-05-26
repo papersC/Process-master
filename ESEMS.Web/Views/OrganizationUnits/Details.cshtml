@@ -1,0 +1,622 @@
+@model OrganizationUnit
+@{
+    ViewData["Title"] = Shared["Title_OrganizationUnitDetails"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+
+    var ownedProcesses  = Model.OwnedProcesses?.Where(p => !p.IsDeleted).ToList() ?? new();
+    var ownedActivities = (ViewBag.OwnedActivities as List<ESEMS.Web.Models.APQC.Activity>)    ?? new();
+    var ownedTasks      = (ViewBag.OwnedTasks      as List<ESEMS.Web.Models.APQC.ProcessTask>) ?? new();
+    var raciProcess     = (ViewBag.RaciProcessRoles  as List<ESEMS.Web.Models.APQC.ProcessRaci>)  ?? new();
+    var raciActivity    = (ViewBag.RaciActivityRoles as List<ESEMS.Web.Models.APQC.ActivityRaci>) ?? new();
+    var raciTask        = (ViewBag.RaciTaskRoles     as List<ESEMS.Web.Models.APQC.TaskRaci>)     ?? new();
+    var raciTotal       = raciProcess.Count + raciActivity.Count + raciTask.Count;
+    var responsibilities = Model.OwnedResponsibilities?.Where(r => !r.IsDeleted).OrderBy(r => r.DisplayOrder).ToList() ?? new();
+    var descendantProcs = (int)(ViewBag.DescendantProcessCount ?? 0);
+    var descendantActs  = (int)(ViewBag.DescendantActivityCount ?? 0);
+    var descendantTasks = (int)(ViewBag.DescendantTaskCount ?? 0);
+    var hasDescendantRollup = descendantProcs > 0 || descendantActs > 0 || descendantTasks > 0;
+    var directChildCount = Model.Children?.Count(c => !c.IsDeleted) ?? 0;
+
+    // Walk ancestor chain bottom-up so the breadcrumb reads root → current.
+    var ancestors = new List<ESEMS.Web.Models.APQC.OrganizationUnit>();
+    {
+        var cursor = Model.Parent;
+        var guard = 0;
+        while (cursor != null && guard++ < 10)
+        {
+            ancestors.Insert(0, cursor);
+            cursor = cursor.Parent;
+        }
+    }
+}
+
+<div class="esems-container">
+    @* Breadcrumb — walks the ancestor chain so a unit that sits four
+       levels deep can be located in the hierarchy at a glance. Chevron
+       glyph mirrors automatically in RTL via the site.css token. *@
+    <nav aria-label="breadcrumb" class="ou-crumbs">
+        <a asp-action="Index">@Shared["Title_OrganizationStructure"]</a>
+        @foreach (var a in ancestors)
+        {
+            <span class="ou-crumb-sep" aria-hidden="true"><i data-lucide="chevron-right"></i></span>
+            <a asp-action="Details" asp-route-id="@a.Id">@a.Name</a>
+        }
+        <span class="ou-crumb-sep" aria-hidden="true"><i data-lucide="chevron-right"></i></span>
+        <span class="ou-crumb-current">@Model.Name</span>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="esems-page-header">
+        <div class="esems-page-header-content">
+            <div class="d-flex align-items-center gap-3 mb-2 flex-wrap">
+                <h1 class="esems-page-title mb-0">@Model.Name</h1>
+                @if (Model.IsActive)
+                {
+                    <span class="badge badge-success">@Shared["Value_Active"]</span>
+                }
+                else
+                {
+                    <span class="badge badge-secondary">@Shared["Value_Inactive"]</span>
+                }
+                <span class="id-chip">@Model.Code</span>
+                <span class="esems-body-secondary small" style="color:#94a3b8;">@Model.GetLevelName()</span>
+            </div>
+            <p class="esems-page-subtitle mb-0">@Shared["Label_Parent"]: @(Model.Parent?.Name ?? "-")</p>
+        </div>
+        <div class="esems-page-header-actions">
+            <a asp-action="Index" class="btn btn-outline-secondary">
+                <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" style="width: 16px; height: 16px;"></i>
+                @Shared["Button_Back"]
+            </a>
+            <a asp-action="Create" asp-route-parentId="@Model.Id" class="btn btn-outline-primary">
+                <i data-lucide="plus" style="width: 16px; height: 16px;"></i>
+                @Shared["Button_AddChild"]
+            </a>
+            <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary">
+                <i data-lucide="edit" style="width: 16px; height: 16px;"></i>
+                @Shared["Button_Edit"]
+            </a>
+            @* F-011: unit-level delete. Form-POST + Swal confirm (handler in
+               @@section Scripts). The controller's in-use guard refuses units
+               that still own children/processes/services/etc. *@
+            <form asp-action="Delete" method="post" class="d-inline js-unit-delete" data-unit-name="@Model.Name">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Id" />
+                <button type="submit" class="btn btn-outline-danger">
+                    <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                    @Shared["Button_Delete"]
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Information Card -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i data-lucide="info" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                    <span class="esems-card-title">@Shared["Section_Information"]</span>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="esems-label">@Shared["Label_Level"]</label>
+                            <p class="esems-body fw-medium">@Model.GetLevelName()</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@Shared["Label_Head"]</label>
+                            <p class="esems-body fw-medium">@(Model.HeadUser == null ? "-" : Model.HeadUser.GetLocalizedFullName())</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@Shared["Label_Email"]</label>
+                            <p class="esems-body fw-medium">@(string.IsNullOrWhiteSpace(Model.Email) ? "-" : Model.Email)</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="esems-label">@Shared["Label_Phone"]</label>
+                            <p class="esems-body fw-medium">@(string.IsNullOrWhiteSpace(Model.Phone) ? "-" : Model.Phone)</p>
+                        </div>
+                        <div class="col-12">
+                            <label class="esems-label">@Shared["Label_Description"]</label>
+                            <p class="esems-body">@(Model.Description ?? "-")</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Children Card -->
+        <div class="col-lg-4" id="ou-sub-units">
+            <div class="card">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i data-lucide="folder-tree" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                    <span class="esems-card-title">@Shared["Section_Children"]</span>
+                </div>
+                <div class="card-body">
+                    @if (Model.Children.Any())
+                    {
+                        <div class="list-group list-group-flush">
+                            @foreach (var c in Model.Children.OrderBy(x => x.DisplayOrder).Take(8))
+                            {
+                                <a asp-action="Details" asp-route-id="@c.Id" class="list-group-item list-group-item-action px-0">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="esems-body fw-medium text-truncate">@c.Name</span>
+                                        <span class="badge badge-secondary">@c.Code</span>
+                                    </div>
+                                </a>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="esems-body-secondary text-center py-3">@Shared["Text_NoChildren"]</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ─────────────────────────────────────────────────────────────────────
+       Reverse-linking — "what does this unit own?". Closes the navigation
+       gap where Process/Activity/Task all link OUT to OrganizationUnit but
+       OrganizationUnit/Details/{id} had no way to see what's pointing in.
+       Five tiles up top, then per-tier lists below. Empty-state hint shown
+       when the unit owns nothing directly but a child unit does — the user
+       can otherwise miss that the section exists at all.
+       ───────────────────────────────────────────────────────────────────── *@
+    @if (ownedProcesses.Count == 0 && ownedActivities.Count == 0 && ownedTasks.Count == 0 && raciTotal == 0 && responsibilities.Count == 0)
+    {
+        <div class="alert alert-light border d-flex align-items-start gap-3 mt-3 small" role="status" style="background:#f8fafc;">
+            <i data-lucide="info" style="width:18px;height:18px;color:#94a3b8;flex-shrink:0;margin-top:2px;"></i>
+            <div>
+                <div class="fw-medium mb-1">@(isRtl ? "هذه الوحدة لا تملك مباشرة أي عمليات أو أنشطة أو مهام أو أدوار RACI أو مسؤوليات." : "This unit doesn't directly own any processes, activities, tasks, RACI roles, or responsibilities.")</div>
+                @if (hasDescendantRollup)
+                {
+                    <div class="text-muted">
+                        @(isRtl
+                            ? $"إجمالي الوحدات الفرعية: {descendantProcs} عملية، {descendantActs} نشاط، {descendantTasks} مهمة."
+                            : $"Across sub-units: {descendantProcs} process(es), {descendantActs} activity(ies), {descendantTasks} task(s).")
+                    </div>
+                }
+                else
+                {
+                    <div class="text-muted">@(isRtl ? "حدد الوحدة كوحدة مالكة عند إنشاء عملية / نشاط / مهمة لربطها هنا." : "Set this unit as the Owning Unit on a Process / Activity / Task to see linkages here.")</div>
+                }
+            </div>
+        </div>
+    }
+    @* Stat-tile strip — five clickable summary tiles that anchor-jump to
+       the corresponding section below. Token: .org-stat-tile (see site.css).
+       Zero values render in slate-200 (.is-zero) so positive counts pop. *@
+    <div class="row g-3 mt-2">
+        <div class="col-6 col-md-2-4 col-lg">
+            <a class="org-stat-tile" href="#ou-owned-processes">
+                <div class="v @(ownedProcesses.Count > 0 ? "is-positive" : "is-zero")">@ownedProcesses.Count</div>
+                <div class="l">@(isRtl ? "العمليات" : "Processes Owned")</div>
+                @if (descendantProcs > 0)
+                {
+                    <div class="l-extra" title="@(isRtl ? "إجمالي الوحدات الفرعية" : "Including descendants")">
+                        + @descendantProcs @(isRtl ? "في الوحدات الفرعية" : "in sub-units")
+                    </div>
+                }
+            </a>
+        </div>
+        <div class="col-6 col-md-2-4 col-lg">
+            <a class="org-stat-tile" href="#ou-owned-activities">
+                <div class="v @(ownedActivities.Count > 0 ? "is-positive" : "is-zero")">@ownedActivities.Count</div>
+                <div class="l">@(isRtl ? "الأنشطة" : "Activities Owned")</div>
+                @if (descendantActs > 0)
+                {
+                    <div class="l-extra" title="@(isRtl ? "إجمالي الوحدات الفرعية" : "Including descendants")">
+                        + @descendantActs @(isRtl ? "في الوحدات الفرعية" : "in sub-units")
+                    </div>
+                }
+            </a>
+        </div>
+        <div class="col-6 col-md-2-4 col-lg">
+            <a class="org-stat-tile" href="#ou-owned-tasks">
+                <div class="v @(ownedTasks.Count > 0 ? "is-positive" : "is-zero")">@ownedTasks.Count</div>
+                <div class="l">@(isRtl ? "المهام" : "Tasks Owned")</div>
+                @if (descendantTasks > 0)
+                {
+                    <div class="l-extra" title="@(isRtl ? "إجمالي الوحدات الفرعية" : "Including descendants")">
+                        + @descendantTasks @(isRtl ? "في الوحدات الفرعية" : "in sub-units")
+                    </div>
+                }
+            </a>
+        </div>
+        <div class="col-6 col-md-2-4 col-lg">
+            <a class="org-stat-tile" href="#ou-raci-roles">
+                <div class="v @(raciTotal > 0 ? "is-positive" : "is-zero")">@raciTotal</div>
+                <div class="l">@(isRtl ? "أدوار RACI" : "RACI Roles")</div>
+            </a>
+        </div>
+        <div class="col-6 col-md-2-4 col-lg">
+            <a class="org-stat-tile" href="#ou-responsibilities">
+                <div class="v @(responsibilities.Count > 0 ? "is-positive" : "is-zero")">@responsibilities.Count</div>
+                <div class="l">@(isRtl ? "المسؤوليات" : "Responsibilities")</div>
+            </a>
+        </div>
+        <div class="col-6 col-md-2-4 col-lg">
+            <a class="org-stat-tile" href="#ou-sub-units">
+                <div class="v @(directChildCount > 0 ? "is-positive" : "is-zero")">@directChildCount</div>
+                <div class="l">@(isRtl ? "الوحدات الفرعية" : "Sub-Units")</div>
+            </a>
+        </div>
+    </div>
+
+    @* ─────────────────────────────────────────────────────────────────────
+       Responsibilities (mandates) — first-class child of the unit. Always
+       rendered so the add form is reachable even when the list is empty.
+       Add is inline; Edit opens its own page; Delete is a form-POST with
+       a Swal confirmation bound via JS (no inline on* — CSP forbids it).
+       ───────────────────────────────────────────────────────────────────── *@
+    <div class="card mt-3" id="ou-responsibilities">
+        <div class="card-header d-flex align-items-center gap-2">
+            <i data-lucide="clipboard-check" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+            <span class="esems-card-title">@(isRtl ? "المسؤوليات والتفويضات" : "Responsibilities & Mandates")</span>
+            @if (responsibilities.Count > 0)
+            {
+                <span class="badge badge-secondary ms-2">@responsibilities.Count</span>
+            }
+        </div>
+        <div class="card-body p-0">
+            @if (responsibilities.Count > 0)
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light small">
+                            <tr>
+                                <th style="width:56px;">#</th>
+                                <th>@(isRtl ? "العنوان" : "Title")</th>
+                                <th>@Shared["Label_Description"]</th>
+                                <th style="width:90px;">@(isRtl ? "الحالة" : "Status")</th>
+                                <th class="text-end" style="width:140px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="small">
+                            @foreach (var r in responsibilities)
+                            {
+                                <tr>
+                                    <td class="text-muted">@r.DisplayOrder</td>
+                                    <td class="fw-medium">@(isRtl ? r.NameAr : r.NameEn)</td>
+                                    <td class="text-muted">
+                                        @{ var desc = isRtl ? r.DescriptionAr : r.DescriptionEn; }
+                                        @(string.IsNullOrWhiteSpace(desc) ? "—" : (desc.Length > 120 ? desc.Substring(0, 120) + "…" : desc))
+                                    </td>
+                                    <td>
+                                        @if (r.IsActive)
+                                        {
+                                            <span class="badge badge-success">@Shared["Value_Active"]</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge badge-secondary">@Shared["Value_Inactive"]</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        <a asp-action="EditResponsibility" asp-route-id="@r.Id" class="lt-icon-btn" aria-label="@Shared["Button_Edit"]" title="@Shared["Button_Edit"]">
+                                            <i data-lucide="edit-2"></i>
+                                        </a>
+                                        <form asp-action="DeleteResponsibility" method="post" class="d-inline js-resp-delete" data-resp-title="@(isRtl ? r.NameAr : r.NameEn)">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="id" value="@r.Id" />
+                                            <button type="submit" class="lt-icon-btn lt-icon-btn-danger" aria-label="@Shared["Button_Delete"]" title="@Shared["Button_Delete"]">
+                                                <i data-lucide="trash-2"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <p class="esems-body-secondary text-center py-3 mb-0">
+                    @(isRtl ? "لم يتم إضافة أي مسؤولية بعد." : "No responsibilities have been added yet.")
+                </p>
+            }
+
+            @* Inline add form — only the bilingual title is required at add-time.
+               Description / active flag / display order are tweakable on Edit. *@
+            <form asp-action="AddResponsibility" method="post" class="border-top p-3" id="addResponsibilityForm">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="organizationUnitId" value="@Model.Id" />
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-4">
+                        <label class="pc-label mb-1" for="newRespNameEn">@(isRtl ? "العنوان (بالإنجليزية)" : "Title (English)") <span class="req">*</span></label>
+                        <input type="text" name="nameEn" id="newRespNameEn" class="pc-input" minlength="3" required maxlength="200" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="pc-label mb-1" for="newRespNameAr">@(isRtl ? "العنوان (بالعربية)" : "Title (Arabic)") <span class="req">*</span></label>
+                        <input type="text" name="nameAr" id="newRespNameAr" class="pc-input" dir="rtl" minlength="3" required maxlength="200" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="pc-label mb-1" for="newRespDescEn">@Shared["Label_Description"] <span class="text-muted small">(@(isRtl ? "اختياري" : "optional"))</span></label>
+                        <input type="text" name="@(isRtl ? "descriptionAr" : "descriptionEn")" id="newRespDescEn" class="pc-input" maxlength="500" dir="@(isRtl ? "rtl" : "ltr")" />
+                    </div>
+                    <div class="col-md-1">
+                        <button type="submit" class="pc-btn pc-btn-primary pc-btn-block">
+                            <i data-lucide="plus" style="width:14px;height:14px;"></i>
+                            @(isRtl ? "إضافة" : "Add")
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Owned Processes -->
+    @if (ownedProcesses.Count > 0)
+    {
+        <div class="card mt-3" id="ou-owned-processes">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i data-lucide="boxes" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                <span class="esems-card-title">@(isRtl ? "العمليات المملوكة" : "Owned Processes")</span>
+                <span class="badge badge-secondary ms-2">@ownedProcesses.Count</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light small">
+                            <tr>
+                                <th style="width:120px;">@Shared["Column_Code"]</th>
+                                <th>@Shared["Column_Name"]</th>
+                                <th>@(isRtl ? "المجموعة" : "Group")</th>
+                                <th class="text-end" style="width:80px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="small">
+                            @foreach (var p in ownedProcesses.Take(50))
+                            {
+                                <tr>
+                                    <td><span class="id-chip">@p.Code</span></td>
+                                    <td class="fw-medium">@(isRtl ? p.NameAr : p.NameEn)</td>
+                                    <td class="text-muted">@(p.ProcessGroup == null ? "—" : (isRtl ? p.ProcessGroup.NameAr : p.ProcessGroup.NameEn))</td>
+                                    <td class="text-end">
+                                        <a asp-controller="Processes" asp-action="Details" asp-route-id="@p.Id" class="lt-icon-btn" aria-label="@Shared["Button_View"]">
+                                            <i data-lucide="eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (ownedProcesses.Count > 50)
+                {
+                    <div class="text-center py-2 small text-muted">
+                        @($"+ {ownedProcesses.Count - 50} more")
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- Owned Activities + Tasks (side-by-side on wide screens) -->
+    @if (ownedActivities.Count > 0 || ownedTasks.Count > 0)
+    {
+        <div class="row g-3 mt-1">
+            @if (ownedActivities.Count > 0)
+            {
+                <div class="col-lg-6" id="ou-owned-activities">
+                    <div class="card">
+                        <div class="card-header d-flex align-items-center gap-2">
+                            <i data-lucide="list-checks" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                            <span class="esems-card-title">@(isRtl ? "الأنشطة المملوكة" : "Owned Activities")</span>
+                            <span class="badge badge-secondary ms-2">@ownedActivities.Count</span>
+                        </div>
+                        <div class="card-body p-0">
+                            <ul class="list-group list-group-flush small">
+                                @foreach (var a in ownedActivities.Take(20))
+                                {
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <div class="text-truncate me-2">
+                                            <span class="id-chip me-2">@a.Code</span>
+                                            <span class="fw-medium">@(isRtl ? a.NameAr : a.NameEn)</span>
+                                            <div class="text-muted" style="font-size:var(--fs-xs);">
+                                                @(a.Process == null ? "—" : (isRtl ? a.Process.NameAr : a.Process.NameEn))
+                                            </div>
+                                        </div>
+                                        <a asp-controller="Activities" asp-action="Edit" asp-route-id="@a.Id" class="lt-icon-btn" aria-label="@Shared["Button_Edit"]">
+                                            <i data-lucide="external-link"></i>
+                                        </a>
+                                    </li>
+                                }
+                            </ul>
+                            @if (ownedActivities.Count > 20)
+                            {
+                                <div class="text-center py-2 small text-muted">@($"+ {ownedActivities.Count - 20} more")</div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+            @if (ownedTasks.Count > 0)
+            {
+                <div class="col-lg-6" id="ou-owned-tasks">
+                    <div class="card">
+                        <div class="card-header d-flex align-items-center gap-2">
+                            <i data-lucide="check-square" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                            <span class="esems-card-title">@(isRtl ? "المهام المملوكة" : "Owned Tasks")</span>
+                            <span class="badge badge-secondary ms-2">@ownedTasks.Count</span>
+                        </div>
+                        <div class="card-body p-0">
+                            <ul class="list-group list-group-flush small">
+                                @foreach (var t in ownedTasks.Take(20))
+                                {
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <div class="text-truncate me-2">
+                                            <span class="id-chip me-2">@t.Code</span>
+                                            <span class="fw-medium">@(isRtl ? t.NameAr : t.NameEn)</span>
+                                            <div class="text-muted" style="font-size:var(--fs-xs);">
+                                                @(t.Activity?.Process == null ? "—" : (isRtl ? t.Activity.Process.NameAr : t.Activity.Process.NameEn))
+                                            </div>
+                                        </div>
+                                        <a asp-controller="Tasks" asp-action="Details" asp-route-id="@t.Id" class="lt-icon-btn" aria-label="@Shared["Button_View"]">
+                                            <i data-lucide="external-link"></i>
+                                        </a>
+                                    </li>
+                                }
+                            </ul>
+                            @if (ownedTasks.Count > 20)
+                            {
+                                <div class="text-center py-2 small text-muted">@($"+ {ownedTasks.Count - 20} more")</div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    <!-- RACI roles held -->
+    @if (raciTotal > 0)
+    {
+        <div class="card mt-3" id="ou-raci-roles">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i data-lucide="users" style="width: 18px; height: 18px; color: var(--esems-color-primary);"></i>
+                <span class="esems-card-title">@(isRtl ? "أدوار RACI" : "RACI Responsibilities")</span>
+                <span class="badge badge-secondary ms-2">@raciTotal</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light small">
+                            <tr>
+                                <th style="width:90px;">@(isRtl ? "الدور" : "Role")</th>
+                                <th style="width:90px;">@(isRtl ? "المستوى" : "Tier")</th>
+                                <th>@Shared["Column_Name"]</th>
+                                <th class="text-end" style="width:80px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="small">
+                            @foreach (var r in raciProcess.Take(50))
+                            {
+                                <tr>
+                                    <td><span class="badge badge-primary">@r.Role.ToString().Substring(0, 1)</span> @r.Role</td>
+                                    <td><span class="badge badge-secondary">@(isRtl ? "عملية" : "Process")</span></td>
+                                    <td>
+                                        @if (r.Process != null)
+                                        {
+                                            <span class="id-chip me-2">@r.Process.Code</span>
+                                            <span class="fw-medium">@(isRtl ? r.Process.NameAr : r.Process.NameEn)</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        @if (r.Process != null)
+                                        {
+                                            <a asp-controller="Processes" asp-action="Raci" asp-route-id="@r.Process.Id" class="lt-icon-btn" aria-label="RACI">
+                                                <i data-lucide="external-link"></i>
+                                            </a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                            @foreach (var r in raciActivity.Take(50))
+                            {
+                                <tr>
+                                    <td><span class="badge badge-primary">@r.Role.ToString().Substring(0, 1)</span> @r.Role</td>
+                                    <td><span class="badge badge-secondary">@(isRtl ? "نشاط" : "Activity")</span></td>
+                                    <td>
+                                        @if (r.Activity != null)
+                                        {
+                                            <span class="id-chip me-2">@r.Activity.Code</span>
+                                            <span class="fw-medium">@(isRtl ? r.Activity.NameAr : r.Activity.NameEn)</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        @if (r.Activity?.Process != null)
+                                        {
+                                            <a asp-controller="Processes" asp-action="Raci" asp-route-id="@r.Activity.Process.Id" class="lt-icon-btn" aria-label="RACI">
+                                                <i data-lucide="external-link"></i>
+                                            </a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                            @foreach (var r in raciTask.Take(50))
+                            {
+                                <tr>
+                                    <td><span class="badge badge-primary">@r.Role.ToString().Substring(0, 1)</span> @r.Role</td>
+                                    <td><span class="badge badge-secondary">@(isRtl ? "مهمة" : "Task")</span></td>
+                                    <td>
+                                        @if (r.Task != null)
+                                        {
+                                            <span class="id-chip me-2">@r.Task.Code</span>
+                                            <span class="fw-medium">@(isRtl ? r.Task.NameAr : r.Task.NameEn)</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        @if (r.Task?.Activity?.Process != null)
+                                        {
+                                            <a asp-controller="Processes" asp-action="Raci" asp-route-id="@r.Task.Activity.Process.Id" class="lt-icon-btn" aria-label="RACI">
+                                                <i data-lucide="external-link"></i>
+                                            </a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        lucide.createIcons();
+
+        // Responsibility delete — Swal confirmation, then submit. Bound via
+        // addEventListener (NOT inline onclick) because CSP forbids inline
+        // handlers on the live deployment.
+        (function () {
+            const isRtl = @Html.Raw(isRtl ? "true" : "false");
+            const t = {
+                title:   isRtl ? "هل أنت متأكد؟" : "Are you sure?",
+                textPre: isRtl ? "سيتم حذف المسؤولية: "  : "This will delete the responsibility: ",
+                yes:     isRtl ? "نعم، احذف"   : "Yes, delete",
+                no:      isRtl ? "إلغاء"        : "Cancel"
+            };
+            document.querySelectorAll('form.js-resp-delete').forEach(form => {
+                form.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    const title = form.getAttribute('data-resp-title') || '';
+                    Swal.fire({
+                        icon: 'warning',
+                        title: t.title,
+                        text: t.textPre + title,
+                        showCancelButton: true,
+                        confirmButtonText: t.yes,
+                        cancelButtonText: t.no,
+                        confirmButtonColor: '#dc2626',
+                        cancelButtonColor:  '#6b7280'
+                    }).then(res => { if (res.isConfirmed) form.submit(); });
+                });
+            });
+
+            // F-011: unit-level delete confirmation (separate copy text).
+            const unitTextPre = isRtl ? "سيتم حذف الوحدة التنظيمية: " : "This will delete the organization unit: ";
+            document.querySelectorAll('form.js-unit-delete').forEach(form => {
+                form.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    const name = form.getAttribute('data-unit-name') || '';
+                    Swal.fire({
+                        icon: 'warning',
+                        title: t.title,
+                        text: unitTextPre + name,
+                        showCancelButton: true,
+                        confirmButtonText: t.yes,
+                        cancelButtonText: t.no,
+                        confirmButtonColor: '#dc2626',
+                        cancelButtonColor:  '#6b7280'
+                    }).then(res => { if (res.isConfirmed) form.submit(); });
+                });
+            });
+        })();
+    </script>
+}

@@ -1,0 +1,178 @@
+@model IEnumerable<SLADefinition>
+@{
+    ViewData["Title"] = Shared["Title_SLAManagement"].Value;
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+
+    // KPI counts pre-computed once.
+    var activeCount      = Model.Count(s => s.IsActive && s.IsEffective());
+    var totalCount       = Model.Count();
+    var totalBreaches    = Model.Sum(s => s.Breaches?.Count ?? 0);
+    var unresolvedBrch   = Model.Sum(s => s.Breaches?.Count(b => !b.IsResolved) ?? 0);
+}
+
+@*  Compact KPI strip + report-style table redesign.
+    Replaces the 4 oversized KPI cards (~200px tall) with a one-row strip
+    (~40px), and tightens the table so 3× more rows fit above the fold.
+    The .esems-datatable class is preserved so the existing DataTables
+    auto-init keeps owning search / sort / paging. *@
+<style>
+    .sl-stickyhead { position: sticky; top: 0; z-index: 30; background: #fff; border-bottom: 1px solid #e5e7eb; margin: 0 -.75rem .85rem; padding: .55rem .75rem .35rem; box-shadow: 0 1px 0 rgba(15,23,42,.04); }
+    .sl-titlerow { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+    .sl-titlemain h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .sl-titlemain p { margin: .15rem 0 0; font-size: var(--fs-xs); color: #6b7280; }
+    .sl-actions { display: inline-flex; gap: .35rem; flex-wrap: wrap; }
+    .sl-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; border: 1px solid transparent; line-height: 1.1; }
+    .sl-btn-primary { background: #005B99; color: #fff; }
+    .sl-btn-primary:hover { background: #003d6b; color: #fff; }
+
+    .sl-kpis { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .45rem; }
+    .sl-kpi { display: inline-flex; align-items: center; gap: .4rem; padding: .25rem .6rem; border: 1px solid #e5e7eb; border-radius: .375rem; background: #fafbfc; font-size: var(--fs-xs); color: #475569; }
+    .sl-kpi i { width: 13px; height: 13px; }
+    .sl-kpi b { color: #0f172a; font-weight: 700; font-size: var(--fs-sm); margin-inline-start: .1rem; }
+    .sl-kpi-active   { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+    .sl-kpi-active i { color: #059669; }
+    .sl-kpi-total    { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; }
+    .sl-kpi-total i  { color: #2563eb; }
+    .sl-kpi-breach   { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+    .sl-kpi-breach i { color: #dc2626; }
+    .sl-kpi-warn     { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+    .sl-kpi-warn i   { color: #d97706; }
+
+    /* Tighter table — overrides any inline padding from the original Tailwind layout */
+    .sl-table-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; overflow: hidden; }
+    .sl-table { width: 100%; font-size: var(--fs-sm); margin: 0; border-collapse: collapse; }
+    .sl-table thead th { position: sticky; top: 0; z-index: 5; background: #f8fafc; color: #1e3a8a; font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: .55rem .75rem; text-align: start; border-bottom: 1px solid #e5e7eb; }
+    .sl-table tbody td { padding: .5rem .75rem; border-bottom: 1px solid #f3f4f6; vertical-align: middle; color: #374151; }
+    .sl-table tbody tr:hover { background: #f9fafb; }
+    .sl-table tbody tr:last-child td { border-bottom: none; }
+    .sl-code { font-family: ui-monospace, monospace; font-weight: 700; color: #1d4ed8; font-size: var(--fs-xs); letter-spacing: .03em; }
+    .sl-name { font-weight: 600; color: #111827; }
+    .sl-pill { display: inline-block; padding: .12rem .5rem; font-size: var(--fs-xs); font-weight: 700; border-radius: .25rem; }
+    .sl-pill-success { background: #dcfce7; color: #166534; }
+    .sl-pill-muted   { background: #f1f5f9; color: #475569; }
+    .sl-pill-danger  { background: #fee2e2; color: #991b1b; }
+    .sl-iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: .25rem; color: #1d4ed8; transition: background .12s; }
+    .sl-iconbtn:hover { background: #eff6ff; color: #1d4ed8; }
+
+    @@media (max-width: 768px) {
+        .sl-titlemain h1 { font-size: var(--fs-sm); }
+        .sl-actions { width: 100%; }
+        .sl-actions .sl-btn { flex: 1 1 auto; justify-content: center; }
+    }
+</style>
+
+<!-- ===================== STICKY HEADER ===================== -->
+<div class="sl-stickyhead">
+    <div class="sl-titlerow">
+        <div class="sl-titlemain">
+            <h1><i data-lucide="file-text" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>@Shared["Title_SLAManagement"]</h1>
+            <p>@Shared["Text_ManageSLAs"]</p>
+        </div>
+        <div class="sl-actions">
+            <a asp-action="Breaches" class="sl-btn" style="background:#fff;color:#005B99;border-color:#cbd5e1;">
+                <i data-lucide="alert-triangle" style="width:14px;height:14px;" aria-hidden="true"></i>
+                @(isRtl ? "الخروقات" : "Breaches")
+            </a>
+            <a asp-action="Dashboard" class="sl-btn" style="background:#fff;color:#005B99;border-color:#cbd5e1;">
+                <i data-lucide="bar-chart-2" style="width:14px;height:14px;" aria-hidden="true"></i>
+                @(isRtl ? "اللوحة" : "Dashboard")
+            </a>
+            <a asp-action="Create" class="sl-btn sl-btn-primary">
+                <i data-lucide="plus" style="width:14px;height:14px;" aria-hidden="true"></i>
+                @Shared["Button_AddSLA"]
+            </a>
+        </div>
+    </div>
+
+    <div class="sl-kpis">
+        <span class="sl-kpi sl-kpi-active">
+            <i data-lucide="check-circle"></i> @Shared["Label_ActiveSLAs"] <b>@activeCount</b>
+        </span>
+        <span class="sl-kpi sl-kpi-total">
+            <i data-lucide="file-text"></i> @Shared["Label_TotalSLAs"] <b>@totalCount</b>
+        </span>
+        <span class="sl-kpi sl-kpi-breach">
+            <i data-lucide="alert-triangle"></i> @Shared["Label_TotalBreaches"] <b>@totalBreaches</b>
+        </span>
+        <span class="sl-kpi sl-kpi-warn">
+            <i data-lucide="clock"></i> @Shared["Label_UnresolvedBreaches"] <b>@unresolvedBrch</b>
+        </span>
+    </div>
+</div>
+
+<!-- ===================== SLA TABLE ===================== -->
+<div class="sl-table-wrap">
+    @* DataTables owns search/sort/paging via .esems-datatable auto-init. *@
+    <table class="sl-table esems-datatable" id="slaTable">
+        <thead>
+            <tr>
+                <th>@Shared["Column_Code"]</th>
+                <th>@Shared["Column_Name"]</th>
+                <th>@Shared["Column_Service"]</th>
+                <th>@Shared["Column_Metric"]</th>
+                <th>@Shared["Column_Target"]</th>
+                <th>@Shared["Column_Breaches"]</th>
+                <th>@Shared["Column_Status"]</th>
+                <th class="text-end">@Shared["Column_Actions"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var sla in Model)
+            {
+                var breachCount      = sla.Breaches?.Count ?? 0;
+                var unresolved       = sla.Breaches?.Count(b => !b.IsResolved) ?? 0;
+                var isEffective      = sla.IsEffective();
+                <tr>
+                    <td>
+                        <a asp-action="Details" asp-route-id="@sla.Id" class="sl-code text-decoration-none">@sla.Code</a>
+                    </td>
+                    <td><span class="sl-name">@(isRtl ? sla.NameAr : sla.NameEn)</span></td>
+                    <td>@(sla.Service != null ? (isRtl ? sla.Service.NameAr : sla.Service.NameEn) : "—")</td>
+                    <td>
+                        @(sla.MetricName switch {
+                            "Resolution Time" => Shared["SlaMetric_ResolutionTime"].Value,
+                            "First Response Time" => Shared["SlaMetric_FirstResponseTime"].Value,
+                            _ => sla.MetricName
+                        })
+                    </td>
+                    <td><span style="font-weight:600;color:#0f172a;">@sla.TargetValue</span> <span class="text-muted">@(sla.Unit == "Hours" ? Shared["Unit_Hours"].Value : sla.Unit)</span></td>
+                    <td>
+                        @if (unresolved > 0)
+                        {
+                            <span class="sl-pill sl-pill-danger">@unresolved @Shared["Label_Active"]</span>
+                        }
+                        else if (breachCount > 0)
+                        {
+                            <span class="sl-pill sl-pill-muted">@breachCount</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted">—</span>
+                        }
+                    </td>
+                    <td>
+                        @if (isEffective)
+                        {
+                            <span class="sl-pill sl-pill-success">@Shared["Status_Active"]</span>
+                        }
+                        else
+                        {
+                            <span class="sl-pill sl-pill-muted">@Shared["Status_Inactive"]</span>
+                        }
+                    </td>
+                    <td class="text-end">
+                        <div class="d-inline-flex gap-1">
+                            <a asp-action="Details" asp-route-id="@sla.Id" class="sl-iconbtn" title="@Shared["Tooltip_ViewDetails"]" aria-label="@Shared["Tooltip_ViewDetails"]">
+                                <i data-lucide="eye" style="width:14px;height:14px;"></i>
+                            </a>
+                            <a asp-action="Edit" asp-route-id="@sla.Id" class="sl-iconbtn" title="@Shared["Tooltip_EditRecord"]" aria-label="@Shared["Tooltip_EditRecord"]">
+                                <i data-lucide="edit" style="width:14px;height:14px;"></i>
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

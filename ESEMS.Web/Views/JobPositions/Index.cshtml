@@ -1,0 +1,151 @@
+@model IEnumerable<JobPosition>
+@{
+    ViewData["Title"] = (CultureInfo.CurrentUICulture.Name.StartsWith("ar") ? "المناصب الوظيفية" : "Job Positions");
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+}
+
+<style>
+    .lt-shell { display: flex; flex-direction: column; gap: .6rem; height: calc(100vh - 140px); min-height: 560px; }
+    .lt-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; flex: 0 0 auto; }
+    .lt-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .lt-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .lt-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; border: none; }
+    .lt-btn-primary { background: #005B99; color: #fff; } .lt-btn-primary:hover { background: #003d6b; color: #fff; }
+    .lt-btn-outline { background: #fff; color: #005B99; border: 1px solid #cbd5e1; } .lt-btn-outline:hover { background: #f1f5f9; }
+    .lt-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .lt-table-wrap { flex: 1 1 0; min-height: 0; overflow: auto; }
+    .lt-table-wrap table { width: 100%; font-size: var(--fs-sm); border-collapse: collapse; }
+    .lt-table-wrap thead { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
+    .lt-table-wrap th { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; padding: .55rem .75rem; text-align: start; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+    .lt-table-wrap td { padding: .5rem .75rem; border-bottom: 1px solid #f3f4f6; color: #374151; }
+    .lt-table-wrap tbody tr:hover td { background: #f9fafb; }
+    .lt-pill { display: inline-block; padding: .15rem .5rem; font-size: var(--fs-xs); font-weight: 600; border-radius: .25rem; }
+    .lt-pill-code { background: #eff6ff; color: #1d4ed8; font-family: ui-monospace, monospace; }
+    .lt-pill-leadership { background: #fef3c7; color: #92400e; }
+    .lt-pill-cat { background: #f1f5f9; color: #334155; }
+    .lt-actions { display: inline-flex; gap: .35rem; }
+    .lt-actions a, .lt-actions button { color: #005B99; padding: .2rem; border-radius: .25rem; background: transparent; border: none; cursor: pointer; }
+    .lt-actions a:hover, .lt-actions button:hover { background: #eff6ff; }
+    .lt-actions .lt-action-danger { color: #dc2626; }
+    .lt-actions .lt-action-danger:hover { background: #fef2f2; }
+</style>
+
+<div class="lt-shell">
+    <div class="lt-header">
+        <div>
+            <h1><i data-lucide="briefcase" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>@ViewData["Title"]</h1>
+            <p>@(isRtl ? "كتالوج الأدوار الوظيفية المستخدم في تعيينات RACI" : "Job role catalog used by RACI role-level assignments")</p>
+        </div>
+        <a asp-action="Create" class="lt-btn lt-btn-primary">
+            <i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "إضافة دور" : "Add Role")
+        </a>
+    </div>
+
+    <div class="lt-card">
+        <div class="lt-table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>@(isRtl ? "الرمز" : "Code")</th>
+                        <th>@(isRtl ? "اسم المنصب" : "Position Name")</th>
+                        <th>@(isRtl ? "الفئة" : "Category")</th>
+                        <th style="text-align:center;">@(isRtl ? "قيادي" : "Leadership")</th>
+                        <th style="text-align:center;">@(isRtl ? "الترتيب" : "Order")</th>
+                        <th style="text-align:end;">@(isRtl ? "الإجراءات" : "Actions")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in Model)
+                    {
+                        <tr>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(r.Code))
+                                {
+                                    <span class="lt-pill lt-pill-code">@r.Code</span>
+                                }
+                                else
+                                {
+                                    <span style="color:#cbd5e1;">—</span>
+                                }
+                            </td>
+                            <td style="font-weight:600;color:#111827;">@(isRtl ? r.NameAr : r.NameEn)</td>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(r.Category))
+                                {
+                                    <span class="lt-pill lt-pill-cat">@r.Category</span>
+                                }
+                                else
+                                {
+                                    <span style="color:#cbd5e1;">—</span>
+                                }
+                            </td>
+                            <td style="text-align:center;">
+                                @if (r.IsLeadership)
+                                {
+                                    <span class="lt-pill lt-pill-leadership">@(isRtl ? "نعم" : "Yes")</span>
+                                }
+                                else
+                                {
+                                    <span style="color:#9ca3af;">—</span>
+                                }
+                            </td>
+                            <td style="text-align:center;color:#6b7280;">@r.DisplayOrder</td>
+                            <td style="text-align:end;">
+                                <span class="lt-actions">
+                                    <a asp-action="Edit" asp-route-id="@r.Id" title="@(isRtl ? "تعديل" : "Edit")"><i data-lucide="edit" class="w-4 h-4" aria-hidden="true"></i></a>
+                                    <button type="button" class="btn-delete-role lt-action-danger" data-id="@r.Id" data-name="@(isRtl ? r.NameAr : r.NameEn)" title="@(isRtl ? "حذف" : "Delete")">
+                                        <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
+                                    </button>
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                    @if (!Model.Any())
+                    {
+                        <tr><td colspan="6" style="padding:3rem 1rem;text-align:center;color:#94a3b8;">
+                            <i data-lucide="inbox" class="w-10 h-10" aria-hidden="true" style="margin:0 auto .5rem;display:block;color:#cbd5e1;"></i>
+                            <div style="font-weight:500;margin-bottom:.25rem;">@(isRtl ? "لا توجد أدوار بعد" : "No roles yet")</div>
+                            <a asp-action="Create" style="color:#005B99;text-decoration:none;font-size: var(--fs-sm);">@(isRtl ? "إنشاء أول دور" : "Create the first role")</a>
+                        </td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<form id="deleteForm" asp-action="Delete" method="post" style="display:none;">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="id" id="deleteId" />
+</form>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+
+        const confirmTitle = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(isRtl ? "هل أنت متأكد؟" : "Are you sure?"));
+        const confirmText  = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(isRtl ? "سيتم حذف: " : "Will delete: "));
+        const yesDelete    = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(isRtl ? "نعم، احذف" : "Yes, delete"));
+        const cancel       = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(isRtl ? "إلغاء" : "Cancel"));
+
+        document.addEventListener('click', function (e) {
+            const btn = e.target.closest('.btn-delete-role');
+            if (!btn) return;
+            Swal.fire({
+                title: confirmTitle,
+                text: confirmText + (btn.dataset.name || ''),
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
+                cancelButtonColor: '#6b7280',
+                confirmButtonText: yesDelete,
+                cancelButtonText: cancel
+            }).then(result => {
+                if (result.isConfirmed) {
+                    document.getElementById('deleteId').value = btn.dataset.id;
+                    document.getElementById('deleteForm').submit();
+                }
+            });
+        });
+    </script>
+}

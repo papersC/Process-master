@@ -1,0 +1,727 @@
+@model DashboardViewModel
+@using System.Text.Json
+@{
+    ViewData["Title"] = Shared["Title_Dashboard"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+
+    // Compute realization % for the hero ROI card. Guard against /0 when no
+    // estimate has been entered yet — show "—" rather than NaN.
+    decimal estCost = Model.ImprovementROI.TotalEstimatedCostSavings;
+    decimal actCost = Model.ImprovementROI.TotalActualCostSavings;
+    int? roiRealizationPct = estCost > 0 ? (int?)Math.Round((double)(actCost / estCost * 100m)) : null;
+
+    // The Dashboard Insights modal's JS reads camelCase (c.name, c.processCount,
+    // s.serviceName, s.customerSatisfaction). System.Text.Json defaults to
+    // PascalCase, which made every modal field render as "undefined". Force
+    // camelCase on the JSON we hand to the page so the JS resolves correctly.
+    var camelJson = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+}
+
+@*
+    Executive Brief layout (single-screen, no page-scroll).
+    ─ Header           : title + actions (sticky)
+    ─ Hero KPI band    : 4 headline metrics — Processes, Services, Active Improvements, ROI Realization
+    ─ Two-column body  : left = tabbed analytics (Operations / ROI / Performance / Change), right = Recent Activity rail (always visible)
+
+    All 6 chart canvases (#processStatusChart, #serviceTypeChart, #improvementQuadrantChart,
+    #topCategoriesChart, #servicePerformanceChart, #changeRequestChart) are present in the DOM
+    on initial render so Chart.js can size them correctly. Tab switching toggles tab-pane
+    visibility only — charts re-fit via Chart.resize() on each shown.bs.tab event.
+*@
+
+<style>
+    /* ─────────── Shell + header ─────────── */
+    /* Shell drops the fixed viewport height — on smaller screens (e.g. 720px)
+       it was starving chart bodies down to ~50px. Min-height keeps the dashboard
+       feeling like a dashboard at the top of the page; content beyond that
+       scrolls naturally. min-height on each chart block guarantees charts have
+       room to render even when the layout settles after Chart.js init. */
+    .dash-shell { display: flex; flex-direction: column; gap: var(--sp-3); min-height: 620px; }
+    .dash-header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: 0 0 var(--sp-2); border-bottom: 1px solid #e5e7eb; flex: 0 0 auto; }
+    .dash-title-block h1 { margin: 0; font-size: var(--fs-xl); font-weight: 700; color: #0f172a; line-height: 1.15; }
+    .dash-title-block p { margin: 0; font-size: var(--fs-xs); color: #64748b; }
+
+    /* ─────────── Action buttons (preserved from original) ─────────── */
+    .dash-action-btn { background: var(--esems-primary); color: #fff; border: none; border-radius: .375rem; padding: .45rem .85rem; font-size: var(--fs-sm); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; transition: background .15s, box-shadow .15s; }
+    .dash-action-btn:hover { background: var(--esems-primary-hover); color: #fff; box-shadow: 0 4px 12px rgba(0, 91, 153, .25); }
+    .dash-action-btn.outline { background: #fff; color: var(--esems-primary); border: 1px solid #cbd5e1; }
+    .dash-action-btn.outline:hover { background: #f1f5f9; }
+    .dash-quick-menu { position: relative; }
+    .dash-quick-menu .dropdown-panel { position: absolute; top: calc(100% + .25rem); inset-inline-end: 0; min-width: 220px; background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; box-shadow: 0 10px 25px rgba(0, 0, 0, .12); padding: var(--sp-1); display: none; z-index: 50; }
+    .dash-quick-menu.open .dropdown-panel { display: block; }
+    .dash-quick-menu .dropdown-panel a { display: flex; align-items: center; gap: .55rem; padding: .55rem .7rem; border-radius: .35rem; font-size: var(--fs-sm); color: #374151; text-decoration: none; }
+    .dash-quick-menu .dropdown-panel a:hover { background: #f1f5f9; color: var(--esems-primary); }
+
+    /* ─────────── Hero KPI band — 4 large headline metrics ─────────── */
+    .dash-hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--sp-3); flex: 0 0 auto; }
+    .dash-hero-card { background: #fff; border: 1px solid #e5e7eb; border-inline-start: 4px solid var(--accent, var(--esems-primary)); border-radius: .5rem; padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-1); transition: box-shadow .15s, transform .15s; min-height: 100px; }
+    .dash-hero-card:hover { box-shadow: 0 4px 14px rgba(0, 91, 153, .10); transform: translateY(-1px); }
+    .dash-hero-card.is-info    { --accent: var(--esems-primary); }
+    .dash-hero-card.is-success { --accent: var(--esems-success); }
+    .dash-hero-card.is-warn    { --accent: var(--esems-warning); }
+    .dash-hero-label { display: flex; align-items: center; gap: .35rem; font-size: var(--fs-xs); color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+    .dash-hero-label svg { width: 14px; height: 14px; color: var(--accent, var(--esems-primary)); }
+    .dash-hero-value { font-size: var(--fs-2xl); font-weight: 700; color: #0f172a; line-height: 1.05; margin: 0; }
+    .dash-hero-value small { font-size: var(--fs-base); font-weight: 600; color: #64748b; margin-inline-start: .25rem; }
+    .dash-hero-meta { display: flex; align-items: center; gap: .35rem; font-size: var(--fs-xs); color: #475569; margin-top: auto; }
+    .dash-hero-meta .pill { display: inline-flex; align-items: center; gap: .25rem; padding: .12rem .45rem; border-radius: 9999px; background: #f1f5f9; color: #334155; font-weight: 600; }
+    .dash-hero-meta .pill.is-success { background: #dcfce7; color: #15803D; }
+    .dash-hero-meta .pill.is-warn    { background: #fef3c7; color: #B45309; }
+
+    /* ─────────── Two-column body: tabs (left) + activity (right) ─────────── */
+    /* Was flex:1 1 0 — compressed body to 0 when shell had min-content
+       height. Now sizes to its content (tabs card + activity rail). */
+    .dash-body { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: var(--sp-3); }
+    @@media (max-width: 1280px) { .dash-body { grid-template-columns: 1fr; } .dash-activity-card { max-height: 280px; } }
+
+    /* ─────────── Tabbed analytics panel ─────────── */
+    .dash-tabs-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .dash-tabs-nav { display: flex; gap: 0; border-bottom: 1px solid #e5e7eb; padding: 0 var(--sp-3); flex: 0 0 auto; flex-wrap: wrap; row-gap: 0; }
+    .dash-tab-btn { background: transparent; border: none; padding: .85rem var(--sp-3); font-size: var(--fs-sm); font-weight: 600; color: #64748b; cursor: pointer; display: inline-flex; align-items: center; gap: .4rem; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; transition: color .15s, border-color .15s; }
+    @@media (max-width: 1400px) { .dash-tab-btn { padding: .7rem .85rem; font-size: var(--fs-xs); } }
+    .dash-tab-btn:hover { color: var(--esems-primary); }
+    .dash-tab-btn[aria-selected="true"] { color: var(--esems-primary); border-bottom-color: var(--esems-primary); }
+    .dash-tab-btn svg { width: 14px; height: 14px; }
+    /* Pane container grows to content (was flex:1 — caused chart blocks to
+       collapse on viewports < 900px). Min-height keeps the dashboard feeling
+       compact; charts get their own min-height below. */
+    .dash-tab-panes { min-height: 320px; padding: var(--sp-3); position: relative; }
+    .dash-tab-pane { display: none; }
+    .dash-tab-pane.is-active { display: block; }
+
+    /* ─────────── In-tab grids ─────────── */
+    /* Drop the height:100% chain — chart-blocks now have their own
+       min-height, so the grid sizes to that. ROI tab also drops the
+       1fr row (was forcing the chart block to share scarce space with
+       the tiles row); now both rows are auto-sized and the chart
+       block's own min-height ensures it renders. */
+    .dash-tab-grid-2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: var(--sp-3); }
+    .dash-tab-grid-roi { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+    .dash-tab-grid-roi > .dash-roi-tiles { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-2); }
+    .dash-tab-grid-roi > .dash-chart-block { grid-column: 1 / -1; }
+    .dash-tab-grid-perf { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+    .dash-tab-grid-cr { display: grid; gap: var(--sp-3); }
+
+    .dash-chart-block { background: #fafbfc; border: 1px solid #e5e7eb; border-radius: .5rem; display: flex; flex-direction: column; min-height: 280px; overflow: hidden; }
+    .dash-chart-head { display: flex; align-items: center; gap: .4rem; padding: .55rem var(--sp-3); border-bottom: 1px solid #f1f5f9; flex: 0 0 auto; font-size: var(--fs-sm); font-weight: 600; color: #0f172a; }
+    .dash-chart-head svg { width: 14px; height: 14px; color: var(--esems-primary); }
+    .dash-chart-body { flex: 1 1 0; min-height: 0; padding: var(--sp-2) var(--sp-3) var(--sp-3); position: relative; }
+    .dash-chart-body canvas { width: 100% !important; height: 100% !important; max-width: 100%; max-height: 100%; }
+
+    .dash-roi-tile { background: #fff; border: 1px solid #e5e7eb; border-inline-start: 3px solid var(--esems-success); border-radius: .375rem; padding: var(--sp-2) var(--sp-3); }
+    .dash-roi-tile .lbl { font-size: var(--fs-xs); color: #64748b; font-weight: 500; text-transform: uppercase; letter-spacing: .03em; }
+    .dash-roi-tile .val { font-size: var(--fs-lg); font-weight: 700; color: #0f172a; line-height: 1.2; }
+    .dash-roi-tile .val small { font-size: var(--fs-xs); font-weight: 600; color: #64748b; margin-inline-start: .15rem; }
+
+    /* ─────────── Recent Activity rail (always visible on the right) ─────────── */
+    .dash-activity-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .dash-activity-head { display: flex; align-items: center; justify-content: space-between; padding: .65rem var(--sp-3); border-bottom: 1px solid #f1f5f9; flex: 0 0 auto; }
+    .dash-activity-head h6 { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: #0f172a; display: flex; align-items: center; gap: .4rem; }
+    .dash-activity-head svg { width: 14px; height: 14px; color: var(--esems-primary); }
+    /* M-16 (Tier-3 a11y): "View all" link sat in a card header next to body
+       text; axe flagged link-in-text-block because the only differentiator
+       was color. Always-underlined defeats that — links must be
+       distinguishable without relying on color (WCAG 1.4.1).
+       Bootstrap/Skote applies text-decoration: none to anchors with high
+       specificity, so we use !important to win. */
+    .dash-activity-head a { font-size: var(--fs-xs); color: var(--esems-primary); font-weight: 600; text-decoration: underline !important; text-underline-offset: 2px; display: inline-flex; align-items: center; gap: .25rem; }
+    .dash-activity-head a:hover { text-decoration-thickness: 2px !important; }
+    .dash-activity-body { flex: 1 1 0; min-height: 0; overflow-y: auto; }
+    .dash-activity-list { list-style: none; margin: 0; padding: 0; }
+    .dash-activity-list li { padding: .65rem var(--sp-3); border-bottom: 1px solid #f3f4f6; display: flex; flex-direction: column; gap: .15rem; }
+    .dash-activity-list li:last-child { border-bottom: none; }
+    .dash-activity-list .row-1 { display: flex; align-items: center; justify-content: space-between; gap: .35rem; }
+    .dash-activity-list .row-1 .who { font-size: var(--fs-sm); font-weight: 600; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dash-activity-list .row-1 .when { font-size: var(--fs-xs); color: #94a3b8; flex-shrink: 0; }
+    .dash-activity-list .row-2 { display: flex; align-items: center; gap: .35rem; font-size: var(--fs-xs); color: #475569; }
+    .dash-activity-list .badge-action { display: inline-flex; align-items: center; padding: .12rem .45rem; border-radius: .25rem; background: #eff6ff; color: var(--esems-primary); font-weight: 600; font-size: var(--fs-xs); }
+    .dash-activity-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .35rem; padding: var(--sp-5); color: #94a3b8; font-size: var(--fs-sm); height: 100%; }
+    .dash-activity-empty svg { width: 28px; height: 28px; color: #cbd5e1; }
+</style>
+
+<div class="dash-shell">
+
+    @* ─────────── Page header (preserves AI / Export / Quick Actions) ─────────── *@
+    <div class="dash-header">
+        <div class="dash-title-block">
+            <h1>@Shared["Title_Dashboard"]</h1>
+            <p>@Shared["App_ESEMS_FullName"]</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <button type="button" class="dash-action-btn outline" onclick="analyzeDashboard()" aria-label="@Shared["AI_DashboardAnalysis"]">
+                <i data-lucide="sparkles" aria-hidden="true"></i>
+                <span>@Shared["AI_DashboardAnalysis"]</span>
+            </button>
+            <button type="button" class="dash-action-btn outline" onclick="exportDashboard()" aria-label="@Shared["Action_Export"]">
+                <i data-lucide="download" aria-hidden="true"></i>
+                <span>@Shared["Action_Export"]</span>
+            </button>
+            <div class="dash-quick-menu" id="dashQuickMenu">
+                @* aria-expanded + aria-hidden flip together when the menu opens
+                   so screen readers don't announce the five Quick-Add items
+                   while the panel is visually collapsed. *@
+                @* M-17 (Tier-3 a11y): when the panel is hidden, aria-hidden=true on a container
+                   that still has focusable anchors creates a focus trap (axe `aria-hidden-focus`).
+                   Use the `inert` attribute instead — it removes the subtree from BOTH the
+                   accessibility tree AND the focus tree, which is what we actually want. *@
+                <button type="button" class="dash-action-btn" id="dashQuickToggle"
+                        aria-haspopup="true" aria-expanded="false" aria-controls="dashQuickPanel"
+                        onclick="var w=document.getElementById('dashQuickMenu');var p=document.getElementById('dashQuickPanel');var o=!w.classList.contains('open');w.classList.toggle('open',o);this.setAttribute('aria-expanded',o);if(o){p.removeAttribute('inert');}else{p.setAttribute('inert','');}">
+                    <i data-lucide="plus" aria-hidden="true"></i>
+                    <span>@Shared["Dashboard_QuickActions"]</span>
+                    <i data-lucide="chevron-down" aria-hidden="true"></i>
+                </button>
+                <div class="dropdown-panel" id="dashQuickPanel" role="menu" inert>
+                    <a asp-controller="Categories" asp-action="Create" role="menuitem"><i data-lucide="layers" aria-hidden="true"></i>@Shared["Action_AddCategory"]</a>
+                    <a asp-controller="Processes" asp-action="Create" role="menuitem"><i data-lucide="git-branch" aria-hidden="true"></i>@Shared["Action_AddProcess"]</a>
+                    <a asp-controller="Services" asp-action="Create" role="menuitem"><i data-lucide="briefcase" aria-hidden="true"></i>@Shared["Action_AddService"]</a>
+                    <a asp-controller="Improvements" asp-action="Wizard" role="menuitem"><i data-lucide="rocket" aria-hidden="true"></i>@Shared["Action_AddImprovement"]</a>
+                    <a asp-controller="ChangeRequests" asp-action="Create" role="menuitem"><i data-lucide="git-pull-request" aria-hidden="true"></i>@Shared["Action_AddChangeRequest"]</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ─────────── Hero KPI band — 4 headline metrics ───────────
+       X10: each tile is now an anchor so users can drill from a count to
+       the underlying records (was a dead-end count card before). *@
+    <div class="dash-hero">
+        <a asp-controller="Processes" asp-action="Index" class="dash-hero-card is-info" style="text-decoration:none;color:inherit;">
+            <div class="dash-hero-label"><i data-lucide="git-branch" aria-hidden="true"></i>@Shared["Dashboard_BusinessProcesses"]</div>
+            <p class="dash-hero-value">@Model.TotalProcesses</p>
+            <div class="dash-hero-meta">
+                <span class="pill">@Model.TotalCategories @Shared["Dashboard_ProcessCategories"]</span>
+            </div>
+        </a>
+        <a asp-controller="Services" asp-action="Index" class="dash-hero-card is-info" style="text-decoration:none;color:inherit;">
+            <div class="dash-hero-label"><i data-lucide="briefcase" aria-hidden="true"></i>@Shared["Dashboard_ServiceCatalog"]</div>
+            <p class="dash-hero-value">@Model.TotalServices</p>
+            <div class="dash-hero-meta">
+                <span class="pill">@Shared["App_ESEMS_FullName"]</span>
+            </div>
+        </a>
+        <a asp-controller="ChangeRequests" asp-action="Index" class="dash-hero-card is-warn" style="text-decoration:none;color:inherit;">
+            <div class="dash-hero-label"><i data-lucide="rocket" aria-hidden="true"></i>@Shared["Dashboard_ActiveImprovements"]</div>
+            <p class="dash-hero-value">@Model.ActiveChangeRequests</p>
+            <div class="dash-hero-meta">
+                <span class="pill is-warn">@Shared["Status_InProgress"]</span>
+            </div>
+        </a>
+        <a asp-controller="Improvements" asp-action="Dashboard" class="dash-hero-card is-success" style="text-decoration:none;color:inherit;">
+            <div class="dash-hero-label"><i data-lucide="trending-up" aria-hidden="true"></i>@Shared["Dashboard_CostSavingsRealized"]</div>
+            <p class="dash-hero-value">
+                @actCost.ToString("N0")<small>AED</small>
+            </p>
+            <div class="dash-hero-meta">
+                @if (roiRealizationPct.HasValue)
+                {
+                    <span class="pill is-success">@roiRealizationPct.Value% &middot; @Shared["Dashboard_Target"] @estCost.ToString("N0") AED</span>
+                }
+                else
+                {
+                    <span class="pill is-success">—</span>
+                }
+            </div>
+        </a>
+    </div>
+
+    @* ─────────── Two-column body: tabs (left) + activity (right) ─────────── *@
+    <div class="dash-body">
+
+        @* ─────────── Tabbed analytics panel ─────────── *@
+        <div class="dash-tabs-card">
+            <div class="dash-tabs-nav" role="tablist" aria-label="@Shared["Title_Dashboard"]">
+                <button type="button" class="dash-tab-btn" role="tab" aria-selected="true" aria-controls="tab-operations" data-tab="operations">
+                    <i data-lucide="activity" aria-hidden="true"></i>@Shared["Dashboard_ProcessesByStatus"]
+                </button>
+                <button type="button" class="dash-tab-btn" role="tab" aria-selected="false" aria-controls="tab-roi" data-tab="roi">
+                    <i data-lucide="trending-up" aria-hidden="true"></i>@Shared["Dashboard_CostSavingsRealized"]
+                </button>
+                <button type="button" class="dash-tab-btn" role="tab" aria-selected="false" aria-controls="tab-perf" data-tab="perf">
+                    <i data-lucide="bar-chart-3" aria-hidden="true"></i>@Shared["Dashboard_ServicePerformance"]
+                </button>
+                <button type="button" class="dash-tab-btn" role="tab" aria-selected="false" aria-controls="tab-cr" data-tab="cr">
+                    <i data-lucide="git-pull-request" aria-hidden="true"></i>@Shared["Dashboard_ChangeRequestStatus"]
+                </button>
+            </div>
+
+            <div class="dash-tab-panes">
+
+                @* ─── Tab 1: Operations — Process Status (large) + Services-by-Type ─── *@
+                <div class="dash-tab-pane is-active" id="tab-operations" role="tabpanel">
+                    <div class="dash-tab-grid-2">
+                        <div class="dash-chart-block">
+                            <div class="dash-chart-head"><i data-lucide="pie-chart" aria-hidden="true"></i>@Shared["Dashboard_ProcessesByStatus"]</div>
+                            <div class="dash-chart-body"><canvas id="processStatusChart">@Shared["Text_ChartLoading"]</canvas></div>
+                        </div>
+                        <div class="dash-chart-block">
+                            <div class="dash-chart-head"><i data-lucide="briefcase" aria-hidden="true"></i>@Shared["Dashboard_ServicesByType"]</div>
+                            <div class="dash-chart-body"><canvas id="serviceTypeChart">@Shared["Text_ChartLoading"]</canvas></div>
+                        </div>
+                    </div>
+                </div>
+
+                @* ─── Tab 2: ROI & Savings — 4 ROI tiles + Improvement Quadrant ─── *@
+                <div class="dash-tab-pane" id="tab-roi" role="tabpanel">
+                    <div class="dash-tab-grid-roi">
+                        <div class="dash-roi-tiles">
+                            <div class="dash-roi-tile">
+                                <div class="lbl">@Shared["Dashboard_CostSavingsTarget"]</div>
+                                <div class="val">@Model.ImprovementROI.TotalEstimatedCostSavings.ToString("N0") <small>AED</small></div>
+                            </div>
+                            <div class="dash-roi-tile">
+                                <div class="lbl">@Shared["Dashboard_CostSavingsRealized"]</div>
+                                <div class="val">@Model.ImprovementROI.TotalActualCostSavings.ToString("N0") <small>AED</small></div>
+                            </div>
+                            <div class="dash-roi-tile">
+                                <div class="lbl">@Shared["Dashboard_TimeSavingsTarget"]</div>
+                                <div class="val">@Model.ImprovementROI.TotalEstimatedTimeSavings.ToString("N0") <small>h</small></div>
+                            </div>
+                            <div class="dash-roi-tile">
+                                <div class="lbl">@Shared["Dashboard_TimeSavingsRealized"]</div>
+                                <div class="val">@Model.ImprovementROI.TotalActualTimeSavings.ToString("N0") <small>h</small></div>
+                            </div>
+                        </div>
+                        <div class="dash-chart-block">
+                            <div class="dash-chart-head"><i data-lucide="target" aria-hidden="true"></i>@Shared["Dashboard_ImprovementQuadrants"]</div>
+                            <div class="dash-chart-body"><canvas id="improvementQuadrantChart">@Shared["Text_ChartLoading"]</canvas></div>
+                        </div>
+                    </div>
+                </div>
+
+                @* ─── Tab 3: Performance — Top Categories + Service Performance ─── *@
+                <div class="dash-tab-pane" id="tab-perf" role="tabpanel">
+                    <div class="dash-tab-grid-perf">
+                        <div class="dash-chart-block">
+                            <div class="dash-chart-head"><i data-lucide="bar-chart-3" aria-hidden="true"></i>@Shared["Dashboard_TopCategories"]</div>
+                            <div class="dash-chart-body"><canvas id="topCategoriesChart">@Shared["Text_ChartLoading"]</canvas></div>
+                        </div>
+                        <div class="dash-chart-block">
+                            <div class="dash-chart-head"><i data-lucide="activity" aria-hidden="true"></i>@Shared["Dashboard_ServicePerformance"]</div>
+                            <div class="dash-chart-body"><canvas id="servicePerformanceChart">@Shared["Text_ChartLoading"]</canvas></div>
+                        </div>
+                    </div>
+                </div>
+
+                @* ─── Tab 4: Change Requests — bar chart full-width ─── *@
+                <div class="dash-tab-pane" id="tab-cr" role="tabpanel">
+                    <div class="dash-tab-grid-cr">
+                        <div class="dash-chart-block">
+                            <div class="dash-chart-head"><i data-lucide="git-pull-request" aria-hidden="true"></i>@Shared["Dashboard_ChangeRequestStatus"]</div>
+                            <div class="dash-chart-body"><canvas id="changeRequestChart">@Shared["Text_ChartLoading"]</canvas></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* ─────────── Recent Activity rail (always visible) ─────────── *@
+        <div class="dash-activity-card">
+            <div class="dash-activity-head">
+                <h6><i data-lucide="clock" aria-hidden="true"></i>@Shared["Dashboard_RecentActivities"]</h6>
+                @* M-16: Bootstrap/Skote applies `a { text-decoration: none }` with high
+                   specificity that beats our .dash-activity-head a !important rule. Inline
+                   style on the element itself wins the cascade definitively. *@
+                <a asp-controller="AuditLogs" asp-action="Index" style="text-decoration: underline; text-underline-offset: 2px;">
+                    @Shared["Action_ViewAll"] <i data-lucide="@(isRtl ? "arrow-left" : "arrow-right")" aria-hidden="true"></i>
+                </a>
+            </div>
+            @* M-11 (Tier-3 a11y): the scrollable activity feed must be keyboard-reachable.
+               tabindex=0 lets the user Tab into the region; role=region + aria-label
+               give it an accessible name. *@
+            <div class="dash-activity-body" tabindex="0" role="region" aria-label="@(isRtl ? "النشاط الأخير" : "Recent activity")">
+                @if (Model.RecentActivities.Any())
+                {
+                    <ul class="dash-activity-list">
+                        @foreach (var activity in Model.RecentActivities)
+                        {
+                            <li>
+                                <div class="row-1">
+                                    <span class="who">@activity.UserName</span>
+                                    <span class="when">@activity.Timestamp.ToDubaiString("yyyy-MM-dd HH:mm")</span>
+                                </div>
+                                <div class="row-2">
+                                    <span class="badge-action">@activity.Action</span>
+                                    <span>@activity.EntityType</span>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <div class="dash-activity-empty">
+                        <i data-lucide="inbox" aria-hidden="true"></i>
+                        <span>@Shared["Dashboard_NoRecentActivities"]</span>
+                    </div>
+                }
+            </div>
+        </div>
+
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        // ─── Lucide + dropdown click-outside (preserved from original) ───
+        lucide.createIcons();
+        document.addEventListener('click', function (e) {
+            var menu = document.getElementById('dashQuickMenu');
+            if (menu && !menu.contains(e.target)) menu.classList.remove('open');
+        });
+
+        // ─── Tab switching — toggles aria-selected + .is-active, then resizes
+        // every Chart.js instance so canvases inside the now-visible pane
+        // pick up correct dimensions. Persists active tab in localStorage.
+        const TAB_KEY = 'esems.dashboard.activeTab';
+        const tabBtns = document.querySelectorAll('.dash-tab-btn');
+        const tabPanes = document.querySelectorAll('.dash-tab-pane');
+        function activateTab(tabId) {
+            tabBtns.forEach(b => {
+                const active = b.dataset.tab === tabId;
+                b.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+            tabPanes.forEach(p => p.classList.toggle('is-active', p.id === 'tab-' + tabId));
+            // Resize all charts so the newly visible ones fit correctly.
+            try { Object.values(window.__esemsCharts || {}).forEach(c => c && c.resize()); } catch (_) {}
+            try { localStorage.setItem(TAB_KEY, tabId); } catch (_) {}
+        }
+        tabBtns.forEach(b => b.addEventListener('click', () => activateTab(b.dataset.tab)));
+        // Restore last tab on load (default already set in markup)
+        try {
+            const saved = localStorage.getItem(TAB_KEY);
+            if (saved && document.getElementById('tab-' + saved)) activateTab(saved);
+        } catch (_) {}
+
+        // ─── Chart.js setup (preserved from original) ───
+        const isRtl = @(isRtl ? "true" : "false");
+        Chart.defaults.font.family = "'Segoe UI', 'Roboto', sans-serif";
+        Chart.defaults.plugins.legend.labels.usePointStyle = true;
+        Chart.defaults.plugins.legend.labels.padding = 12;
+        if (isRtl) {
+            Chart.defaults.plugins.legend.rtl = true;
+            Chart.defaults.plugins.legend.textDirection = 'rtl';
+            Chart.defaults.plugins.tooltip.rtl = true;
+            Chart.defaults.plugins.tooltip.textDirection = 'rtl';
+        }
+
+        const colors = {
+            primary: '#005B99', primaryLight: '#3d8ac7', primaryDark: '#004a7c',
+            success: '#15803D', successLight: '#22c55e', successDark: '#166534',
+            warning: '#B45309', warningLight: '#d97706', warningDark: '#92400e',
+            danger:  '#B91C1C', dangerLight:  '#dc2626', dangerDark:  '#991b1b',
+            info:    '#005B99', infoLight:    '#3d8ac7', infoDark:    '#004a7c',
+            secondary: '#6b7280', secondaryLight: '#9ca3af', secondaryDark: '#4b5563',
+            teal: '#14b8a6', orange: '#f97316', pink: '#ec4899',
+            indigo: '#6366f1', cyan: '#06b6d4', lime: '#84cc16'
+        };
+
+        const labelTranslations = {
+            'Draft': '@Html.Raw(Shared["ProcessStatus_Draft"].Value)',
+            'Active': '@Html.Raw(Shared["ProcessStatus_Active"].Value)',
+            'UnderImprovement': '@Html.Raw(Shared["ProcessStatus_UnderImprovement"].Value)',
+            'Archived': '@Html.Raw(Shared["ProcessStatus_Archived"].Value)',
+            'Internal': '@Html.Raw(Shared["ServiceType_Internal"].Value)',
+            'External': '@Html.Raw(Shared["ServiceType_External"].Value)',
+            'QuickWins': '@Html.Raw(Shared["ImprovementQuadrant_QuickWins"].Value)',
+            'MajorProjects': '@Html.Raw(Shared["ImprovementQuadrant_MajorProjects"].Value)',
+            'FillIns': '@Html.Raw(Shared["ImprovementQuadrant_FillIns"].Value)',
+            'ThanklessTasks': '@Html.Raw(Shared["ImprovementQuadrant_ThanklessTasks"].Value)',
+            'Submitted': '@Html.Raw(Shared["ChangeRequestStatus_Submitted"].Value)',
+            'UnderReview': '@Html.Raw(Shared["ChangeRequestStatus_UnderReview"].Value)',
+            'Approved': '@Html.Raw(Shared["ChangeRequestStatus_Approved"].Value)',
+            'Rejected': '@Html.Raw(Shared["ChangeRequestStatus_Rejected"].Value)',
+            'Implemented': '@Html.Raw(Shared["ChangeRequestStatus_Implemented"].Value)',
+            'Cancelled': '@Html.Raw(Shared["ChangeRequestStatus_Cancelled"].Value)'
+        };
+        function translateLabel(key) { return labelTranslations[key] || key; }
+
+        // Keep chart instances around so the tab handler can resize them.
+        window.__esemsCharts = window.__esemsCharts || {};
+
+        // 1. Process Status (doughnut)
+        window.__esemsCharts.processStatus = new Chart(document.getElementById('processStatusChart'), {
+            type: 'doughnut',
+            data: {
+                labels: [@Html.Raw(string.Join(",", Model.ProcessesByStatus.Select(s => $"'{s.Status}'")))].map(translateLabel),
+                datasets: [{
+                    data: [@string.Join(",", Model.ProcessesByStatus.Select(s => s.Count))],
+                    backgroundColor: [colors.primary, colors.success, colors.warning, colors.danger],
+                    hoverBackgroundColor: [colors.primaryLight, colors.successLight, colors.warningLight, colors.dangerLight],
+                    borderWidth: 3, borderColor: '#fff', hoverBorderWidth: 4
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, cutout: '60%',
+                plugins: {
+                    legend: { position: 'bottom', labels: { padding: 14, font: { size: 12, weight: '500' } } },
+                    tooltip: { backgroundColor: 'rgba(0,0,0,.85)', padding: 10, titleFont: { size: 13, weight: 'bold' }, bodyFont: { size: 12 },
+                        callbacks: { label: function(c){ var t=c.dataset.data.reduce((a,b)=>a+b,0); return c.label+': '+c.parsed+' ('+((c.parsed/t)*100).toFixed(1)+'%)'; } } }
+                }
+            }
+        });
+
+        // 2. Service Type (pie)
+        window.__esemsCharts.serviceType = new Chart(document.getElementById('serviceTypeChart'), {
+            type: 'pie',
+            data: {
+                labels: [@Html.Raw(string.Join(",", Model.ServicesByType.Select(s => $"'{s.Type}'")))].map(translateLabel),
+                datasets: [{ data: [@string.Join(",", Model.ServicesByType.Select(s => s.Count))], backgroundColor: [colors.info, colors.teal], hoverBackgroundColor: [colors.infoLight, colors.cyan], borderWidth: 2, borderColor: '#fff' }]
+            },
+            options: { responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { padding: 8, font: { size: 11 } } }, tooltip: { backgroundColor: 'rgba(0,0,0,.85)' } }
+            }
+        });
+
+        // 3. Improvement Quadrants (polar area)
+        window.__esemsCharts.improvementQuadrant = new Chart(document.getElementById('improvementQuadrantChart'), {
+            type: 'polarArea',
+            data: {
+                labels: [@Html.Raw(string.Join(",", Model.ImprovementsByQuadrant.Select(i => $"'{i.Quadrant}'")))].map(translateLabel),
+                datasets: [{ data: [@string.Join(",", Model.ImprovementsByQuadrant.Select(i => i.Count))],
+                    backgroundColor: ['rgba(21,128,61,.75)','rgba(0,91,153,.75)','rgba(180,83,9,.75)','rgba(185,28,28,.75)'], borderWidth: 2, borderColor: '#fff' }]
+            },
+            options: { responsive: true, maintainAspectRatio: false,
+                scales: { r: { ticks: { display: false }, grid: { display: false } } },
+                plugins: { legend: { position: 'bottom', labels: { padding: 8, font: { size: 11 }, usePointStyle: true } } }
+            }
+        });
+
+        // 4. Top Categories (horizontal bar)
+        window.__esemsCharts.topCategories = new Chart(document.getElementById('topCategoriesChart'), {
+            type: 'bar',
+            data: {
+                labels: @Html.Raw(JsonSerializer.Serialize(Model.TopCategories.Select(c => c.Name).ToList())),
+                datasets: [{ label: '@Html.Raw(Shared["Chart_ProcessCount"].Value)', data: [@string.Join(",", Model.TopCategories.Select(c => c.ProcessCount))],
+                    backgroundColor: 'rgba(0,91,153,.85)', hoverBackgroundColor: 'rgba(0,91,153,1)', borderRadius: 6, borderSkipped: false }]
+            },
+            options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(0,0,0,.85)' } },
+                scales: {
+                    x: { beginAtZero: true, reverse: isRtl, position: isRtl ? 'top' : 'bottom', grid: { color: 'rgba(0,0,0,.05)' }, ticks: { precision: 0, font: { size: 11 } } },
+                    y: { position: isRtl ? 'right' : 'left', grid: { display: false }, ticks: { font: { size: 11, weight: '500' } } }
+                }
+            }
+        });
+
+        // 5. Service Performance (horizontal bar)
+        window.__esemsCharts.servicePerformance = new Chart(document.getElementById('servicePerformanceChart'), {
+            type: 'bar',
+            data: {
+                labels: @Html.Raw(JsonSerializer.Serialize(Model.ServicePerformance.Select(s => s.ServiceName).ToList())),
+                datasets: [{ label: '@Html.Raw(Shared["Chart_CustomerSatisfaction"].Value)', data: [@string.Join(",", Model.ServicePerformance.Select(s => s.CustomerSatisfaction.ToString(CultureInfo.InvariantCulture)))],
+                    backgroundColor: 'rgba(21,128,61,.85)', hoverBackgroundColor: 'rgba(21,128,61,1)', borderRadius: 6, borderSkipped: false }]
+            },
+            options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(0,0,0,.85)',
+                    callbacks: { label: function(c){ return '@Html.Raw(Shared["Chart_Satisfaction"].Value)' + ': ' + c.parsed.x + '%'; } } } },
+                scales: {
+                    x: { beginAtZero: true, max: 100, reverse: isRtl, position: isRtl ? 'top' : 'bottom', grid: { color: 'rgba(0,0,0,.05)' }, ticks: { font: { size: 11 }, callback: v => v + '%' } },
+                    y: { position: isRtl ? 'right' : 'left', grid: { display: false }, ticks: { font: { size: 11, weight: '500' } } }
+                }
+            }
+        });
+
+        // 6. Change Request Status (vertical bar)
+        window.__esemsCharts.changeRequest = new Chart(document.getElementById('changeRequestChart'), {
+            type: 'bar',
+            data: {
+                labels: [@Html.Raw(string.Join(",", Model.ChangeRequestsByStatus.Select(cr => $"'{cr.Status}'")))].map(translateLabel),
+                datasets: [{ label: '@Html.Raw(Shared["Nav_ChangeRequests"].Value)', data: [@string.Join(",", Model.ChangeRequestsByStatus.Select(cr => cr.Count))],
+                    backgroundColor: ['rgba(0,91,153,.85)','rgba(180,83,9,.85)','rgba(21,128,61,.85)','rgba(185,28,28,.85)','rgba(99,102,241,.85)'],
+                    borderRadius: 6, borderSkipped: false }]
+            },
+            options: { responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(0,0,0,.85)' } },
+                scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,.05)' }, ticks: { precision: 0, font: { size: 11 } } },
+                          x: { grid: { display: false }, ticks: { font: { size: 11, weight: '500' } } } }
+            }
+        });
+
+        // Force a resize pass once the browser has settled layout. Chart.js
+        // initializes against the parent's height at the moment of `new
+        // Chart()` — on a fresh page load that's often still 0 because the
+        // flex chain hasn't laid out yet. Without this, all charts render
+        // at the default 30px canvas height and look like empty boxes.
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            try {
+                Object.values(window.__esemsCharts).forEach(c => c && c.resize());
+            } catch (_) { /* swallow — defensive only */ }
+        }));
+
+        // ─── Dashboard Insights ───
+        // Replaced the prior placeholder ("Analyzing dashboard data..." with
+        // 3 raw counts) with a structured insight panel computed from the
+        // data already on the page: process portfolio health, improvement
+        // mix, cost-savings progress, top categories, customer satisfaction.
+        // Each insight has a deep-link to its source page so the user can
+        // act on a finding rather than just read it.
+        const DASH = {
+            isRtl: @(isRtl ? "true" : "false"),
+            base: window.SP_PATHBASE || '',
+            totals: {
+                processes:    @Model.TotalProcesses,
+                services:     @Model.TotalServices,
+                improvements: @Model.TotalImprovements,
+                changeReqs:   @Model.ActiveChangeRequests
+            },
+            processStatus:  @Html.Raw(JsonSerializer.Serialize(Model.ProcessesByStatus, camelJson)),
+            improvementsByQuadrant: @Html.Raw(JsonSerializer.Serialize(Model.ImprovementsByQuadrant, camelJson)),
+            topCategories:  @Html.Raw(JsonSerializer.Serialize(Model.TopCategories, camelJson)),
+            servicePerf:    @Html.Raw(JsonSerializer.Serialize(Model.ServicePerformance, camelJson)),
+            roi: {
+                @* InvariantCulture is mandatory — under ar-* / hi / fa cultures,
+                   default decimal.ToString() can emit Arabic-Indic digits and
+                   non-ASCII decimal marks (٨٨٨٥٠٠٠٫٠٠), which is a JS syntax
+                   error on this line and kills the whole inline script (no
+                   charts, tab clicks appear inert). *@
+                estCost:  @(((decimal)(Model.ImprovementROI?.TotalEstimatedCostSavings ?? 0m)).ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                actCost:  @(((decimal)(Model.ImprovementROI?.TotalActualCostSavings ?? 0m)).ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                estTime:  @(((decimal)(Model.ImprovementROI?.TotalEstimatedTimeSavings ?? 0m)).ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                actTime:  @(((decimal)(Model.ImprovementROI?.TotalActualTimeSavings ?? 0m)).ToString(System.Globalization.CultureInfo.InvariantCulture))
+            }
+        };
+        function analyzeDashboard() {
+            const t = (en, ar) => DASH.isRtl ? ar : en;
+            const fmt = n => (n || 0).toLocaleString();
+            const aed = n => 'AED ' + fmt(Math.round(n || 0));
+            const pct = (a, b) => b > 0 ? Math.round((a / b) * 100) : 0;
+
+            // ── Section 1: Process portfolio ──
+            const psMap = {}; (DASH.processStatus || []).forEach(p => psMap[p.status] = p.count);
+            const psActive = psMap.Active || 0, psDraft = psMap.Draft || 0;
+            const psFlags = [];
+            if (psDraft > 0) psFlags.push(t(
+                psDraft + ' draft process' + (psDraft === 1 ? '' : 'es') + ' need approval to go live',
+                psDraft + ' عملية في المسودات تحتاج موافقة لتفعيلها'
+            ));
+            if (psActive < DASH.totals.processes * 0.5) psFlags.push(t(
+                'Less than half of processes are Active — review portfolio health',
+                'أقل من نصف العمليات نشطة — راجع وضع المحفظة'
+            ));
+
+            // ── Section 2: Improvement quadrant mix ──
+            const qMap = {}; (DASH.improvementsByQuadrant || []).forEach(q => qMap[q.quadrant] = q.count);
+            const qWins = qMap.QuickWins || 0, qMajor = qMap.MajorProjects || 0,
+                  qFill = qMap.FillIns || 0,   qAvoid = qMap.ThanklessTasks || 0;
+
+            // ── Section 3: ROI ──
+            const roiPct = pct(DASH.roi.actCost, DASH.roi.estCost);
+
+            // ── Section 4: Top categories (already top-5) ──
+            const topCats = (DASH.topCategories || []).slice(0, 3);
+
+            // ── Section 5: CSAT outliers ──
+            const perf = (DASH.servicePerf || []).filter(s => s.customerSatisfaction > 0);
+            const bestCsat = perf[0];
+            const worstCsat = perf.length > 1 ? perf[perf.length - 1] : null;
+
+            const escape = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+            const link = (label, href) => `<a href="${DASH.base}${escape(href)}" style="color:#005B99;font-weight:600;text-decoration:none;font-size:var(--fs-xs);">${escape(label)} →</a>`;
+
+            const html = `
+            <div style="text-align:start;font-size:var(--fs-sm);color:#374151;line-height:1.5;">
+
+                <div class="dash-insight-section">
+                    <div class="dash-insight-h">${t('Process portfolio', 'محفظة العمليات')}</div>
+                    <div style="font-size:var(--fs-xs);color:#6b7280;margin-bottom:.35rem;">
+                        ${fmt(DASH.totals.processes)} ${t('total processes', 'عملية إجمالاً')} ·
+                        <span style="color:#15803d;">${psActive} ${t('Active', 'نشطة')}</span>${psDraft > 0 ? ` · <span style="color:#92400e;">${psDraft} ${t('Draft', 'مسودة')}</span>` : ''}
+                    </div>
+                    ${link(t('View all processes', 'عرض جميع العمليات'), '/Processes')}
+                </div>
+
+                <div class="dash-insight-section">
+                    <div class="dash-insight-h">${t('Improvement initiatives', 'مبادرات التحسين')}</div>
+                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;margin:.35rem 0;">
+                        <div style="background:#f8fafc;border:1px solid #e5e7eb;color:#374151;border-radius:5px;padding:.35rem .5rem;text-align:center;font-size:var(--fs-xs);"><b style="color:#1f2937;">${qWins}</b><br>${t('Quick wins', 'مكاسب سريعة')}</div>
+                        <div style="background:#f8fafc;border:1px solid #e5e7eb;color:#374151;border-radius:5px;padding:.35rem .5rem;text-align:center;font-size:var(--fs-xs);"><b style="color:#1f2937;">${qMajor}</b><br>${t('Major', 'رئيسية')}</div>
+                        <div style="background:#f8fafc;border:1px solid #e5e7eb;color:#374151;border-radius:5px;padding:.35rem .5rem;text-align:center;font-size:var(--fs-xs);"><b style="color:#1f2937;">${qFill}</b><br>${t('Fill-Ins', 'مكمّلة')}</div>
+                        @* Use the same "Hard Slogs" wording the Improvements
+                           Dashboard tile + Quadrant Analysis use, so the AI
+                           Insights modal doesn't show a fourth name for the
+                           same quadrant. *@
+                        <div style="background:#f8fafc;border:1px solid #e5e7eb;color:#374151;border-radius:5px;padding:.35rem .5rem;text-align:center;font-size:var(--fs-xs);"><b style="color:#1f2937;">${qAvoid}</b><br>${t('Hard Slogs', 'مهام غير مجدية')}</div>
+                    </div>
+                    <div style="font-size:var(--fs-xs);color:#6b7280;">
+                        ${link(t('Quadrant matrix', 'مصفوفة الرباعي'), '/Dashboard/QuadrantAnalysis')} &nbsp; ${link(t('Kanban', 'لوحة كانبان'), '/Improvements/Kanban')}
+                    </div>
+                </div>
+
+                <div class="dash-insight-section">
+                    <div class="dash-insight-h">${t('Cost savings realised', 'الوفورات المحققة')}</div>
+                    <div style="font-size:var(--fs-xs);color:#6b7280;margin-bottom:.35rem;">
+                        <b style="color:#15803d;">${aed(DASH.roi.actCost)}</b>
+                        ${t('of', 'من')}
+                        <b style="color:#1f2937;">${aed(DASH.roi.estCost)}</b>
+                        ${t('estimated', 'متوقع')}
+                    </div>
+                    <div style="height:6px;background:#f1f5f9;border-radius:3px;overflow:hidden;">
+                        <div style="height:100%;width:${Math.min(100, roiPct)}%;background:#15803d;"></div>
+                    </div>
+                    <div style="font-size:11px;color:#94a3b8;margin-top:.2rem;">${roiPct}% ${t('of target', 'من الهدف')}</div>
+                </div>
+
+                ${topCats.length > 0 ? `
+                <div class="dash-insight-section">
+                    <div class="dash-insight-h">${t('Top categories by process count', 'أعلى الفئات حسب عدد العمليات')}</div>
+                    <ol style="margin:.25rem 0 .35rem 1.25rem;padding:0;font-size:var(--fs-xs);color:#374151;">
+                        ${topCats.map(c => `<li>${escape(c.name)} <span style="color:#94a3b8;">— ${c.processCount}</span></li>`).join('')}
+                    </ol>
+                </div>` : ''}
+
+                ${bestCsat ? `
+                <div class="dash-insight-section" style="border-bottom:none;">
+                    <div class="dash-insight-h">${t('Customer satisfaction', 'رضا العملاء')}</div>
+                    <div style="font-size:var(--fs-xs);color:#6b7280;">
+                        <span style="color:#94a3b8;">${t('Highest', 'الأعلى')}:</span> <b style="color:#1f2937;">${escape(bestCsat.serviceName)}</b> — <b style="color:#1f2937;">${bestCsat.customerSatisfaction}%</b>
+                        ${worstCsat && worstCsat.serviceName !== bestCsat.serviceName ? `<br><span style="color:#94a3b8;">${t('Lowest', 'الأدنى')}:</span> ${escape(worstCsat.serviceName)} — <b style="color:#1f2937;">${worstCsat.customerSatisfaction}%</b>` : ''}
+                    </div>
+                </div>` : ''}
+            </div>
+            <style>
+                .dash-insight-section { padding: .55rem 0; border-bottom: 1px dashed #e5e7eb; }
+                .dash-insight-section:last-child { border-bottom: none; }
+                .dash-insight-h { font-size: var(--fs-xs); font-weight: 700; color: #111827; margin-bottom: .15rem; text-transform: uppercase; letter-spacing: .03em; }
+            </style>`;
+
+            Swal.fire({
+                title: t('Dashboard Insights', 'ملخص لوحة المعلومات'),
+                html: html,
+                width: '560px',
+                showConfirmButton: true,
+                confirmButtonText: t('Close', 'إغلاق'),
+                confirmButtonColor: '#005B99',
+                customClass: { htmlContainer: 'dash-insights-html' }
+            });
+        }
+
+        function exportDashboard() {
+            const t = (en, ar) => DASH.isRtl ? ar : en;
+            const base = window.SP_PATHBASE || '';
+            Swal.fire({
+                title: t('Export Dashboard', 'تصدير لوحة المعلومات'),
+                text: t('Choose export format', 'اختر صيغة التصدير'),
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: t('PDF', 'PDF'),
+                cancelButtonText: t('CSV', 'CSV'),
+                confirmButtonColor: '#005B99',
+                cancelButtonColor: '#6b7280'
+            }).then((result) => {
+                // Both paths now hit server-side endpoints that render
+                // a branded PDF (QuestPDF) and a structured CSV (with
+                // metadata header + all dashboard sections). The old
+                // client-side `window.print()` printed empty pages
+                // because Chart.js canvases don't make it into the
+                // print layer; the old client-side CSV missed sections
+                // and used culture-dependent number formatting.
+                if (result.isConfirmed) {
+                    window.location.href = base + '/Dashboard/ExportPdf';
+                } else if (result.dismiss === Swal.DismissReason.cancel) {
+                    window.location.href = base + '/Dashboard/ExportCsv';
+                }
+            });
+        }
+    </script>
+}

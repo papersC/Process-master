@@ -1,0 +1,172 @@
+@model ESEMS.Web.Models.CustomUser
+@inject IStringLocalizer<SharedResource> Shared
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = Shared["Title_EditUser"].Value;
+}
+
+<!-- Modern Banner -->
+<partial name="_ModuleBanner" model='new { icon = "user-edit", title = Shared["Title_EditUser"].Value, subtitle = Shared["Text_UpdateUserInfoRoles"].Value }' />
+
+<div class="container mx-auto px-4 py-8">
+    <div class="bg-white rounded-2xl shadow-lg p-8">
+        <form asp-action="Edit" method="post">
+            @Html.AntiForgeryToken()
+            <input type="hidden" asp-for="UserId" />
+            @* Round-trip the rowversion so the POST hits a concurrency conflict
+               (DbUpdateConcurrencyException → friendly "refresh and retry" message)
+               instead of silently last-write-wins if another admin saved meanwhile. *@
+            <input type="hidden" asp-for="RowVersion" />
+            @*
+               IMPORTANT: do NOT round-trip Password, Points, or InnovatorLevel
+               as hidden inputs here. The Edit POST uses load-then-patch and
+               never reads those values from the form — so the round-trip was
+               vestigial AND a silent-failure hazard: the stored PBKDF2 hash is
+               64 chars and the model's [MaxLength(256)] (was 50 before) was
+               failing model-binding validation, which silently fell into
+               `return View(user)` with no visible error. Removing the hidden
+               inputs eliminates that whole class of failure for fields that
+               aren't actually editable here anyway.
+            *@
+            @* "All" instead of "ModelOnly" so any future error tied to a
+               specific property without its own validation span (e.g. a
+               future hidden field) surfaces in the summary instead of
+               silently sinking. Wrapped in a ModelState.IsValid guard so the
+               pink chrome only renders when there's actually an error —
+               otherwise the asp-validation-summary tag helper emits a
+               styled-but-empty <ul> on every page load, which looks like a
+               stray red box at the top of the form. *@
+            @if (!ViewData.ModelState.IsValid)
+            {
+                <div asp-validation-summary="All" class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800"></div>
+            }
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Username -->
+                <div>
+                    <label asp-for="Username" class="block text-sm font-medium text-gray-700 mb-2">@Shared["Label_Username"] *</label>
+                    <input asp-for="Username" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                    <span asp-validation-for="Username" class="text-red-500 text-xs mt-1"></span>
+                </div>
+
+                <!-- Employee Number -->
+                <div>
+                    <label asp-for="EmployeeNumber" class="block text-sm font-medium text-gray-700 mb-2">@Shared["Label_EmployeeNumber"]</label>
+                    <input asp-for="EmployeeNumber" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                    <span asp-validation-for="EmployeeNumber" class="text-red-500 text-xs mt-1"></span>
+                </div>
+
+                <!-- Employee Name (English) -->
+                <div>
+                    <label asp-for="EmployeeName" class="block text-sm font-medium text-gray-700 mb-2">@Shared["Label_EmployeeNameEnglish"]</label>
+                    <input asp-for="EmployeeName" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                    <span asp-validation-for="EmployeeName" class="text-red-500 text-xs mt-1"></span>
+                </div>
+
+                <!-- Employee Name (Arabic) -->
+                <div>
+                    <label asp-for="EmployeeNameAr" class="block text-sm font-medium text-gray-700 mb-2">@Shared["Label_EmployeeNameArabic"]</label>
+                    <input asp-for="EmployeeNameAr" dir="rtl" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                    <span asp-validation-for="EmployeeNameAr" class="text-red-500 text-xs mt-1"></span>
+                </div>
+
+                <!-- Email -->
+                <div>
+                    <label asp-for="EmailAddress" class="block text-sm font-medium text-gray-700 mb-2">@Shared["Label_Email"]</label>
+                    <input asp-for="EmailAddress" type="email" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                    <span asp-validation-for="EmailAddress" class="text-red-500 text-xs mt-1"></span>
+                </div>
+
+                <!-- Active status (FUNC-006: deactivate = soft-delete; uncheck to deactivate, check to reactivate) -->
+                <div class="flex items-center mt-7">
+                    <input asp-for="IsActive" type="checkbox" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
+                    <label asp-for="IsActive" class="ms-2 text-sm font-medium text-gray-700">@Shared["Label_Active"]</label>
+                </div>
+
+                <!-- Job Name (English) -->
+                <div>
+                    <label asp-for="JobName" class="block text-sm font-medium text-gray-700 mb-2">@Shared["Label_JobTitleEnglish"]</label>
+                    <input asp-for="JobName" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                    <span asp-validation-for="JobName" class="text-red-500 text-xs mt-1"></span>
+                </div>
+
+                <!-- Job Name (Arabic) -->
+                <div>
+                    <label asp-for="JobNameAr" class="block text-sm font-medium text-gray-700 mb-2">@Shared["Label_JobTitleArabic"]</label>
+                    <input asp-for="JobNameAr" dir="rtl" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                    <span asp-validation-for="JobNameAr" class="text-red-500 text-xs mt-1"></span>
+                </div>
+
+                <!-- Organization Unit -->
+                <div>
+                    <label asp-for="UnitId" class="block text-sm font-medium text-gray-700 mb-2">@Shared["Label_OrganizationUnit"]</label>
+                    <select asp-for="UnitId" asp-items="ViewBag.OrganizationUnits" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <option value="">@Shared["Text_SelectOrganizationUnit"]</option>
+                    </select>
+                    <span asp-validation-for="UnitId" class="text-red-500 text-xs mt-1"></span>
+                </div>
+            </div>
+
+            <!-- Role Groups (Plan X — matrix-driven authorization) -->
+            <div class="mt-6">
+                <div class="flex items-center gap-2 mb-3">
+                    <label class="block text-sm font-medium text-gray-700">@(ViewContext.HttpContext.Request.Query["culture"] == "ar" ? "مجموعات الصلاحيات" : "Role Groups")</label>
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-full" style="background:rgba(0,91,153,.1);color:#005B99;">
+                        <i data-lucide="shield-check" style="width:10px;height:10px;"></i>
+                        Active
+                    </span>
+                </div>
+                <p class="text-xs text-gray-500 mb-3">Each group grants a bundle of module/action permissions. You can assign multiple groups — permissions are combined.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    @if (ViewBag.AllRoleGroups != null)
+                    {
+                        var selectedGroupIds = (ViewBag.UserRoleGroupIds as List<string>) ?? new List<string>();
+                        @foreach (var rg in (IEnumerable<ESEMS.Web.Models.Common.RoleGroup>)ViewBag.AllRoleGroups)
+                        {
+                            var isChecked = selectedGroupIds.Contains(rg.Id);
+                            var permCount = string.IsNullOrWhiteSpace(rg.Permissions) ? 0 : rg.Permissions.Split(',').Length;
+                            <label class="flex items-start gap-3 p-3 border-2 rounded-lg cursor-pointer transition-all @(isChecked ? "border-[#005B99] bg-blue-50" : "border-gray-200 hover:border-gray-300")">
+                                <input type="checkbox" name="selectedRoleGroups" value="@rg.Id" @(isChecked ? "checked" : "") class="mt-0.5 w-4 h-4 border-gray-300 rounded" style="accent-color:#005B99;" />
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2 mb-0.5">
+                                        <i data-lucide="@rg.Icon" style="width:14px;height:14px;color:#005B99;"></i>
+                                        <span class="text-sm font-semibold text-gray-900 truncate">@rg.NameEn</span>
+                                        @if (rg.IsSystemRole)
+                                        {
+                                            <i data-lucide="lock" class="w-3 h-3 text-gray-400" title="System role"></i>
+                                        }
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(rg.DescriptionEn))
+                                    {
+                                        <div class="text-xs text-gray-500 truncate" title="@rg.DescriptionEn">@rg.DescriptionEn</div>
+                                    }
+                                    <div class="text-[10px] text-gray-400 mt-1">@permCount permissions · scope: @rg.ScopeLevel</div>
+                                </div>
+                            </label>
+                        }
+                    }
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="mt-8 flex items-center gap-4">
+                <button type="submit" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
+                    <i data-lucide="save" class="w-5 h-5"></i>
+                    @Shared["Button_UpdateUser"]
+                </button>
+                <a asp-action="Details" asp-route-id="@Model.UserId" class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors flex items-center gap-2">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                    @Shared["Button_Cancel"]
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+    <script nonce="@Context.CspNonce()">
+        lucide.createIcons();
+    </script>
+}
+

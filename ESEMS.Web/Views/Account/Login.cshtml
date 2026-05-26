@@ -1,0 +1,173 @@
+@model LoginViewModel
+@{
+    ViewData["Title"] = Shared["Title_Login"].Value;
+    Layout = null;
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+}
+
+<!DOCTYPE html>
+<html lang="@(isRtl ? "ar" : "en")" dir="@(isRtl ? "rtl" : "ltr")">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="path-base" content="@Context.Request.PathBase" />
+    <title>@ViewData["Title"] - ESEMS</title>
+    <script src="~/lib/tailwind/tailwind-play.min.js" asp-append-version="true"></script>
+    <script nonce="@Context.CspNonce()">
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: { 50: '#e6f0f7', 100: '#cce1ef', 200: '#99c3df', 300: '#66a5cf', 400: '#3387bf', 500: '#005B99', 600: '#00497a', 700: '#00375c', 800: '#00253d', 900: '#00121f' }
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="~/lib/lucide/lucide.min.js" asp-append-version="true"></script>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <style>
+        body {
+            background: linear-gradient(135deg, #005B99 0%, #00497a 50%, #00375c 100%);
+            min-height: 100vh;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center p-4">
+    <div class="w-full max-w-md">
+        <!-- Login Card -->
+        <div class="bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <!-- Logo & Title Section -->
+            <div class="bg-gradient-to-br from-primary-500 to-primary-700 px-8 py-10 text-center text-white">
+                <div class="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <i data-lucide="shield-check" class="h-8 w-8"></i>
+                </div>
+                <h1 class="text-2xl font-bold tracking-wide">ESEMS</h1>
+                <p class="mt-2 text-primary-100 text-sm">@Shared["App_ESEMS_FullName"]</p>
+                <p class="mt-1 text-primary-200 text-xs">@Shared["Org_MBRHE_Establishment"]</p>
+            </div>
+
+            <!-- Form Section -->
+            <div class="p-8">
+                <form asp-action="Login" method="post" class="space-y-5">
+                    <input type="hidden" name="returnUrl" value="@ViewData["ReturnUrl"]" />
+                    <div asp-validation-summary="ModelOnly" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm"></div>
+                    @if (ViewData["ErrorMessage"] is string loginError)
+                    {
+                        <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm" role="alert">@loginError</div>
+                    }
+
+                    <!-- Username Field -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1.5">@(isRtl ? "اسم المستخدم" : "Username")</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 @(isRtl ? "right-0 pr-3" : "left-0 pl-3") flex items-center pointer-events-none">
+                                <i data-lucide="user" class="h-5 w-5 text-gray-400"></i>
+                            </div>
+                            <input asp-for="Username" type="text" class="w-full @(isRtl ? "pr-10 pl-4" : "pl-10 pr-4") py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors" placeholder="@(isRtl ? "أدخل اسم المستخدم" : "Enter your username")" />
+                        </div>
+                        <span asp-validation-for="Username" class="text-red-500 text-xs mt-1"></span>
+                    </div>
+
+                    <!-- Password Field -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1.5">@Shared["Label_Password"]</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 @(isRtl ? "right-0 pr-3" : "left-0 pl-3") flex items-center pointer-events-none">
+                                <i data-lucide="lock" class="h-5 w-5 text-gray-400"></i>
+                            </div>
+                            <input asp-for="Password" type="password" class="w-full @(isRtl ? "pr-10 pl-4" : "pl-10 pr-4") py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors" placeholder="@Shared["Placeholder_Password"]" />
+                        </div>
+                        <span asp-validation-for="Password" class="text-red-500 text-xs mt-1"></span>
+                    </div>
+
+                    <!-- Remember Me -->
+                    <div class="flex items-center justify-between">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input asp-for="RememberMe" type="checkbox" class="w-4 h-4 text-primary-500 border-gray-300 rounded focus:ring-primary-500" />
+                            <span class="text-sm text-gray-600">@Shared["Label_RememberMe"]</span>
+                        </label>
+                        <span class="text-sm text-gray-400" title="@Shared["Hint_ForgotPasswordContactAdmin"]">@Shared["Hint_ForgotPassword"]</span>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" class="w-full bg-primary-500 hover:bg-primary-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2">
+                        <i data-lucide="log-in" class="h-5 w-5"></i>
+                        @Shared["Button_Login"]
+                    </button>
+                </form>
+
+                <!-- Divider -->
+                <div class="relative my-6">
+                    <div class="absolute inset-0 flex items-center">
+                        <div class="w-full border-t border-gray-200"></div>
+                    </div>
+                    <div class="relative flex justify-center text-sm">
+                        <span class="px-4 bg-white text-gray-500">@(isRtl ? "أو" : "OR")</span>
+                    </div>
+                </div>
+
+                <!-- Windows Authentication (IIS Negotiate challenge) -->
+                <a asp-action="WindowsLogin" asp-controller="Account" asp-route-returnUrl="@ViewData["ReturnUrl"]"
+                   class="w-full bg-white hover:bg-gray-50 text-gray-700 font-medium py-3 px-4 rounded-lg border border-gray-300 transition-colors flex items-center justify-center gap-2 no-underline">
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/>
+                    </svg>
+                    @(isRtl ? "تسجيل الدخول بحساب Windows" : "Sign in with Windows")
+                </a>
+
+                <!-- Language Switcher -->
+                <div class="mt-6 pt-6 border-t border-gray-200 flex items-center justify-center gap-4">
+                    <button onclick="changeLanguage('en')" class="flex items-center gap-1.5 text-sm @(!isRtl ? "text-primary-500 font-medium" : "text-gray-500 hover:text-gray-700")">
+                        <i data-lucide="globe" class="h-4 w-4"></i>
+                        @Shared["Lang_English"]
+                    </button>
+                    <span class="text-gray-300">|</span>
+                    <button onclick="changeLanguage('ar')" class="flex items-center gap-1.5 text-sm @(isRtl ? "text-primary-500 font-medium" : "text-gray-500 hover:text-gray-700")">
+                        <i data-lucide="globe" class="h-4 w-4"></i>
+                        العربية
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <p class="text-center text-primary-200 text-xs mt-6">
+            © @DateTime.Now.Year ESEMS • @Shared["App_ESEMS_FullName"]
+        </p>
+    </div>
+
+    <script src="~/lib/jquery/dist/jquery.min.js" asp-append-version="true"></script>
+    <script src="~/lib/jquery-validation/dist/jquery.validate.min.js" asp-append-version="true"></script>
+    <script src="~/lib/jquery-validation-unobtrusive/jquery.validate.unobtrusive.min.js" asp-append-version="true"></script>
+    <script nonce="@Context.CspNonce()">
+        lucide.createIcons();
+
+        function changeLanguage(culture) {
+            // UX-006: send returnUrl WITHOUT the PathBase prefix so this works
+            // under sub-app hosting (e.g. ejraa360.com/App). The server resolves
+            // the redirect via the cookie + same PathBase; sending the prefixed
+            // path would double up to /App/App/…. Mirrors _Layout SetLanguage.
+            const pathBaseMeta = document.querySelector('meta[name="path-base"]');
+            const pathBase = (pathBaseMeta && pathBaseMeta.getAttribute('content')) || '';
+            const fullPath = window.location.pathname + window.location.search;
+            const returnUrl = pathBase && fullPath.indexOf(pathBase) === 0
+                ? fullPath.substring(pathBase.length) || '/'
+                : fullPath;
+            fetch('@Url.Action("ChangeLanguage", "Base")', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ culture: culture, returnUrl: returnUrl })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.reload();
+                }
+            });
+        }
+    </script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+</body>
+</html>
+

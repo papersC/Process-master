@@ -1,0 +1,294 @@
+@model IEnumerable<Process>
+@{
+    ViewData["Title"] = Shared["Title_Processes"].Value;
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    var processIdsWithBpmn = ViewBag.ProcessIdsWithBpmn as HashSet<string> ?? new HashSet<string>();
+}
+
+@*  Report-style index — compact toolbar, sortable table, no banner.
+    JS hooks preserved: #searchInput, #filterStatus, #filterType,
+    #filterBpmn, #filterProcessGroup, applyFilters(), clearFilters(). *@
+
+<style>
+    .lt-shell { display: flex; flex-direction: column; gap: .6rem; height: calc(100vh - 140px); min-height: 580px; }
+    .lt-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; flex: 0 0 auto; }
+    .lt-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .lt-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .lt-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; }
+    .lt-btn-primary { background: #005B99; color: #fff; border: none; } .lt-btn-primary:hover { background: #003d6b; color: #fff; }
+    .lt-btn-outline { background: #fff; color: #005B99; border: 1px solid #cbd5e1; } .lt-btn-outline:hover { background: #f1f5f9; }
+    .lt-toolbar { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; padding: .5rem .75rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; flex: 0 0 auto; }
+    .lt-search { flex: 1 1 220px; max-width: 320px; position: relative; }
+    .lt-search input { width: 100%; padding: .42rem .7rem; padding-inline-start: 2.1rem; border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-sm); }
+    .lt-search input:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    /* Target both <i> (pre-lucide) and <svg> (post-lucide replacement). lucide.createIcons()
+       swaps <i data-lucide=...> for <svg>, dropping any selector that targeted the <i>. */
+    .lt-search > i, .lt-search > svg { position: absolute; top: 50%; transform: translateY(-50%); inset-inline-start: .65rem; width: 16px; height: 16px; color: #9ca3af; pointer-events: none; }
+    .lt-toolbar select { padding: .38rem .55rem; border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-xs); background: #fff; }
+    .lt-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .lt-table-wrap { flex: 1 1 0; min-height: 0; overflow: auto; }
+    .lt-table-wrap table { width: 100%; font-size: var(--fs-sm); border-collapse: collapse; }
+    .lt-table-wrap thead { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
+    .lt-table-wrap th { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; padding: .55rem .75rem; text-align: start; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+    .lt-table-wrap td { padding: .5rem .75rem; border-bottom: 1px solid #f3f4f6; color: #374151; }
+    .lt-table-wrap tbody tr:hover td { background: #f9fafb; }
+    .lt-pill { display: inline-block; padding: .15rem .5rem; font-size: var(--fs-xs); font-weight: 600; border-radius: .25rem; }
+    .lt-pill-Active { background: #ecfdf5; color: #047857; }
+    .lt-pill-Draft { background: #fef3c7; color: #92400e; }
+    .lt-pill-UnderImprovement { background: #eff6ff; color: #1d4ed8; }
+    .lt-pill-Archived { background: #f1f5f9; color: #475569; }
+    .lt-pill-Core { background: #ede9fe; color: #6d28d9; }
+    .lt-pill-Support { background: #cffafe; color: #0e7490; }
+    .lt-pill-Management { background: #fef3c7; color: #92400e; }
+    .lt-actions { display: inline-flex; gap: .35rem; }
+    .lt-actions a { color: #005B99; padding: .2rem; border-radius: .25rem; transition: background .15s; }
+    .lt-actions a:hover { background: #eff6ff; }
+    /* Pager (.lt-pager*) styles are now global in _Layout.cshtml — shared by
+       this page's #ltPager, lt-list-paginate.js, and the DataTables footer. */
+</style>
+
+<div class="lt-shell">
+    <div class="lt-header">
+        <div>
+            <h1><i data-lucide="workflow" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>@Shared["Heading_Processes_Level3"]</h1>
+            <p>@Shared["Text_ManageOperationalProcesses"]</p>
+        </div>
+        <div style="display:flex;gap:.4rem;">
+            <a asp-action="Dashboard" class="lt-btn lt-btn-outline"><i data-lucide="layout-dashboard" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "نظرة عامة" : "Overview")</a>
+            <a asp-action="Create" class="lt-btn lt-btn-primary"><i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>@Shared["Action_AddProcess"]</a>
+        </div>
+    </div>
+
+    <div class="lt-toolbar">
+        <div class="lt-search">
+            <i data-lucide="search" class="w-4 h-4" aria-hidden="true"></i>
+            <input type="text" id="searchInput" placeholder="@Shared["Filter_SearchProcesses"]" aria-label="@Shared["Filter_SearchProcesses"]" />
+        </div>
+        <select id="filterProcessGroup" aria-label="@Shared["Filter_ProcessGroup"]"><option value="">@Shared["Filter_ProcessGroup"]: @Shared["Filter_All"]</option></select>
+        <select id="filterStatus" aria-label="@Shared["Filter_Status"]">
+            <option value="">@Shared["Filter_Status"]: @Shared["Filter_All"]</option>
+            <option value="Draft">@Shared["Status_Draft"]</option>
+            <option value="Active">@Shared["Status_Active"]</option>
+            <option value="UnderImprovement">@Shared["Status_UnderImprovement"]</option>
+            <option value="Archived">@Shared["Status_Archived"]</option>
+        </select>
+        <select id="filterType" aria-label="@Shared["Filter_Type"]">
+            <option value="">@Shared["Filter_Type"]: @Shared["Filter_All"]</option>
+            <option value="Core">@Shared["Type_Core"]</option>
+            <option value="Support">@Shared["Type_Support"]</option>
+            <option value="Management">@Shared["Type_Management"]</option>
+        </select>
+        <select id="filterBpmn" aria-label="@Shared["Filter_BPMN"]">
+            <option value="">BPMN: @Shared["Filter_All"]</option>
+            <option value="has">@Shared["Filter_HasBPMN"]</option>
+            <option value="no">@Shared["Filter_NoBPMN"]</option>
+        </select>
+        <button onclick="clearFilters()" class="lt-btn lt-btn-outline"><i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>@Shared["Filter_Clear"]</button>
+        <span style="flex:1;"></span>
+        <a href="~/api/export/processes/excel" class="lt-btn lt-btn-outline"><i data-lucide="file-spreadsheet" class="w-3.5 h-3.5" aria-hidden="true"></i>Excel</a>
+        <a href="~/api/export/processes/pdf" class="lt-btn lt-btn-outline"><i data-lucide="file-text" class="w-3.5 h-3.5" aria-hidden="true"></i>PDF</a>
+    </div>
+
+    <div class="lt-card">
+        <div class="lt-table-wrap" id="ltTableWrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>@(isRtl ? "الكود" : "Code")</th>
+                        <th>@(isRtl ? "اسم العملية" : "Process Name")</th>
+                        <th>@(isRtl ? "المجموعة" : "Group")</th>
+                        <th>@(isRtl ? "الوحدة" : "Unit")</th>
+                        <th>@(isRtl ? "النوع" : "Type")</th>
+                        <th>@Shared["Column_Status"]</th>
+                        <th style="text-align:center;">BPMN</th>
+                        <th style="text-align:end;">@Shared["Column_Actions"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model)
+                    {
+                        var hasBpmnTasks = processIdsWithBpmn.Contains(item.Id);
+                        <tr>
+                            <td><code style="font-size: var(--fs-xs);color:#475569;">@item.Code</code></td>
+                            <td><span style="font-weight:500;color:#111827;">@(isRtl ? item.NameAr : item.NameEn)</span></td>
+                            <td>@(item.ProcessGroup != null ? (isRtl ? item.ProcessGroup.NameAr : item.ProcessGroup.NameEn) : "—")</td>
+                            <td>@(item.OwningUnit != null ? (isRtl ? item.OwningUnit.NameAr : item.OwningUnit.NameEn) : "—")</td>
+                            <td><span class="lt-pill lt-pill-@item.ProcessType">@Shared[$"ProcessType_{item.ProcessType}"]</span></td>
+                            <td><span class="lt-pill lt-pill-@item.Status">@Shared[$"ProcessStatus_{item.Status}"]</span></td>
+                            <td style="text-align:center;" data-has-bpmn="@(hasBpmnTasks ? "has" : "no")">
+                                @if (hasBpmnTasks) { <i data-lucide="check-circle" class="w-4 h-4" style="color:#0e7490;" aria-label="BPMN"></i> }
+                                else { <span style="color:#cbd5e1;">—</span> }
+                            </td>
+                            <td style="text-align:end;">
+                                <span class="lt-actions">
+                                    <a asp-action="Details" asp-route-id="@item.Id" aria-label="@Shared["Tooltip_ViewDetails"]"><i data-lucide="eye" class="w-4 h-4" aria-hidden="true"></i></a>
+                                    <a asp-action="Edit" asp-route-id="@item.Id" aria-label="@Shared["Tooltip_EditRecord"]"><i data-lucide="edit" class="w-4 h-4" aria-hidden="true"></i></a>
+                                    <a asp-action="Raci" asp-route-id="@item.Id" aria-label="RACI"><i data-lucide="users" class="w-4 h-4" aria-hidden="true"></i></a>
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                    @if (!Model.Any())
+                    {
+                        <tr><td colspan="8" style="padding:3rem 1rem;text-align:center;color:#94a3b8;">
+                            <i data-lucide="inbox" class="w-10 h-10" aria-hidden="true" style="margin:0 auto .5rem;display:block;color:#cbd5e1;"></i>
+                            <div style="font-weight:500;margin-bottom:.25rem;">@Shared["Empty_NoProcesses"]</div>
+                            <a asp-action="Create" style="color:#005B99;text-decoration:none;font-size: var(--fs-sm);">@Shared["Empty_CreateFirstProcess"]</a>
+                        </td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @* Pager — pure client-side, slices the rows that survived the filter
+           pass. Hidden when there's nothing to page (zero rows or all fit on
+           one page). *@
+        <div class="lt-pager" id="ltPager" style="display:none;">
+            <div class="lt-pager-info">
+                <span id="ltPagerInfo"></span>
+            </div>
+            <div class="lt-pager-controls" id="ltPagerControls"></div>
+            <div class="lt-pager-size">
+                <span>@(isRtl ? "صف لكل صفحة" : "Rows per page")</span>
+                @* M-13 (Tier-3 a11y): adjacent span isn't formally associated. *@
+                <select id="ltPageSize" aria-label="@(isRtl ? "صف لكل صفحة" : "Rows per page")">
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="0">@(isRtl ? "الكل" : "All")</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+
+        // Single source of truth — every filter-passing row goes here, and
+        // the pager slices this list. Recomputed by applyFilters().
+        let ltMatchedRows = [];
+        let ltCurrentPage = 1;
+        const PAGE_LABEL = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(isRtl ? "عرض {a}–{b} من {n}" : "Showing {a}–{b} of {n}"));
+        const PAGE_LABEL_NONE = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(isRtl ? "لا توجد نتائج" : "No matches"));
+
+        function clearFilters() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('filterProcessGroup').value = '';
+            document.getElementById('filterStatus').value = '';
+            document.getElementById('filterType').value = '';
+            document.getElementById('filterBpmn').value = '';
+            applyFilters();
+        }
+
+        function applyFilters() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const status = document.getElementById('filterStatus').value;
+            const type = document.getElementById('filterType').value;
+            const bpmnFilter = document.getElementById('filterBpmn').value;
+            const rows = Array.from(document.querySelectorAll('tbody tr'));
+            ltMatchedRows = [];
+            rows.forEach(row => {
+                if (row.querySelector('td[colspan]')) return;
+                const text = row.textContent.toLowerCase();
+                const hasBpmn = row.querySelector('td[data-has-bpmn]')?.getAttribute('data-has-bpmn');
+                let visible = true;
+                if (search && !text.includes(search)) visible = false;
+                if (status && !text.includes(status.toLowerCase())) visible = false;
+                if (type && !text.toLowerCase().includes(type.toLowerCase())) visible = false;
+                if (bpmnFilter && hasBpmn !== bpmnFilter) visible = false;
+                if (visible) ltMatchedRows.push(row);
+                else row.style.display = 'none';
+            });
+            ltCurrentPage = 1;
+            applyPager();
+        }
+
+        function applyPager() {
+            const pager = document.getElementById('ltPager');
+            const sizeEl = document.getElementById('ltPageSize');
+            const size = parseInt(sizeEl.value, 10) || 0;        // 0 = "All"
+            const total = ltMatchedRows.length;
+            const totalPages = size > 0 ? Math.max(1, Math.ceil(total / size)) : 1;
+            if (ltCurrentPage > totalPages) ltCurrentPage = totalPages;
+            const start = size > 0 ? (ltCurrentPage - 1) * size : 0;
+            const end   = size > 0 ? start + size : total;
+
+            ltMatchedRows.forEach((row, idx) => {
+                row.style.display = (idx >= start && idx < end) ? '' : 'none';
+            });
+
+            // Pager visible only when there are matches AND more than 1 page
+            // (or when paging is on but the user might want to switch sizes).
+            const hasMatches = total > 0;
+            pager.style.display = hasMatches && (totalPages > 1 || size > 0) ? '' : 'none';
+
+            // Info text + paginator buttons.
+            const info = document.getElementById('ltPagerInfo');
+            if (!hasMatches) {
+                info.textContent = PAGE_LABEL_NONE;
+            } else {
+                const a = total > 0 ? start + 1 : 0;
+                const b = Math.min(end, total);
+                info.innerHTML = PAGE_LABEL
+                    .replace('{a}', '<b>' + a + '</b>')
+                    .replace('{b}', '<b>' + b + '</b>')
+                    .replace('{n}', '<b>' + total + '</b>');
+            }
+            renderPagerButtons(totalPages);
+        }
+
+        function renderPagerButtons(totalPages) {
+            const wrap = document.getElementById('ltPagerControls');
+            wrap.innerHTML = '';
+            if (totalPages <= 1) return;
+
+            const make = (label, page, opts) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'lt-pager-btn' + (opts?.active ? ' active' : '');
+                b.innerHTML = label;
+                if (opts?.disabled) b.disabled = true;
+                if (!opts?.disabled && page) b.addEventListener('click', () => { ltCurrentPage = page; applyPager(); });
+                wrap.appendChild(b);
+            };
+            const ellipsis = () => {
+                const s = document.createElement('span');
+                s.className = 'lt-pager-ellipsis';
+                s.textContent = '…';
+                wrap.appendChild(s);
+            };
+
+            // First / Prev.
+            make('«', 1,                    { disabled: ltCurrentPage === 1 });
+            make('‹', ltCurrentPage - 1,    { disabled: ltCurrentPage === 1 });
+
+            // Page numbers — show 1, current-1, current, current+1, last (with
+            // ellipses where there's a gap). Keeps the bar narrow even with
+            // hundreds of pages.
+            const pages = new Set([1, totalPages, ltCurrentPage, ltCurrentPage - 1, ltCurrentPage + 1]);
+            const sorted = [...pages].filter(p => p >= 1 && p <= totalPages).sort((a, b) => a - b);
+            let prev = 0;
+            sorted.forEach(p => {
+                if (p - prev > 1) ellipsis();
+                make(String(p), p, { active: p === ltCurrentPage });
+                prev = p;
+            });
+
+            // Next / Last.
+            make('›', ltCurrentPage + 1,    { disabled: ltCurrentPage === totalPages });
+            make('»', totalPages,           { disabled: ltCurrentPage === totalPages });
+        }
+
+        ['searchInput','filterStatus','filterType','filterBpmn','filterProcessGroup'].forEach(id => {
+            document.getElementById(id)?.addEventListener('input', applyFilters);
+            document.getElementById(id)?.addEventListener('change', applyFilters);
+        });
+        document.getElementById('ltPageSize')?.addEventListener('change', () => { ltCurrentPage = 1; applyPager(); });
+
+        // Initial pass — establishes ltMatchedRows + paints the first page.
+        applyFilters();
+    </script>
+}

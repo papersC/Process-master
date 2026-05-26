@@ -1,0 +1,127 @@
+@model IEnumerable<AssetCategory>
+@{
+    ViewData["Title"] = Shared["Nav_AssetCategories"].Value;
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+
+    var totalCategories = Model.Count();
+    var totalAssets = Model.Sum(c => c.Assets.Count);
+    var parents = Model.Count(c => c.ParentCategoryId == null);
+}
+
+<style>
+    .lt-shell { display: flex; flex-direction: column; gap: .6rem; }
+    .lt-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; }
+    .lt-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .lt-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .lt-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; border: none; }
+    .lt-btn-primary { background: #005B99; color: #fff; } .lt-btn-primary:hover { background: #003d6b; color: #fff; }
+    .lt-kpi-strip { display: flex; align-items: stretch; gap: .5rem; padding: .55rem .65rem; background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; flex-wrap: wrap; }
+    .lt-kpi { display: flex; align-items: center; gap: .55rem; padding: .25rem .65rem; flex: 1 1 180px; min-width: 180px; border-inline-end: 1px dashed #e5e7eb; }
+    .lt-kpi:last-child { border-inline-end: none; }
+    .lt-kpi-icon { width: 34px; height: 34px; border-radius: .375rem; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .lt-kpi-icon.kpi-blue   { background: #eff6ff; color: #005B99; }
+    .lt-kpi-icon.kpi-green  { background: #ecfdf5; color: #047857; }
+    .lt-kpi-icon.kpi-purple { background: #f5f3ff; color: #7c3aed; }
+    .lt-kpi-num { font-size: var(--fs-base); font-weight: 700; color: #111827; line-height: 1; }
+    .lt-kpi-label { font-size: var(--fs-xs); color: #6b7280; margin-top: .15rem; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+    @@media (max-width: 768px) { .lt-kpi { flex: 1 1 45%; border-inline-end: none; } }
+
+    .lt-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; display: flex; flex-direction: column; overflow: hidden; }
+    .lt-table-wrap { overflow: auto; }
+    .lt-table-wrap table { width: 100%; font-size: var(--fs-sm); border-collapse: collapse; }
+    .lt-table-wrap thead { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
+    .lt-table-wrap th { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; padding: .55rem .75rem; text-align: start; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+    .lt-table-wrap td { padding: .5rem .75rem; border-bottom: 1px solid #f3f4f6; color: #374151; vertical-align: middle; }
+    .lt-table-wrap tbody tr:hover td { background: #f9fafb; }
+    .lt-pill { display: inline-block; padding: .15rem .5rem; font-size: var(--fs-xs); font-weight: 600; border-radius: .25rem; }
+    .lt-pill-code { background: #eff6ff; color: #1d4ed8; }
+    .lt-pill-assets { background: #ecfdf5; color: #047857; }
+    .lt-pill-subs { background: #f5f3ff; color: #6d28d9; }
+    .lt-link { color: #005B99; font-weight: 600; text-decoration: none; }
+    .lt-link:hover { text-decoration: underline; color: #003d6b; }
+    .lt-actions { display: inline-flex; gap: .35rem; }
+    .lt-actions a { color: #005B99; padding: .2rem; border-radius: .25rem; transition: background .15s; }
+    .lt-actions a:hover { background: #eff6ff; }
+</style>
+
+<div class="lt-shell">
+    <div class="lt-header">
+        <div>
+            <h1><i data-lucide="folder-tree" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>@Shared["Nav_AssetCategories"]</h1>
+            <p>@Shared["Text_ManageAssetClassification"]</p>
+        </div>
+        <a asp-action="Create" class="lt-btn lt-btn-primary">
+            <i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>@Shared["Button_AddCategory"]
+        </a>
+    </div>
+
+    <div class="lt-kpi-strip">
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-blue"><i data-lucide="folder-tree" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@totalCategories</div><div class="lt-kpi-label">@Shared["Label_TotalCategories"]</div></div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-green"><i data-lucide="package" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@totalAssets</div><div class="lt-kpi-label">@Shared["Label_TotalAssets"]</div></div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-purple"><i data-lucide="folder" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@parents</div><div class="lt-kpi-label">@Shared["Label_ParentCategories"]</div></div>
+        </div>
+    </div>
+
+    <div class="lt-card">
+        <div class="lt-table-wrap">
+            <table class="esems-datatable" id="categoriesTable">
+                <thead>
+                    <tr>
+                        <th>@Shared["Column_Code"]</th>
+                        <th>@Shared["Column_Name"]</th>
+                        <th>@Shared["Column_ParentCategory"]</th>
+                        <th style="text-align:center;">@Shared["Label_Assets"]</th>
+                        <th style="text-align:center;">@Shared["Column_Subcategories"]</th>
+                        <th>@Shared["Column_DepreciationRate"]</th>
+                        <th style="text-align:end;">@Shared["Column_Actions"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var category in Model.OrderBy(c => c.Code))
+                    {
+                        <tr>
+                            <td><a asp-action="Details" asp-route-id="@category.Id" class="lt-link">@category.Code</a></td>
+                            <td>
+                                <div style="font-weight:600;color:#111827;">@(isRtl ? category.NameAr : category.NameEn)</div>
+                                @if (!string.IsNullOrEmpty(category.DescriptionEn))
+                                {
+                                    <div style="font-size: var(--fs-xs);color:#6b7280;">@(isRtl ? category.DescriptionAr : category.DescriptionEn)</div>
+                                }
+                            </td>
+                            <td style="color:#6b7280;">@(category.ParentCategory != null ? (isRtl ? category.ParentCategory.NameAr : category.ParentCategory.NameEn) : "—")</td>
+                            <td style="text-align:center;"><span class="lt-pill lt-pill-assets">@category.Assets.Count</span></td>
+                            <td style="text-align:center;"><span class="lt-pill lt-pill-subs">@category.SubCategories.Count</span></td>
+                            <td style="color:#374151;">@(category.DefaultDepreciationRate.HasValue ? $"{category.DefaultDepreciationRate.Value:0.##}%" : "—")</td>
+                            <td style="text-align:end;">
+                                <span class="lt-actions">
+                                    <a asp-action="Details" asp-route-id="@category.Id" title="@Shared["Title_ViewDetails"]" aria-label="@Shared["Title_ViewDetails"]"><i data-lucide="eye" class="w-4 h-4" aria-hidden="true"></i></a>
+                                    <a asp-action="Edit" asp-route-id="@category.Id" title="@Shared["Button_Edit"]" aria-label="@Shared["Button_Edit"]"><i data-lucide="edit" class="w-4 h-4" aria-hidden="true"></i></a>
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                    @if (!Model.Any())
+                    {
+                        <tr><td colspan="7" style="padding:3rem 1rem;text-align:center;color:#94a3b8;">
+                            <i data-lucide="inbox" class="w-10 h-10" aria-hidden="true" style="margin:0 auto .5rem;display:block;color:#cbd5e1;"></i>
+                            <div style="font-weight:500;">@(isRtl ? "لا توجد فئات بعد" : "No categories yet")</div>
+                        </td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">if (window.lucide) lucide.createIcons();</script>
+}

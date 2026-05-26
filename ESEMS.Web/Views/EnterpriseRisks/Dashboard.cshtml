@@ -1,0 +1,163 @@
+@model IEnumerable<EnterpriseRisk>
+@using ESEMS.Web.Models.Enums
+@{
+    ViewData["Title"] = Shared["Title_RisksDashboard"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentCulture.Name.StartsWith("ar");
+
+    var totalRisks = (int)(ViewBag.TotalRisks ?? 0);
+    var critical = (int)(ViewBag.CriticalRisks ?? 0);
+    var high = (int)(ViewBag.HighRisks ?? 0);
+    var outsideTolerance = (int)(ViewBag.OutsideTolerance ?? 0);
+    var reviewDue = (int)(ViewBag.ReviewDue ?? 0);
+    var noMitigation = (int)(ViewBag.NoMitigation ?? 0);
+    var medium = Model.Count(r => r.RiskLevel == RiskLevel.Medium);
+    var low = Model.Count(r => r.RiskLevel == RiskLevel.Low);
+    var topRisks = Model.OrderByDescending(r => r.InherentRiskScore).Take(10).ToList();
+}
+
+<style>
+    .rd-shell { display: flex; flex-direction: column; gap: .6rem; height: calc(100vh - 140px); min-height: 600px; }
+    .rd-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; flex: 0 0 auto; }
+    .rd-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .rd-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .rd-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; }
+    .rd-btn-primary { background: #005B99; color: #fff; border: none; } .rd-btn-primary:hover { background: #003d6b; color: #fff; }
+    .rd-btn-outline { background: #fff; color: #005B99; border: 1px solid #cbd5e1; } .rd-btn-outline:hover { background: #f1f5f9; }
+    .rd-kpi-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .5rem; flex: 0 0 auto; }
+    @@media (max-width: 1280px) { .rd-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    .rd-kpi { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; padding: .65rem .85rem; display: flex; align-items: center; gap: .65rem; }
+    .rd-kpi-bar { width: 4px; align-self: stretch; border-radius: 2px; flex-shrink: 0; }
+    .rd-kpi-meta { flex: 1; min-width: 0; }
+    .rd-kpi-label { font-size: var(--fs-xs); color: #6b7280; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rd-kpi-value { font-size: var(--fs-lg); font-weight: 700; color: #111827; line-height: 1.2; margin: 0; }
+    .rd-main { display: grid; grid-template-columns: 1.1fr 1.4fr; gap: .6rem; flex: 1 1 0; min-height: 0; }
+    @@media (max-width: 1024px) { .rd-main { grid-template-columns: 1fr; } }
+    .rd-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .rd-card-head { display: flex; align-items: center; justify-content: space-between; padding: .5rem .85rem; border-bottom: 1px solid #f1f5f9; flex: 0 0 auto; }
+    .rd-card-head h6 { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .4rem; }
+    .rd-card-body { flex: 1 1 0; min-height: 0; padding: .65rem .85rem; position: relative; }
+    .rd-chart-wrap { position: relative; height: 100%; max-width: 460px; max-height: 420px; margin: 0 auto; padding: 1rem .5rem .25rem; box-sizing: border-box; }
+    .rd-chart-center { position: absolute; inset: 1rem .5rem .25rem; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; padding-bottom: 2.5rem; }
+    .rd-chart-total { font-size: var(--fs-2xl); font-weight: 700; color: #111827; line-height: 1; }
+    .rd-chart-label { font-size: var(--fs-xs); color: #6b7280; margin-top: .2rem; text-transform: uppercase; letter-spacing: .04em; }
+    .rd-table-wrap { flex: 1 1 0; min-height: 0; overflow: auto; }
+    .rd-table-wrap table { width: 100%; font-size: var(--fs-xs); border-collapse: collapse; }
+    .rd-table-wrap thead { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
+    .rd-table-wrap th { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; padding: .55rem .8rem; text-align: start; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+    .rd-table-wrap td { padding: .5rem .8rem; border-bottom: 1px solid #f3f4f6; color: #374151; }
+    .rd-table-wrap tbody tr:hover td { background: #f9fafb; }
+    .rd-level { display: inline-block; padding: .15rem .5rem; font-size: var(--fs-xs); font-weight: 600; border-radius: .25rem; }
+    .rd-level-Critical { background: #fee2e2; color: #b91c1c; }
+    .rd-level-High { background: #ffedd5; color: #c2410c; }
+    .rd-level-Medium { background: #fef3c7; color: #92400e; }
+    .rd-level-Low { background: #ecfdf5; color: #047857; }
+    .rd-alert { background: #fef2f2; border: 1px solid #fecaca; border-radius: .5rem; padding: .6rem .85rem; display: flex; align-items: center; gap: .65rem; flex: 0 0 auto; }
+    .rd-alert i { color: #dc2626; flex-shrink: 0; }
+    .rd-alert-text { font-size: var(--fs-sm); color: #991b1b; }
+</style>
+
+<div class="rd-shell">
+    <div class="rd-header">
+        <div>
+            <h1><i data-lucide="shield-alert" class="w-5 h-5" style="color:#F46A6A;" aria-hidden="true"></i>@Shared["Title_RisksDashboard"]</h1>
+            <p>@Shared["Text_AnalyticsInsights"]</p>
+        </div>
+        <div style="display:flex;gap:.4rem;">
+            <a asp-action="HeatMap" class="rd-btn rd-btn-outline"><i data-lucide="grid" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "خريطة المخاطر" : "Heat Map")</a>
+            <a asp-action="Index" class="rd-btn rd-btn-outline"><i data-lucide="list" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "كل المخاطر" : "All Risks")</a>
+            <a asp-action="Create" class="rd-btn rd-btn-primary"><i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "خطر جديد" : "New Risk")</a>
+        </div>
+    </div>
+
+    <div class="rd-kpi-grid">
+        <div class="rd-kpi"><span class="rd-kpi-bar" style="background:#005B99;"></span><div class="rd-kpi-meta"><p class="rd-kpi-label">@(isRtl ? "إجمالي المخاطر" : "Total Risks")</p><p class="rd-kpi-value">@totalRisks</p></div></div>
+        <div class="rd-kpi"><span class="rd-kpi-bar" style="background:#dc2626;"></span><div class="rd-kpi-meta"><p class="rd-kpi-label">@Shared["RiskLevel_Critical"]</p><p class="rd-kpi-value">@critical</p></div></div>
+        <div class="rd-kpi"><span class="rd-kpi-bar" style="background:#ea580c;"></span><div class="rd-kpi-meta"><p class="rd-kpi-label">@Shared["RiskLevel_High"]</p><p class="rd-kpi-value">@high</p></div></div>
+        <div class="rd-kpi"><span class="rd-kpi-bar" style="background:#F46A6A;"></span><div class="rd-kpi-meta"><p class="rd-kpi-label">@(isRtl ? "خارج الحد المقبول" : "Outside Tolerance")</p><p class="rd-kpi-value">@outsideTolerance</p></div></div>
+        <div class="rd-kpi"><span class="rd-kpi-bar" style="background:#F1B44C;"></span><div class="rd-kpi-meta"><p class="rd-kpi-label">@(isRtl ? "مراجعة مستحقة" : "Review Due")</p><p class="rd-kpi-value">@reviewDue</p></div></div>
+        <div class="rd-kpi"><span class="rd-kpi-bar" style="background:#8b5cf6;"></span><div class="rd-kpi-meta"><p class="rd-kpi-label">@(isRtl ? "بدون خطة تخفيف" : "No Mitigation")</p><p class="rd-kpi-value">@noMitigation</p></div></div>
+    </div>
+
+    @if (critical > 0 || outsideTolerance > 0)
+    {
+        <div class="rd-alert">
+            <i data-lucide="alert-triangle" class="w-4 h-4" aria-hidden="true"></i>
+            <div class="rd-alert-text">
+                @if (critical > 0) { <span><strong>@critical</strong> @(isRtl ? (critical == 1 ? "خطر حرج يحتاج اهتمامًا فوريًا" : "مخاطر حرجة تحتاج اهتمامًا فوريًا") : (critical == 1 ? "critical risk needs immediate attention" : "critical risks need immediate attention")) · </span> }
+                @if (outsideTolerance > 0) { <span><strong>@outsideTolerance</strong> @(isRtl ? "خارج حدود التحمل" : "outside risk tolerance") </span> }
+            </div>
+        </div>
+    }
+
+    <div class="rd-main">
+        <div class="rd-card">
+            <div class="rd-card-head"><h6><i data-lucide="pie-chart" class="w-4 h-4" style="color:#F46A6A;" aria-hidden="true"></i>@(isRtl ? "توزيع مستوى المخاطر" : "Risk Level Distribution")</h6></div>
+            <div class="rd-card-body">
+                <div class="rd-chart-wrap">
+                    <canvas id="rdLevelChart"></canvas>
+                    <div class="rd-chart-center"><span class="rd-chart-total">@totalRisks</span><span class="rd-chart-label">@(isRtl ? "إجمالي المخاطر" : "Total Risks")</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="rd-card">
+            <div class="rd-card-head">
+                <h6><i data-lucide="trending-up" class="w-4 h-4" style="color:#dc2626;" aria-hidden="true"></i>@(isRtl ? "أعلى المخاطر" : "Top Risks")</h6>
+                <a asp-action="Index" style="font-size: var(--fs-xs);color:#005B99;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:.25rem;">@Shared["Action_ViewAll"] <i data-lucide="@(isRtl ? "arrow-left" : "arrow-right")" class="w-3 h-3" aria-hidden="true"></i></a>
+            </div>
+            <div class="rd-card-body" style="padding:0;">
+                <div class="rd-table-wrap">
+                    @if (topRisks.Any())
+                    {
+                        <table>
+                            <thead><tr><th>@(isRtl ? "الرمز" : "Number")</th><th>@Shared["Column_Name"]</th><th>@(isRtl ? "المستوى" : "Level")</th><th>@(isRtl ? "النقاط" : "Score")</th><th style="width:60px;text-align:end;"></th></tr></thead>
+                            <tbody>
+                                @foreach (var r in topRisks)
+                                {
+                                    <tr>
+                                        <td><code style="font-size: var(--fs-xs);color:#475569;">@r.RiskNumber</code></td>
+                                        <td><span style="font-weight:500;color:#111827;">@(isRtl ? r.NameAr : r.NameEn)</span></td>
+                                        <td><span class="rd-level rd-level-@r.RiskLevel">@Shared[$"RiskLevel_{r.RiskLevel}"]</span></td>
+                                        <td><span style="font-weight:600;color:#111827;">@r.InherentRiskScore</span></td>
+                                        <td style="text-align:end;"><a asp-action="Details" asp-route-id="@r.Id" aria-label="@Shared["Button_View"]" style="color:#005B99;text-decoration:none;display:inline-flex;align-items:center;font-weight:600;"><i data-lucide="eye" class="w-3.5 h-3.5" aria-hidden="true"></i></a></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else
+                    {
+                        <div style="padding:2rem;text-align:center;color:#94a3b8;font-size: var(--fs-sm);">
+                            <i data-lucide="shield-check" class="w-8 h-8" aria-hidden="true" style="margin:0 auto .5rem;display:block;color:#cbd5e1;"></i>
+                            @(isRtl ? "لا توجد مخاطر مسجلة" : "No risks registered")
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+        const isRtl = @(isRtl ? "true" : "false");
+        if (isRtl) { Chart.defaults.plugins.legend.rtl = true; Chart.defaults.plugins.legend.textDirection = 'rtl'; Chart.defaults.plugins.tooltip.rtl = true; Chart.defaults.plugins.tooltip.textDirection = 'rtl'; }
+        new Chart(document.getElementById('rdLevelChart'), {
+            type: 'doughnut',
+            data: {
+                labels: [@Html.Raw("'" + Shared["RiskLevel_Critical"].Value + "'"), @Html.Raw("'" + Shared["RiskLevel_High"].Value + "'"), @Html.Raw("'" + Shared["RiskLevel_Medium"].Value + "'"), @Html.Raw("'" + Shared["RiskLevel_Low"].Value + "'")],
+                datasets: [{
+                    data: [@critical, @high, @medium, @low],
+                    backgroundColor: ['#dc2626', '#ea580c', '#F1B44C', '#34C38F'],
+                    hoverBackgroundColor: ['#ef4444', '#f97316', '#f4c56d', '#5dd9a8'],
+                    borderWidth: 3, borderColor: '#fff'
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, cutout: '68%',
+                plugins: { legend: { position: 'bottom', labels: { padding: 14, usePointStyle: true, font: { size: 12, weight: '500' } } },
+                    tooltip: { backgroundColor: 'rgba(0,0,0,.85)', padding: 10,
+                        callbacks: { label: function(c){ var t=c.dataset.data.reduce((a,b)=>a+b,0); var p=t>0?((c.parsed/t)*100).toFixed(1):'0'; return c.label+': '+c.parsed+' ('+p+'%)'; } } } }
+            }
+        });
+    </script>
+}

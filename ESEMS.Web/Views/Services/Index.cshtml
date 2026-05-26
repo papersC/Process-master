@@ -1,0 +1,287 @@
+@model IEnumerable<Service>
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = Shared["Title_Services"].Value;
+}
+
+@*  Report-style index — same .lt-* design system as /Processes,
+    /Categories, /ProcessGroups. Inline .lt-header (no _ModuleBanner
+    partial), separate toolbar card with search + type filter +
+    channel filter + Clear + Export dropdown, .lt-card for the table
+    filling remaining viewport. Delete handler preserved
+    (.btn-delete-service[data-id][data-name] + #deleteForm +
+    @section Scripts SweetAlert delegation verbatim). *@
+
+<style>
+    .lt-shell { display: flex; flex-direction: column; gap: .6rem; height: calc(100vh - 140px); min-height: 580px; }
+    .lt-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; flex: 0 0 auto; }
+    .lt-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .lt-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .lt-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; border: none; }
+    .lt-btn-primary { background: #005B99; color: #fff; } .lt-btn-primary:hover { background: #003d6b; color: #fff; }
+    .lt-btn-outline { background: #fff; color: #005B99; border: 1px solid #cbd5e1; } .lt-btn-outline:hover { background: #f1f5f9; }
+    .lt-btn-ghost { background: transparent; color: #6b7280; border: 1px solid transparent; } .lt-btn-ghost:hover { background: #f9fafb; color: #111827; }
+    .lt-toolbar { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; padding: .5rem .75rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; flex: 0 0 auto; }
+    .lt-search { flex: 1 1 220px; max-width: 320px; position: relative; }
+    .lt-search input { width: 100%; padding: .42rem .7rem; padding-inline-start: 2.1rem; border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-sm); }
+    .lt-search input:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .lt-search > i, .lt-search > svg { position: absolute; top: 50%; transform: translateY(-50%); inset-inline-start: .65rem; width: 16px; height: 16px; color: #9ca3af; pointer-events: none; }
+    .lt-select { padding: .4rem .55rem; border: 1px solid #d1d5db; border-radius: .375rem; font-size: var(--fs-xs); background: #fff; color: #111827; min-width: 110px; }
+    .lt-select:focus { outline: none; border-color: #005B99; box-shadow: 0 0 0 3px rgba(0,91,153,.12); }
+    .lt-count { font-size: var(--fs-xs); color: #6b7280; margin-inline-start: .25rem; }
+    .lt-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .lt-table-wrap { flex: 1 1 0; min-height: 0; overflow: auto; }
+    .lt-table-wrap table { width: 100%; font-size: var(--fs-sm); border-collapse: collapse; }
+    .lt-table-wrap thead { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
+    .lt-table-wrap th { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; padding: .55rem .75rem; text-align: start; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+    .lt-table-wrap td { padding: .5rem .75rem; border-bottom: 1px solid #f3f4f6; color: #374151; }
+    .lt-table-wrap tbody tr:hover td { background: #f9fafb; }
+    .lt-pill { display: inline-block; padding: .15rem .5rem; font-size: var(--fs-xs); font-weight: 600; border-radius: .25rem; }
+    .lt-pill-code { background: #eff6ff; color: #1d4ed8; }
+    .lt-pill-Internal { background: #f1f5f9; color: #334155; }
+    .lt-pill-External { background: #eff6ff; color: #1d4ed8; }
+    .lt-pill-Digital { background: #ecfdf5; color: #047857; }
+    .lt-pill-Physical { background: #fefce8; color: #a16207; }
+    .lt-pill-Hybrid { background: #ecfeff; color: #0e7490; }
+    .lt-pill-procs { background: #f5f3ff; color: #6d28d9; }
+    .lt-actions { display: inline-flex; gap: .35rem; }
+    .lt-actions a, .lt-actions button { color: #005B99; padding: .2rem; border-radius: .25rem; transition: background .15s; background: transparent; border: none; cursor: pointer; }
+    .lt-actions a:hover, .lt-actions button:hover { background: #eff6ff; }
+    .lt-actions .lt-action-danger { color: #dc2626; }
+    .lt-actions .lt-action-danger:hover { background: #fef2f2; }
+    .lt-export-wrap { position: relative; }
+    .lt-export-menu { position: absolute; right: 0; top: calc(100% + .25rem); background: #fff; border: 1px solid #e5e7eb; border-radius: .375rem; box-shadow: 0 6px 16px rgba(0,0,0,.08); min-width: 180px; z-index: 20; padding: .25rem; }
+    .lt-export-menu a { display: flex; align-items: center; gap: .5rem; padding: .45rem .65rem; font-size: var(--fs-xs); color: #374151; text-decoration: none; border-radius: .25rem; }
+    .lt-export-menu a:hover { background: #f1f5f9; }
+    .lt-export-menu.hidden { display: none; }
+</style>
+
+<div class="lt-shell">
+    <div class="lt-header">
+        <div>
+            <h1><i data-lucide="concierge-bell" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>@Shared["Heading_Services"]</h1>
+            <p>@Shared["Text_ManageOrganizationServices"]</p>
+        </div>
+        <div style="display:flex;gap:.4rem;">
+            <a asp-controller="Services" asp-action="Dashboard" class="lt-btn lt-btn-outline">
+                <i data-lucide="layout-dashboard" class="w-4 h-4" aria-hidden="true"></i>@(isRtl ? "نظرة عامة" : "Overview")
+            </a>
+            <a asp-action="Create" class="lt-btn lt-btn-primary">
+                <i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>@Shared["Action_AddService"]
+            </a>
+        </div>
+    </div>
+
+    <div class="lt-toolbar">
+        <div class="lt-search">
+            <i data-lucide="search" class="w-4 h-4" aria-hidden="true"></i>
+            <input type="text" id="searchInput" placeholder="@Shared["Filter_SearchServices"]" aria-label="@Shared["Filter_SearchServices"]" />
+        </div>
+        <select id="filterServiceType" class="lt-select" aria-label="@Shared["Filter_ServiceType"]">
+            <option value="">@Shared["Filter_ServiceType"]: @Shared["Filter_All"]</option>
+            <option value="Internal">@Shared["Type_Internal"]</option>
+            <option value="External">@Shared["Type_External"]</option>
+        </select>
+        <select id="filterChannel" class="lt-select" aria-label="@Shared["Filter_Channel"]">
+            <option value="">@Shared["Filter_Channel"]: @Shared["Filter_All"]</option>
+            <option value="Digital">@Shared["Channel_Digital"]</option>
+            <option value="Physical">@Shared["Channel_Physical"]</option>
+            <option value="Hybrid">@Shared["Channel_Hybrid"]</option>
+        </select>
+        @{
+            var catOptions = ViewBag.CategoryFilterOptions as List<ESEMS.Web.Models.Services.ServiceCategory> ?? new();
+            var selectedCatId = ViewBag.SelectedCategoryId as string;
+        }
+        <select id="filterCategory" class="lt-select" aria-label="@(isRtl ? "فئة الخدمة" : "Service Category")">
+            <option value="">@(isRtl ? "الفئة" : "Category"): @Shared["Filter_All"]</option>
+            @foreach (var c in catOptions)
+            {
+                <option value="@c.Id" selected="@(c.Id == selectedCatId)">@(isRtl ? c.NameAr : c.NameEn)</option>
+            }
+        </select>
+        <button type="button" id="clearFiltersBtn" class="lt-btn lt-btn-ghost" aria-label="@Shared["Filter_Clear"]">
+            <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>@Shared["Filter_Clear"]
+        </button>
+        <span class="lt-count" id="resultCount"></span>
+        <span style="flex:1;"></span>
+        <div class="lt-export-wrap">
+            <button type="button" id="exportToggle" class="lt-btn lt-btn-outline" aria-haspopup="true" aria-expanded="false">
+                <i data-lucide="download" class="w-3.5 h-3.5" aria-hidden="true"></i>@Shared["Button_Export"]
+                <i data-lucide="chevron-down" class="w-3 h-3" aria-hidden="true"></i>
+            </button>
+            @* M-18 (Tier-3 a11y): role="menu" requires every direct child carry
+               role="menuitem"/menuitemradio/menuitemcheckbox. Anchors must declare
+               it explicitly so axe's `aria-required-children` rule passes. *@
+            <div id="exportMenu" class="lt-export-menu hidden" role="menu">
+                <a href="~/api/export/services/excel" role="menuitem">
+                    <i data-lucide="file-spreadsheet" class="w-4 h-4" style="color:#047857;" aria-hidden="true"></i>@Shared["Button_ExportExcel"]
+                </a>
+                <a href="~/api/export/services/pdf" role="menuitem">
+                    <i data-lucide="file-text" class="w-4 h-4" style="color:#dc2626;" aria-hidden="true"></i>@Shared["Button_ExportPDF"]
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="lt-card">
+        <div class="lt-table-wrap">
+            <table class="esems-datatable" id="dataTable">
+                <thead>
+                    <tr>
+                        <th>@Shared["Column_Code"]</th>
+                        <th>@Shared["Column_ServiceName"]</th>
+                        <th>@Shared["Column_Category"]</th>
+                        <th>@Shared["Column_Type"]</th>
+                        <th>@Shared["Column_Channel"]</th>
+                        <th style="text-align:center;">@Shared["Column_Processes"]</th>
+                        <th style="text-align:end;">@Shared["Column_Actions"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model)
+                    {
+                        var typeName = item.ServiceType.ToString();
+                        var channelName = item.Channel.ToString();
+                        var categoryText = item.ServiceCategory == null
+                            ? null
+                            : (isRtl ? item.ServiceCategory.NameAr : item.ServiceCategory.NameEn);
+                        <tr data-type="@typeName" data-channel="@channelName" data-category-id="@(item.ServiceCategoryId ?? "")">
+                            <td><span class="id-chip">@item.Code</span></td>
+                            <td style="font-weight:600;color:#111827;">@item.Name</td>
+                            <td>
+                                @if (string.IsNullOrWhiteSpace(categoryText))
+                                {
+                                    <span style="color:#cbd5e1;">—</span>
+                                }
+                                else
+                                {
+                                    @categoryText
+                                }
+                            </td>
+                            <td><span class="lt-pill lt-pill-@typeName">@Shared[$"ServiceType_{typeName}"]</span></td>
+                            <td><span class="lt-pill lt-pill-@channelName">@Shared[$"ChannelType_{channelName}"]</span></td>
+                            <td style="text-align:center;"><span class="lt-pill lt-pill-procs">@item.Processes.Count</span></td>
+                            <td style="text-align:end;">
+                                <span class="lt-actions">
+                                    <a asp-action="Details" asp-route-id="@item.Id" title="@Shared["Tooltip_ViewDetails"]" aria-label="@Shared["Tooltip_ViewDetails"]"><i data-lucide="eye" class="w-4 h-4" aria-hidden="true"></i></a>
+                                    <a asp-action="Edit" asp-route-id="@item.Id" title="@Shared["Tooltip_EditRecord"]" aria-label="@Shared["Tooltip_EditRecord"]"><i data-lucide="edit" class="w-4 h-4" aria-hidden="true"></i></a>
+                                    <button type="button" class="btn-delete-service lt-action-danger" data-id="@item.Id" data-name="@item.Name" title="@Shared["Tooltip_DeleteRecord"]" aria-label="@Shared["Tooltip_DeleteRecord"]">
+                                        <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
+                                    </button>
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                    @if (!Model.Any())
+                    {
+                        <tr><td colspan="7" style="padding:3rem 1rem;text-align:center;color:#94a3b8;">
+                            <i data-lucide="inbox" class="w-10 h-10" aria-hidden="true" style="margin:0 auto .5rem;display:block;color:#cbd5e1;"></i>
+                            <div style="font-weight:500;margin-bottom:.25rem;">@Shared["Empty_NoServices"]</div>
+                            <a asp-action="Create" style="color:#005B99;text-decoration:none;font-size: var(--fs-sm);">@Shared["Empty_CreateFirstService"]</a>
+                        </td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<form id="deleteForm" asp-action="Delete" method="post" style="display:none;">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="id" id="deleteId" />
+</form>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+
+        const searchInput = document.getElementById('searchInput');
+        const filterType = document.getElementById('filterServiceType');
+        const filterChannel = document.getElementById('filterChannel');
+        const filterCategory = document.getElementById('filterCategory');
+        const resultCount = document.getElementById('resultCount');
+        const tableRows = Array.from(document.querySelectorAll('tbody tr'));
+        const totalCount = tableRows.filter(r => !r.querySelector('td[colspan]')).length;
+        const countTemplate = @Html.Raw(System.Text.Json.JsonSerializer.Serialize((isRtl ? "إظهار {n} من {t}" : "Showing {n} of {t}")));
+        const countTemplateFiltered = @Html.Raw(System.Text.Json.JsonSerializer.Serialize((isRtl ? "إظهار {n} من {t} (مُصفّى)" : "Showing {n} of {t} (filtered)")));
+
+        function applyFilters() {
+            const q = (searchInput?.value || '').toLowerCase().trim();
+            const ftype = (filterType?.value || '').trim();
+            const fchan = (filterChannel?.value || '').trim();
+            const fcat = (filterCategory?.value || '').trim();
+            const filterActive = !!(q || ftype || fchan || fcat);
+            let shown = 0;
+            tableRows.forEach(row => {
+                if (row.querySelector('td[colspan]')) return;
+                const text = row.textContent.toLowerCase();
+                const t = row.dataset.type || '';
+                const c = row.dataset.channel || '';
+                const cat = row.dataset.categoryId || '';
+                const okSearch = !q || text.includes(q);
+                const okType = !ftype || t === ftype;
+                const okChannel = !fchan || c === fchan;
+                const okCategory = !fcat || cat === fcat;
+                const visible = okSearch && okType && okChannel && okCategory;
+                row.style.display = visible ? '' : 'none';
+                if (visible) shown++;
+            });
+            if (resultCount) {
+                const tpl = filterActive ? countTemplateFiltered : countTemplate;
+                resultCount.textContent = tpl.replace('{n}', shown).replace('{t}', totalCount);
+            }
+        }
+        searchInput?.addEventListener('input', applyFilters);
+        filterType?.addEventListener('change', applyFilters);
+        filterChannel?.addEventListener('change', applyFilters);
+        filterCategory?.addEventListener('change', applyFilters);
+
+        document.getElementById('clearFiltersBtn')?.addEventListener('click', function () {
+            searchInput.value = '';
+            if (filterType) filterType.value = '';
+            if (filterChannel) filterChannel.value = '';
+            if (filterCategory) filterCategory.value = '';
+            applyFilters();
+        });
+        applyFilters();
+
+        // Export dropdown toggle
+        const exportBtn = document.getElementById('exportToggle');
+        const exportMenu = document.getElementById('exportMenu');
+        exportBtn?.addEventListener('click', function (e) {
+            e.stopPropagation();
+            const open = !exportMenu.classList.contains('hidden');
+            exportMenu.classList.toggle('hidden');
+            exportBtn.setAttribute('aria-expanded', String(!open));
+        });
+        document.addEventListener('click', function (e) {
+            if (!e.target.closest('.lt-export-wrap')) {
+                exportMenu?.classList.add('hidden');
+                exportBtn?.setAttribute('aria-expanded', 'false');
+            }
+        });
+
+        // Delete via SweetAlert (delegated; preserved verbatim from original)
+        const confirmTitle = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_AreYouSure"].Value));
+        const confirmDeletePrefix = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_DeleteTextPrefix"].Value));
+        const confirmYesDelete = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_YesDelete"].Value));
+        const buttonCancel = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Button_Cancel"].Value));
+
+        document.addEventListener('click', function (e) {
+            const btn = e.target.closest('.btn-delete-service');
+            if (!btn) return;
+            const id = btn.dataset.id;
+            const name = btn.dataset.name || '';
+            Swal.fire({
+                title: confirmTitle, text: confirmDeletePrefix + name, icon: 'warning',
+                showCancelButton: true, confirmButtonColor: '#005B99', cancelButtonColor: '#6b7280',
+                confirmButtonText: confirmYesDelete, cancelButtonText: buttonCancel
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('deleteId').value = id;
+                    document.getElementById('deleteForm').submit();
+                }
+            });
+        });
+    </script>
+}

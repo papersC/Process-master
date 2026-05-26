@@ -1,0 +1,261 @@
+@using ESEMS.Web.Models.Common
+@inject IStringLocalizer<SharedResource> Shared
+@model List<AppSetting>
+@{
+    string Get(string key, string fallback = "") => Model.FirstOrDefault(s => s.Key == key)?.Value ?? fallback;
+    bool GetBool(string key, bool def = false) => Get(key, def ? "true" : "false") == "true";
+    var smtpEnabled = GetBool("Smtp.Enabled");
+    var digestEnabled = GetBool("Alerts.DigestEnabled");
+    var quietEnabled = GetBool("Alerts.QuietHoursEnabled");
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+}
+
+<!-- Nested sub-tabs: SMTP Setup | Alert Rules -->
+<ul class="nav nav-pills mb-3">
+    <li class="nav-item">
+        <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#sub-smtp" type="button">
+            <i data-lucide="server" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+            @Shared["SubTab_SmtpSetup"]
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="pill" data-bs-target="#sub-alerts" type="button">
+            <i data-lucide="bell-ring" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+            @Shared["SubTab_AlertRules"]
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <!-- SMTP SETUP -->
+    <div class="tab-pane fade show active" id="sub-smtp" role="tabpanel">
+        <div class="row g-4">
+            <div class="col-lg-8">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h6 class="fw-bold mb-0"><i data-lucide="mail" style="width:16px;height:16px;margin-inline-end:6px;"></i>@Shared["Heading_SmtpConfig"]</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info small py-2 mb-3">
+                            <i data-lucide="info" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                            @Shared["Help_SmtpDisabledNote"]
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-12">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="smtpEnabled" @(smtpEnabled ? "checked" : "") />
+                                    <label class="form-check-label fw-semibold" for="smtpEnabled">
+                                        @Shared["Label_EnableSmtp"]
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-8">
+                                <label class="form-label small fw-semibold">@Shared["Label_SmtpHost"]</label>
+                                <input type="text" class="form-control form-control-sm" id="smtpHost" value="@Get("Smtp.Host")" placeholder="smtp.office365.com" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small fw-semibold">@Shared["Label_SmtpPort"]</label>
+                                <input type="number" class="form-control form-control-sm" id="smtpPort" value="@Get("Smtp.Port", "587")" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-semibold">@Shared["Label_SmtpUsername"]</label>
+                                <input type="text" class="form-control form-control-sm" id="smtpUsername" value="@Get("Smtp.Username")" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-semibold">@Shared["Label_SmtpPassword"]</label>
+                                <input type="password" class="form-control form-control-sm" id="smtpPassword" value="@Get("Smtp.Password")" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-semibold">@Shared["Label_SmtpFromEmail"]</label>
+                                <input type="email" class="form-control form-control-sm" id="smtpFromEmail" value="@Get("Smtp.FromEmail")" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-semibold">@Shared["Label_SmtpFromName"]</label>
+                                <input type="text" class="form-control form-control-sm" id="smtpFromName" value="@Get("Smtp.FromName", "ESEMS")" />
+                            </div>
+                            <div class="col-md-12">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="smtpEnableSsl" @(GetBool("Smtp.EnableSsl", true) ? "checked" : "") />
+                                    <label class="form-check-label small" for="smtpEnableSsl">@Shared["Label_SmtpEnableSsl"]</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-3 d-flex gap-2">
+                            <button type="button" class="btn btn-sm btn-primary" onclick="EmailAlerts.saveSmtp()">
+                                <i data-lucide="save" style="width:14px;height:14px;margin-inline-end:4px;"></i>@Shared["Button_SaveChanges"]
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="EmailAlerts.testSmtp()">
+                                <i data-lucide="send" style="width:14px;height:14px;margin-inline-end:4px;"></i>@Shared["Button_SendTestEmail"]
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h6 class="fw-bold mb-0"><i data-lucide="book-open" style="width:16px;height:16px;margin-inline-end:6px;"></i>@Shared["Heading_SmtpHelp"]</h6>
+                    </div>
+                    <div class="card-body small text-muted">
+                        <p>@Shared["Help_SmtpPresets"]</p>
+                        <ul class="small">
+                            <li><strong>Office 365:</strong> smtp.office365.com : 587 (STARTTLS)</li>
+                            <li><strong>Gmail:</strong> smtp.gmail.com : 587 (STARTTLS)</li>
+                            <li><strong>SendGrid:</strong> smtp.sendgrid.net : 587</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ALERT RULES -->
+    <div class="tab-pane fade" id="sub-alerts" role="tabpanel">
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h6 class="fw-bold mb-0"><i data-lucide="bell" style="width:16px;height:16px;margin-inline-end:6px;"></i>@Shared["Heading_Channels"]</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="chanInApp" @(GetBool("Alerts.ChannelInApp", true) ? "checked" : "") />
+                            <label class="form-check-label small" for="chanInApp">@Shared["Label_InAppNotifications"]</label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="chanEmail" @(GetBool("Alerts.ChannelEmail") ? "checked" : "") />
+                            <label class="form-check-label small" for="chanEmail">@Shared["Label_EmailNotifications"]</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm mt-3">
+                    <div class="card-header bg-white">
+                        <h6 class="fw-bold mb-0"><i data-lucide="clock" style="width:16px;height:16px;margin-inline-end:6px;"></i>@Shared["Heading_MeasurementReminders"]</h6>
+                    </div>
+                    <div class="card-body">
+                        <label class="form-label small fw-semibold">@Shared["Label_ReminderCadence"]</label>
+                        <select class="form-select form-select-sm" id="reminderCadence">
+                            @{
+                                var cadence = Get("Alerts.ReminderCadence", "daily");
+                                var opts = new[] { ("hourly", isRtl ? "كل ساعة" : "Hourly"), ("daily", isRtl ? "يومياً" : "Daily"), ("weekly", isRtl ? "أسبوعياً" : "Weekly") };
+                            }
+                            @foreach (var o in opts)
+                            {
+                                if (cadence == o.Item1) { <option value="@o.Item1" selected>@o.Item2</option> }
+                                else { <option value="@o.Item1">@o.Item2</option> }
+                            }
+                        </select>
+                        <p class="small text-muted mt-2 mb-0">@Shared["Help_ReminderCadence"]</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h6 class="fw-bold mb-0"><i data-lucide="moon" style="width:16px;height:16px;margin-inline-end:6px;"></i>@Shared["Heading_QuietHours"]</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="quietEnabled" @(quietEnabled ? "checked" : "") />
+                            <label class="form-check-label small" for="quietEnabled">@Shared["Label_EnableQuietHours"]</label>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label small">@Shared["Label_From"]</label>
+                                <input type="time" class="form-control form-control-sm" id="quietFrom" value="@Get("Alerts.QuietFrom", "18:00")" />
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small">@Shared["Label_To"]</label>
+                                <input type="time" class="form-control form-control-sm" id="quietTo" value="@Get("Alerts.QuietTo", "08:00")" />
+                            </div>
+                        </div>
+                        <p class="small text-muted mt-2 mb-0">@Shared["Help_QuietHours"]</p>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm mt-3">
+                    <div class="card-header bg-white">
+                        <h6 class="fw-bold mb-0"><i data-lucide="inbox" style="width:16px;height:16px;margin-inline-end:6px;"></i>@Shared["Heading_DailyDigest"]</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="digestEnabled" @(digestEnabled ? "checked" : "") />
+                            <label class="form-check-label small" for="digestEnabled">@Shared["Label_EnableDailyDigest"]</label>
+                        </div>
+                        <p class="small text-muted mb-0">@Shared["Help_DailyDigest"]</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-3">
+            <button type="button" class="btn btn-sm btn-primary" onclick="EmailAlerts.saveAlerts()">
+                <i data-lucide="save" style="width:14px;height:14px;margin-inline-end:4px;"></i>@Shared["Button_SaveChanges"]
+            </button>
+        </div>
+    </div>
+</div>
+
+<script nonce="@Context.CspNonce()">
+window.EmailAlerts = (function() {
+    async function postKV(entries) {
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', ShubToken());
+        entries.forEach(function(e) { fd.append('Keys', e.k); fd.append('Values', e.v); });
+        var r = await fetch('/SettingsHub/SaveBulkSettings', { method: 'POST', body: fd });
+        return await r.json();
+    }
+
+    async function saveSmtp() {
+        var entries = [
+            { k: 'Smtp.Enabled', v: document.getElementById('smtpEnabled').checked },
+            { k: 'Smtp.Host', v: document.getElementById('smtpHost').value },
+            { k: 'Smtp.Port', v: document.getElementById('smtpPort').value },
+            { k: 'Smtp.Username', v: document.getElementById('smtpUsername').value },
+            { k: 'Smtp.Password', v: document.getElementById('smtpPassword').value },
+            { k: 'Smtp.FromEmail', v: document.getElementById('smtpFromEmail').value },
+            { k: 'Smtp.FromName', v: document.getElementById('smtpFromName').value },
+            { k: 'Smtp.EnableSsl', v: document.getElementById('smtpEnableSsl').checked }
+        ];
+        try {
+            var d = await postKV(entries);
+            if (d.success) ShubToast('success', '@Html.Raw(Shared["Toast_SavedSuccess"].Value)');
+            else ShubToast('error', d.error);
+        } catch(e) { ShubToast('error', e.message); }
+    }
+
+    async function testSmtp() {
+        try {
+            var fd = new FormData();
+            fd.append('__RequestVerificationToken', ShubToken());
+            var r = await fetch('/SettingsHub/TestSmtp', { method: 'POST', body: fd });
+            var d = await r.json();
+            ShubToast(d.success ? 'success' : 'error', d.message || (d.success ? '@Html.Raw(Shared["Js_TestEmailSent"].Value)' : '@Html.Raw(Shared["Js_TestFailed"].Value)'));
+        } catch (e) {
+            ShubToast('error', e.message || '@Html.Raw(Shared["Js_TestFailed"].Value)');
+        }
+    }
+
+    async function saveAlerts() {
+        var entries = [
+            { k: 'Alerts.ChannelInApp', v: document.getElementById('chanInApp').checked },
+            { k: 'Alerts.ChannelEmail', v: document.getElementById('chanEmail').checked },
+            { k: 'Alerts.ReminderCadence', v: document.getElementById('reminderCadence').value },
+            { k: 'Alerts.QuietHoursEnabled', v: document.getElementById('quietEnabled').checked },
+            { k: 'Alerts.QuietFrom', v: document.getElementById('quietFrom').value },
+            { k: 'Alerts.QuietTo', v: document.getElementById('quietTo').value },
+            { k: 'Alerts.DigestEnabled', v: document.getElementById('digestEnabled').checked }
+        ];
+        try {
+            var d = await postKV(entries);
+            if (d.success) ShubToast('success', '@Html.Raw(Shared["Toast_SavedSuccess"].Value)');
+            else ShubToast('error', d.error);
+        } catch(e) { ShubToast('error', e.message); }
+    }
+
+    return { saveSmtp: saveSmtp, testSmtp: testSmtp, saveAlerts: saveAlerts };
+})();
+</script>

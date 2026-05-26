@@ -1,0 +1,64 @@
+@using ESEMS.Web.Models.APQC
+@inject IStringLocalizer<SharedResource> Shared
+@model (OrganizationUnit Unit, int Depth, bool IsRtl, Func<int, string> LevelNameFn)
+@{
+    var unit = Model.Unit;
+    var depth = Model.Depth;
+    var isRtl = Model.IsRtl;
+    var getLevelName = Model.LevelNameFn;
+    var hasChildren = unit.Children != null && unit.Children.Any();
+    var subtreeId = "subtree-" + unit.Id;
+    var indent = depth * 1.5;
+    var primary = isRtl ? (string.IsNullOrEmpty(unit.NameAr) ? unit.NameEn : unit.NameAr) : (string.IsNullOrEmpty(unit.NameEn) ? unit.NameAr : unit.NameEn);
+    var secondary = isRtl ? unit.NameEn : unit.NameAr;
+    // Depth-based icon: folder (root) → building-2 (depth 1) → circle-dot (2+)
+    var icon = depth == 0 ? "folder" : depth == 1 ? "building-2" : "circle-dot";
+    var iconSize = depth <= 1 ? 16 : 14;
+}
+
+<li class="@(unit.IsActive ? "" : "node-inactive")">
+    <div class="node-row" data-depth="@depth" style="padding-inline-start:@(1 + indent)rem;">
+        @if (hasChildren)
+        {
+            <i data-lucide="chevron-down" class="toggle-btn" data-toggle-target="@subtreeId" onclick="OrgTree.toggle('@subtreeId')" style="width:16px;height:16px;"></i>
+        }
+        else
+        {
+            <span class="toggle-btn empty"></span>
+        }
+        <i data-lucide="@icon" class="node-icon" style="width:@(iconSize)px;height:@(iconSize)px;"></i>
+        <a asp-action="Details" asp-route-id="@unit.Id" class="node-name flex-grow-1">
+            @primary
+            @if (!string.IsNullOrEmpty(secondary))
+            {
+                <div class="node-name-secondary">@secondary</div>
+            }
+        </a>
+        @if (!string.IsNullOrWhiteSpace(unit.Code))
+        {
+            <span class="node-code">@unit.Code</span>
+        }
+        <span class="node-level">@getLevelName(unit.Level)</span>
+        @if (hasChildren)
+        {
+            <span class="text-xs text-gray-400">(@unit.Children.Count)</span>
+        }
+        @* F-011: per-node delete affordance. Posts via the shared #deleteForm
+           (Index.cshtml) after a SweetAlert confirm; the controller's in-use
+           guard refuses units that still own children/processes/etc. *@
+        <button type="button" class="node-delete btn-delete-unit"
+                data-id="@unit.Id" data-name="@primary"
+                title="@Shared["Button_Delete"]" aria-label="@Shared["Button_Delete"]">
+            <i data-lucide="trash-2" style="width:15px;height:15px;"></i>
+        </button>
+    </div>
+    @if (hasChildren)
+    {
+        <ul id="@subtreeId" data-subtree>
+            @foreach (var child in unit.Children)
+            {
+                @await Html.PartialAsync("_OrgTreeNode", (child, depth + 1, isRtl, getLevelName))
+            }
+        </ul>
+    }
+</li>

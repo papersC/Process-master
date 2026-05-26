@@ -1,0 +1,162 @@
+@model Category
+@{
+    ViewData["Title"] = Shared["Title_CategoryDetails"].Value;
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    var pgCount = Model.ProcessGroups.Count(pg => !pg.IsDeleted);
+    var totalProcesses = Model.ProcessGroups.Where(pg => !pg.IsDeleted).SelectMany(pg => pg.Processes.Where(p => !p.IsDeleted)).Count();
+}
+
+<!-- Page Header -->
+<div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900">@ViewData["Title"]</h1>
+        <p class="text-sm text-gray-500 mt-1">@(isRtl ? Model.NameAr : Model.NameEn)</p>
+    </div>
+    <div class="flex items-center gap-2">
+        <a asp-action="Index" class="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors">
+            <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" class="w-4 h-4"></i>
+            @Shared["Button_Back_Short"]
+        </a>
+        <a asp-action="Edit" asp-route-id="@Model.Id" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+            <i data-lucide="edit" class="w-4 h-4"></i>
+            @Shared["Button_Edit"]
+        </a>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background-color: rgba(65, 105, 225, 0.1);">
+                <i data-lucide="hash" class="w-5 h-5" style="color: #4169E1;"></i>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500 uppercase tracking-wide font-medium">@Shared["Label_Code"]</p>
+                <p class="text-xl font-bold text-gray-900">@Model.Code</p>
+            </div>
+        </div>
+    </div>
+    <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background-color: rgba(65, 105, 225, 0.1);">
+                <i data-lucide="git-branch" class="w-5 h-5" style="color: #4169E1;"></i>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500 uppercase tracking-wide font-medium">@Shared["Label_ProcessGroups"]</p>
+                <p class="text-xl font-bold text-gray-900">@pgCount</p>
+            </div>
+        </div>
+    </div>
+    <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background-color: rgba(34, 197, 94, 0.1);">
+                <i data-lucide="workflow" class="w-5 h-5" style="color: #22c55e;"></i>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500 uppercase tracking-wide font-medium">@Shared["Label_TotalProcesses"]</p>
+                <p class="text-xl font-bold text-gray-900">@totalProcesses</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content -->
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+    <!-- Details Card (3/5) -->
+    <div class="lg:col-span-2">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+            <div class="px-5 py-3.5 flex items-center gap-3" style="background: linear-gradient(135deg, #4169E1 0%, #1e40af 100%);">
+                <i data-lucide="layers" class="w-5 h-5 text-white"></i>
+                <h2 class="text-base font-semibold text-white">@Shared["Label_CategoryInformation"]</h2>
+            </div>
+            <div class="p-5 space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">@Shared["Label_NameEnglish_Short"]</label>
+                    <p class="text-sm font-semibold text-gray-900" dir="ltr">@Model.NameEn</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">@Shared["Label_NameArabic_Short"]</label>
+                    <p class="text-sm font-semibold text-gray-900" dir="rtl">@Model.NameAr</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">@Shared["Label_DescriptionEnglish_Short"]</label>
+                    <p class="text-sm text-gray-700 whitespace-normal leading-relaxed">@(Model.DescriptionEn ?? "—")</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">@Shared["Label_DescriptionArabic_Short"]</label>
+                    <p class="text-sm text-gray-700 whitespace-normal leading-relaxed" dir="rtl">@(Model.DescriptionAr ?? "—")</p>
+                </div>
+                <div class="grid grid-cols-2 gap-4 pt-2 border-t border-gray-100">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">@Shared["Label_CreatedAt"]</label>
+                        <p class="text-sm text-gray-700">@Model.CreatedAt.ToString("g")</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">@Shared["Label_Version"]</label>
+                        <p class="text-sm text-gray-700">@Model.Version</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Process Groups Card (2/5) -->
+    <div class="lg:col-span-3">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+            <div class="px-5 py-3.5 flex items-center justify-between" style="background: linear-gradient(135deg, #4169E1 0%, #1e40af 100%);">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="git-branch" class="w-5 h-5 text-white"></i>
+                    <h2 class="text-base font-semibold text-white">@Shared["Label_ProcessGroups"]</h2>
+                </div>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/20 text-white">@pgCount</span>
+            </div>
+            <div class="divide-y divide-gray-100">
+                @foreach (var pg in Model.ProcessGroups.Where(pg => !pg.IsDeleted).OrderBy(p => p.SortKey ?? p.Code))
+                {
+                    var procCount = pg.Processes.Count(p => !p.IsDeleted);
+                    <div class="px-5 py-3.5 hover:bg-gray-50 transition-colors">
+                        <div class="flex items-start justify-between gap-4">
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold shrink-0" style="background-color: rgba(65, 105, 225, 0.1); color: #4169E1;">@pg.Code</span>
+                                    <span class="text-sm font-semibold text-gray-900">@(isRtl ? pg.NameAr : pg.NameEn)</span>
+                                </div>
+                                <p class="text-sm text-gray-600" dir="rtl">@pg.NameAr</p>
+                                @if (!string.IsNullOrEmpty(pg.DescriptionEn))
+                                {
+                                    <p class="text-xs text-gray-500 mt-1 whitespace-normal leading-relaxed">@pg.DescriptionEn</p>
+                                }
+                            </div>
+                            <div class="flex items-center gap-3 shrink-0">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">@procCount @Shared["Text_Processes"]</span>
+                                <a asp-controller="ProcessGroups" asp-action="Details" asp-route-id="@pg.Id" class="p-1.5 rounded transition-colors hover:bg-blue-50" style="color: #4169E1;" title="@Shared["Button_View"]">
+                                    <i data-lucide="eye" class="w-4 h-4"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                }
+                @if (pgCount == 0)
+                {
+                    <div class="text-center py-10">
+                        <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <i data-lucide="inbox" class="w-6 h-6 text-gray-400"></i>
+                        </div>
+                        <p class="text-sm text-gray-500">@Shared["Text_NoProcessGroups"]</p>
+                    </div>
+                }
+            </div>
+            <div class="border-t border-gray-100 px-5 py-3">
+                <a asp-controller="ProcessGroups" asp-action="Create" asp-route-categoryId="@Model.Id" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors hover:bg-blue-50" style="color: #4169E1;">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    @Shared["Button_AddProcessGroup"]
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">lucide.createIcons();</script>
+}

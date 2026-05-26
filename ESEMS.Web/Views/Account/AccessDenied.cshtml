@@ -1,0 +1,11 @@
+@{
+    ViewData["Title"] = Shared["Title_AccessDenied"].Value;
+}
+
+<div class="container py-5">
+    <div class="alert alert-warning">
+        <h4 class="alert-heading">@Shared["AccessDenied_Header"]</h4>
+        <p class="mb-0">@Shared["AccessDenied_Text"]</p>
+    </div>
+    <a asp-controller="Dashboard" asp-action="Index" class="btn btn-primary">@Shared["Button_Back"]</a>
+</div>

@@ -1,0 +1,130 @@
+@model IEnumerable<MaintenanceRecord>
+@{
+    ViewData["Title"] = Shared["Nav_MaintenanceRecords"].Value;
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+
+    var total = Model.Count();
+    var completed = Model.Count(r => r.IsCompleted);
+    var thisMonth = Model.Count(r => r.PerformedDate.Month == DateTime.UtcNow.Month && r.PerformedDate.Year == DateTime.UtcNow.Year);
+    var totalCost = Model.Sum(r => r.Cost ?? 0);
+}
+
+<style>
+    .lt-shell { display: flex; flex-direction: column; gap: .6rem; }
+    .lt-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0 .4rem; border-bottom: 1px solid #e5e7eb; }
+    .lt-header h1 { margin: 0; font-size: var(--fs-base); font-weight: 600; color: #111827; display: flex; align-items: center; gap: .5rem; }
+    .lt-header p { margin: 0; font-size: var(--fs-xs); color: #6b7280; }
+    .lt-btn { border-radius: .375rem; padding: .42rem .85rem; font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; text-decoration: none; border: none; }
+    .lt-btn-primary { background: #005B99; color: #fff; } .lt-btn-primary:hover { background: #003d6b; color: #fff; }
+    .lt-kpi-strip { display: flex; align-items: stretch; gap: .5rem; padding: .55rem .65rem; background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; flex-wrap: wrap; }
+    .lt-kpi { display: flex; align-items: center; gap: .55rem; padding: .25rem .65rem; flex: 1 1 180px; min-width: 180px; border-inline-end: 1px dashed #e5e7eb; }
+    .lt-kpi:last-child { border-inline-end: none; }
+    .lt-kpi-icon { width: 34px; height: 34px; border-radius: .375rem; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .lt-kpi-icon.kpi-blue   { background: #eff6ff; color: #005B99; }
+    .lt-kpi-icon.kpi-green  { background: #ecfdf5; color: #047857; }
+    .lt-kpi-icon.kpi-purple { background: #f5f3ff; color: #7c3aed; }
+    .lt-kpi-icon.kpi-orange { background: #fff7ed; color: #c2410c; }
+    .lt-kpi-num { font-size: var(--fs-base); font-weight: 700; color: #111827; line-height: 1; }
+    .lt-kpi-label { font-size: var(--fs-xs); color: #6b7280; margin-top: .15rem; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+    @@media (max-width: 768px) { .lt-kpi { flex: 1 1 45%; border-inline-end: none; } }
+
+    .lt-card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; display: flex; flex-direction: column; overflow: hidden; }
+    .lt-table-wrap { overflow: auto; }
+    .lt-table-wrap table { width: 100%; font-size: var(--fs-sm); border-collapse: collapse; }
+    .lt-table-wrap thead { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
+    .lt-table-wrap th { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; padding: .55rem .75rem; text-align: start; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+    .lt-table-wrap td { padding: .5rem .75rem; border-bottom: 1px solid #f3f4f6; color: #374151; vertical-align: middle; }
+    .lt-table-wrap tbody tr:hover td { background: #f9fafb; }
+    .lt-pill { display: inline-block; padding: .15rem .5rem; font-size: var(--fs-xs); font-weight: 600; border-radius: .25rem; white-space: nowrap; }
+    .lt-pill-completed { background: #ecfdf5; color: #047857; }
+    .lt-pill-progress  { background: #fefce8; color: #a16207; }
+</style>
+
+<div class="lt-shell">
+    <div class="lt-header">
+        <div>
+            <h1><i data-lucide="clipboard-list" class="w-5 h-5" style="color:#005B99;" aria-hidden="true"></i>@Shared["Nav_MaintenanceRecords"]</h1>
+            <p>@Shared["Text_MaintenanceHistoryLog"]</p>
+        </div>
+        <a asp-action="CreateRecord" class="lt-btn lt-btn-primary">
+            <i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>@Shared["Button_RecordMaintenance"]
+        </a>
+    </div>
+
+    <div class="lt-kpi-strip">
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-blue"><i data-lucide="clipboard-list" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@total</div><div class="lt-kpi-label">@Shared["Label_TotalRecords"]</div></div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-green"><i data-lucide="check-circle" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@completed</div><div class="lt-kpi-label">@Shared["Status_Completed"]</div></div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-purple"><i data-lucide="calendar" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@thisMonth</div><div class="lt-kpi-label">@Shared["Label_ThisMonth"]</div></div>
+        </div>
+        <div class="lt-kpi">
+            <div class="lt-kpi-icon kpi-orange"><i data-lucide="dollar-sign" class="w-4 h-4" aria-hidden="true"></i></div>
+            <div><div class="lt-kpi-num">@totalCost.ToString("N0") <span style="font-size: var(--fs-xs);color:#6b7280;font-weight:500;">AED</span></div><div class="lt-kpi-label">@Shared["Label_TotalCost"]</div></div>
+        </div>
+    </div>
+
+    <div class="lt-card">
+        <div class="lt-table-wrap">
+            <table class="esems-datatable" id="recordsTable">
+                <thead>
+                    <tr>
+                        <th>@Shared["Column_Date"]</th>
+                        <th>@Shared["Label_Asset"]</th>
+                        <th>@Shared["Column_Type"]</th>
+                        <th>@Shared["Column_Description"]</th>
+                        <th>@Shared["Column_PerformedBy"]</th>
+                        <th>@Shared["Column_Cost"]</th>
+                        <th>@Shared["Column_Status"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var record in Model)
+                    {
+                        var statusCls = record.IsCompleted ? "lt-pill-completed" : "lt-pill-progress";
+                        var statusText = record.IsCompleted ? Shared["Status_Completed"].Value : Shared["Status_InProgress"].Value;
+                        <tr>
+                            <td style="white-space:nowrap;">
+                                <div style="font-weight:600;color:#111827;">@record.PerformedDate.ToDubaiString("MMM dd, yyyy")</div>
+                                <div style="font-size: var(--fs-xs);color:#6b7280;">@record.PerformedDate.ToDubaiString("HH:mm")</div>
+                            </td>
+                            <td>
+                                <div style="font-weight:600;color:#111827;">@record.Asset?.AssetTag</div>
+                                <div style="font-size: var(--fs-xs);color:#6b7280;">@(isRtl ? record.Asset?.NameAr : record.Asset?.NameEn)</div>
+                            </td>
+                            <td style="color:#374151;">@Shared[$"MaintenanceType_{record.Type}"]</td>
+                            <td>
+                                <div style="max-width:340px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@(isRtl ? record.DescriptionAr : record.DescriptionEn)">
+                                    @(isRtl ? record.DescriptionAr : record.DescriptionEn)
+                                </div>
+                            </td>
+                            <td style="color:#374151;">@(record.PerformedBy?.UserName ?? "—")</td>
+                            <td style="color:#374151;white-space:nowrap;">
+                                @(record.Cost.HasValue ? $"{record.Cost.Value:N2} AED" : "—")
+                            </td>
+                            <td><span class="lt-pill @statusCls">@statusText</span></td>
+                        </tr>
+                    }
+                    @if (!Model.Any())
+                    {
+                        <tr><td colspan="7" style="padding:3rem 1rem;text-align:center;color:#94a3b8;">
+                            <i data-lucide="inbox" class="w-10 h-10" aria-hidden="true" style="margin:0 auto .5rem;display:block;color:#cbd5e1;"></i>
+                            <div style="font-weight:500;">@(isRtl ? "لا توجد سجلات صيانة بعد" : "No records yet")</div>
+                        </td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">if (window.lucide) lucide.createIcons();</script>
+}

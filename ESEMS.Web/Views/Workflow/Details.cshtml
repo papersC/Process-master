@@ -1,0 +1,84 @@
+@model ESEMS.Web.Models.Workflow.WorkflowInstance
+@{
+    ViewData["Title"] = Shared["Title_WorkflowDetails"].Value;
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+}
+
+<div class="container-fluid">
+    <div class="card">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i data-lucide="clipboard-check" class="me-2" style="width:18px;height:18px;color:#005B99;vertical-align:-3px;"></i>@ViewData["Title"]</h5>
+            <a asp-action="PendingApprovals" class="btn btn-outline-secondary btn-sm">
+                <i data-lucide="@(isRtl ? "arrow-right" : "arrow-left")" class="me-1" style="width:14px;height:14px;vertical-align:-2px;"></i> @Shared["Button_BackToPending"]
+            </a>
+        </div>
+        <div class="card-body">
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <table class="table table-sm">
+                        <tr><th class="text-muted" style="width:40%;">@Shared["Col_Type"]</th><td><span class="badge bg-info">@Shared[$"EntityType_{Model.EntityType}"].Value</span></td></tr>
+                        <tr><th class="text-muted">@Shared["Col_EntityId"]</th><td><code>@Model.EntityId</code></td></tr>
+                        <tr><th class="text-muted">@Shared["Col_Status"]</th><td>
+                            @{
+                                var statusColor = Model.Status switch {
+                                    ESEMS.Web.Models.Workflow.WorkflowStatus.Approved => "success",
+                                    ESEMS.Web.Models.Workflow.WorkflowStatus.Rejected => "danger",
+                                    ESEMS.Web.Models.Workflow.WorkflowStatus.Submitted => "warning",
+                                    ESEMS.Web.Models.Workflow.WorkflowStatus.UnderReview => "primary",
+                                    ESEMS.Web.Models.Workflow.WorkflowStatus.ReturnedForCorrection => "secondary",
+                                    _ => "dark"
+                                };
+                            }
+                            <span class="badge bg-@statusColor">@Shared[$"WorkflowStatus_{Model.Status}"].Value</span>
+                        </td></tr>
+                        <tr><th class="text-muted">@Shared["Col_SubmittedBy"]</th><td>@Model.SubmitterName</td></tr>
+                        <tr><th class="text-muted">@Shared["Col_SubmittedAt"]</th><td>@Model.SubmittedAt?.ToDubaiString("MMM dd, yyyy HH:mm")</td></tr>
+                        <tr><th class="text-muted">@Shared["Col_Level"]</th><td>@Model.CurrentLevel / @Model.MaxLevel</td></tr>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    @if (!string.IsNullOrWhiteSpace(Model.Notes))
+                    {
+                        <div class="alert alert-light">
+                            <strong>@Shared["Label_Notes"]:</strong><br/>@Model.Notes
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <h6 class="fw-semibold mb-3"><i data-lucide="history" class="me-1" style="width:14px;height:14px;vertical-align:-2px;"></i>@Shared["Heading_ApprovalSteps"]</h6>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>@Shared["Col_Level"]</th>
+                            <th>@Shared["Col_Approver"]</th>
+                            <th>@Shared["Col_Action"]</th>
+                            <th>@Shared["Col_Comments"]</th>
+                            <th>@Shared["Column_Date"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var step in Model.Steps.OrderBy(s => s.StepLevel))
+                        {
+                            var actionColor = step.Action switch {
+                                "Approved" => "success",
+                                "Rejected" => "danger",
+                                "Pending" => "warning",
+                                "ReturnedForCorrection" => "secondary",
+                                _ => "dark"
+                            };
+                            <tr>
+                                <td><span class="badge bg-secondary">@Shared["Col_Level"] @step.StepLevel</span></td>
+                                <td>@(step.ApproverName ?? "—")</td>
+                                <td><span class="badge bg-@actionColor">@Shared[$"WorkflowAction_{step.Action}"].Value</span></td>
+                                <td>@(step.Comments ?? "—")</td>
+                                <td>@(step.ActionDate?.ToDubaiString("MMM dd, yyyy HH:mm") ?? Shared["Text_Pending"].Value)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

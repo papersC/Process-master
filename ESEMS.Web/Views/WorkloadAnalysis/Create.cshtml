@@ -1,0 +1,222 @@
+@model WorkloadScenario
+@{
+    var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    ViewData["Title"] = isRtl ? "سيناريو جديد" : "New Scenario";
+
+    var orgUnits = ViewBag.OrgUnits as List<SelectListItem> ?? new List<SelectListItem>();
+    var configs = ViewBag.Configs as List<SelectListItem> ?? new List<SelectListItem>();
+    var years = ViewBag.Years as List<SelectListItem> ?? new List<SelectListItem>();
+
+    var tooltipConfig     = isRtl ? "يحدد ساعات العمل الصافية لكل موظف، الإجازات، عبء الإدارة، ومعدل الاستخدام" : "Controls net hours per FTE: leave, admin overhead, utilization rate";
+    var tooltipHeadcount  = isRtl ? "العدد الحالي للموظفين في الوحدة — يُستخدم لحساب الفجوة" : "Current employees on these processes — used to compute the staffing gap";
+    var tooltipGrowth     = isRtl ? "نسبة الزيادة السنوية في حجم المعاملات (مثال: 10 = زيادة 10٪ كل سنة)" : "Annual volume growth rate per projection year (e.g. 10 = +10%/yr)";
+    var tooltipProjection = isRtl ? "عدد السنوات المستقبلية لتطبيق النمو (0 = السنة الحالية فقط)" : "Years to project growth forward (0 = current year only, no projection)";
+
+    var arrowBack = isRtl ? "arrow-right" : "arrow-left";
+}
+
+<partial name="_WaStyles" />
+
+<div class="wa-page">
+    <div class="wa-pageheader">
+        <div>
+            <h1 class="wa-pagetitle"><i data-lucide="plus-circle" aria-hidden="true"></i>@(isRtl ? "سيناريو تحليل جديد" : "New Workload Scenario")</h1>
+            <p class="wa-pagesub">@(isRtl ? "إنشاء سيناريو لتحليل حجم العمل وحساب الموارد البشرية" : "Create a scenario for workload analysis and FTE calculation")</p>
+        </div>
+        <div class="wa-actions">
+            <a asp-action="Index" class="wa-btn wa-btn-outline"><i data-lucide="@arrowBack" class="w-4 h-4"></i>@(isRtl ? "رجوع" : "Back")</a>
+        </div>
+    </div>
+
+    <form asp-action="Create" method="post" id="createForm">
+        @Html.AntiForgeryToken()
+        <div asp-validation-summary="ModelOnly" style="margin-bottom:.6rem;padding:.55rem .8rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.375rem;color:#b91c1c;font-size: var(--fs-xs);"></div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:.6rem;align-items:start;">
+            <div style="display:flex;flex-direction:column;gap:.6rem;">
+                @* Step 1A — Identity (matches Edit Step 1). *@
+                <div class="wa-card">
+                    <div class="wa-card-head">
+                        <div class="wa-card-title"><i data-lucide="info" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "المعلومات الأساسية" : "Basic Information")</div>
+                        <span class="wa-card-count" style="font-weight:500;color:#94a3b8;">@(isRtl ? "اسم ووصف" : "Name & description")</span>
+                    </div>
+                    <div class="wa-card-body">
+                        <div class="wa-form-grid wa-form-grid-2">
+                            <div>
+                                <label asp-for="NameEn" class="wa-label">@(isRtl ? "الاسم (إنجليزي)" : "Name (English)") <span class="wa-req">*</span></label>
+                                <input asp-for="NameEn" class="wa-input" id="NameEn" placeholder="@(isRtl ? "مثال: FY2026 Housing Services Analysis" : "e.g. FY2026 Housing Services Analysis")" />
+                                <span asp-validation-for="NameEn" class="wa-err"></span>
+                            </div>
+                            <div>
+                                <label asp-for="NameAr" class="wa-label">@(isRtl ? "الاسم (عربي)" : "Name (Arabic)") <span class="wa-req">*</span></label>
+                                <input asp-for="NameAr" dir="rtl" class="wa-input" placeholder="@(isRtl ? "مثال: تحليل خدمات الإسكان 2026" : "e.g. تحليل خدمات الإسكان 2026")" />
+                                <span asp-validation-for="NameAr" class="wa-err"></span>
+                            </div>
+                        </div>
+                        <div class="wa-form-grid wa-form-grid-2">
+                            <div>
+                                <label asp-for="DescriptionEn" class="wa-label">@(isRtl ? "الوصف (إنجليزي)" : "Description (English)")</label>
+                                <textarea asp-for="DescriptionEn" rows="2" class="wa-textarea"></textarea>
+                            </div>
+                            <div>
+                                <label asp-for="DescriptionAr" class="wa-label">@(isRtl ? "الوصف (عربي)" : "Description (Arabic)")</label>
+                                <textarea asp-for="DescriptionAr" dir="rtl" rows="2" class="wa-textarea"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @* Step 1B — Analysis parameters. *@
+                <div class="wa-card">
+                    <div class="wa-card-head">
+                        <div class="wa-card-title"><i data-lucide="settings" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "معايير التحليل" : "Analysis Parameters")</div>
+                        <span class="wa-card-count" style="font-weight:500;color:#94a3b8;">@(isRtl ? "السنة، الوحدة، الإعدادات" : "Year, unit, config")</span>
+                    </div>
+                    <div class="wa-card-body">
+                        <div class="wa-form-grid wa-form-grid-3">
+                            <div>
+                                <label asp-for="FiscalYear" class="wa-label">@(isRtl ? "السنة المالية" : "Fiscal Year") <span class="wa-req">*</span></label>
+                                <select asp-for="FiscalYear" class="wa-select" id="FiscalYearSel">
+                                    @foreach (var y in years)
+                                    {
+                                        <option value="@y.Value" selected="@(y.Value == Model.FiscalYear.ToString())">@y.Text</option>
+                                    }
+                                </select>
+                            </div>
+                            <div>
+                                <label asp-for="OwningUnitId" class="wa-label">@(isRtl ? "الوحدة التنظيمية" : "Organization Unit")</label>
+                                <select asp-for="OwningUnitId" class="wa-select" id="OwningUnitSel">
+                                    <option value="">@(isRtl ? "— اختر —" : "— Select —")</option>
+                                    @foreach (var u in orgUnits)
+                                    {
+                                        <option value="@u.Value">@u.Text</option>
+                                    }
+                                </select>
+                            </div>
+                            <div>
+                                <div style="display:flex;align-items:center;justify-content:space-between;">
+                                    <label asp-for="WorkloadConfigId" class="wa-label" style="margin-bottom:.2rem;">@(isRtl ? "الإعدادات" : "Workload Config") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tooltipConfig"></i></label>
+                                    <a asp-action="Config" style="font-size: var(--fs-xs);color:#005B99;text-decoration:underline;">@(isRtl ? "تعديل" : "Edit")</a>
+                                </div>
+                                <select asp-for="WorkloadConfigId" class="wa-select" id="ConfigSel">
+                                    @foreach (var c in configs)
+                                    {
+                                        <option value="@c.Value">@c.Text</option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="wa-form-grid wa-form-grid-3">
+                            <div>
+                                <label asp-for="CurrentHeadcount" class="wa-label">@(isRtl ? "العدد الحالي" : "Current Headcount") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tooltipHeadcount"></i></label>
+                                @* max=10000 mirrors [Range(0, 10000)] on the model. Without it, a
+                                   12-digit value overflows int parsing server-side and the binder
+                                   silently coerces the field to null — Range never fires because
+                                   null is "valid" for int?. Client-side max closes that escape. *@
+                                <input asp-for="CurrentHeadcount" type="number" min="0" max="10000" lang="en" inputmode="numeric" class="wa-input" id="HeadcountInp" />
+                            </div>
+                            <div>
+                                <label asp-for="GrowthRatePercent" class="wa-label">@(isRtl ? "نسبة النمو %" : "Growth Rate %") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tooltipGrowth"></i></label>
+                                <input asp-for="GrowthRatePercent" type="number" step="0.1" min="0" max="100" lang="en" inputmode="decimal" class="wa-input" id="GrowthInp" />
+                            </div>
+                            <div>
+                                <label asp-for="ProjectionYears" class="wa-label">@(isRtl ? "سنوات الإسقاط" : "Projection Years") <i data-lucide="help-circle" class="w-3.5 h-3.5" style="color:#9ca3af;" title="@tooltipProjection"></i></label>
+                                <input asp-for="ProjectionYears" type="number" min="0" max="10" lang="en" inputmode="numeric" class="wa-input" id="ProjInp" />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label asp-for="Notes" class="wa-label">@(isRtl ? "ملاحظات" : "Notes")</label>
+                            <textarea asp-for="Notes" rows="3" class="wa-textarea"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* Sticky live summary on the right. *@
+            <aside style="position:sticky;top:1rem;display:flex;flex-direction:column;gap:.5rem;">
+                <div class="wa-card" style="margin-bottom:0;">
+                    <div class="wa-card-head">
+                        <div class="wa-card-title"><i data-lucide="clipboard-list" class="w-4 h-4" style="color:#005B99;"></i>@(isRtl ? "ملخص" : "Summary")</div>
+                    </div>
+                    <div class="wa-card-body" style="padding:.6rem .85rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;font-size: var(--fs-xs);color:#374151;border-bottom:1px dashed #f1f5f9;">
+                            <span>@(isRtl ? "السنة المالية" : "Fiscal Year")</span>
+                            <span class="wa-code-pill" id="sumYear">—</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;font-size: var(--fs-xs);color:#374151;border-bottom:1px dashed #f1f5f9;gap:.5rem;">
+                            <span>@(isRtl ? "الوحدة" : "Unit")</span>
+                            <span id="sumUnit" style="color:#94a3b8;font-weight:500;text-align:end;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">—</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;font-size: var(--fs-xs);color:#374151;border-bottom:1px dashed #f1f5f9;gap:.5rem;">
+                            <span>@(isRtl ? "الإعدادات" : "Config")</span>
+                            <span id="sumConfig" style="color:#94a3b8;font-weight:500;text-align:end;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">—</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;font-size: var(--fs-xs);color:#374151;border-bottom:1px dashed #f1f5f9;">
+                            <span>@(isRtl ? "العدد الحالي" : "Headcount")</span>
+                            <span id="sumHeadcount" style="color:#94a3b8;font-weight:500;">—</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;font-size: var(--fs-xs);color:#374151;border-bottom:1px dashed #f1f5f9;">
+                            <span>@(isRtl ? "النمو" : "Growth")</span>
+                            <span id="sumGrowth" style="color:#94a3b8;font-weight:500;">—</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;font-size: var(--fs-xs);color:#374151;">
+                            <span>@(isRtl ? "سنوات الإسقاط" : "Projection")</span>
+                            <span id="sumProj" style="color:#94a3b8;font-weight:500;">—</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:.5rem;padding:.6rem .8rem;">
+                    <div style="font-size: var(--fs-xs);color:#1e3a8a;line-height:1.45;display:flex;align-items:flex-start;gap:.4rem;">
+                        <i data-lucide="info" class="w-3.5 h-3.5" style="color:#005B99;flex-shrink:0;margin-top:.1rem;"></i>
+                        <span>@(isRtl ? "بعد الحفظ، ستتمكن من إضافة العمليات والخدمات لحساب الموارد البشرية" : "After saving, you'll add processes and services to calculate FTE requirements.")</span>
+                    </div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:.35rem;">
+                    <button type="submit" class="wa-btn wa-btn-primary" style="justify-content:center;padding:.55rem .85rem;">
+                        <i data-lucide="save" class="w-4 h-4"></i>@(isRtl ? "حفظ ومتابعة" : "Save & Continue")
+                    </button>
+                    <a asp-action="Index" class="wa-btn wa-btn-ghost" style="justify-content:center;padding:.5rem .85rem;">
+                        <i data-lucide="x" class="w-4 h-4"></i>@(isRtl ? "إلغاء" : "Cancel")
+                    </a>
+                </div>
+            </aside>
+        </div>
+    </form>
+</div>
+
+<style>
+    @@media (max-width: 992px) {
+        form#createForm > div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
+        aside[style*="sticky"] { position: static !important; }
+    }
+</style>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+        const fy = document.getElementById('FiscalYearSel');
+        const unit = document.getElementById('OwningUnitSel');
+        const cfg = document.getElementById('ConfigSel');
+        const hc = document.getElementById('HeadcountInp');
+        const gr = document.getElementById('GrowthInp');
+        const pr = document.getElementById('ProjInp');
+        function setText(el, v) { if (!el) return; el.textContent = v || '—'; el.style.color = v ? '#111827' : '#94a3b8'; el.style.fontWeight = v ? '700' : '500'; el.title = v || ''; }
+        function refresh() {
+            document.getElementById('sumYear').textContent = fy?.value || '—';
+            setText(document.getElementById('sumUnit'),   unit?.value ? unit.options[unit.selectedIndex].textContent.trim() : '');
+            setText(document.getElementById('sumConfig'), cfg?.value  ? cfg.options[cfg.selectedIndex].textContent.trim()  : '');
+            const h = (hc?.value || '').trim();
+            setText(document.getElementById('sumHeadcount'), h && h !== '0' ? h : '');
+            const g = (gr?.value || '').trim();
+            setText(document.getElementById('sumGrowth'), g && g !== '0' ? g + '%' : '');
+            const p = (pr?.value || '').trim();
+            setText(document.getElementById('sumProj'), p && p !== '0' ? p + ' yr' : '');
+        }
+        [fy, unit, cfg, hc, gr, pr].forEach(e => { e?.addEventListener('input', refresh); e?.addEventListener('change', refresh); });
+        refresh();
+    </script>
+}

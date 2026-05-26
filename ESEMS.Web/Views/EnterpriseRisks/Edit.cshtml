@@ -1,0 +1,376 @@
+@model EnterpriseRisk
+@{
+    ViewData["Title"] = Shared["Title_EditRisk"].Value;
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+    var step1 = isRtl ? "الهوية والمخاطر الكامنة" : "Identity & Inherent Risk";
+    var step2 = isRtl ? "المخاطر المتبقية والضوابط" : "Residual & Controls";
+}
+
+<partial name="_WizardStyles" />
+
+<style>
+    .wiz-matrix-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; font-size: var(--fs-xs); }
+    .wiz-matrix-hdr { padding: .35rem 0; text-align: center; font-weight: 600; color: #6b7280; }
+    .wiz-matrix-cell { padding: .55rem .25rem; color: #fff; border-radius: 4px; cursor: pointer; text-align: center; font-weight: 700; transition: transform .12s; }
+    .wiz-matrix-cell:hover { transform: scale(1.05); }
+    .wiz-matrix-cell.is-selected { outline: 3px solid #fff; box-shadow: 0 0 0 5px #005B99; }
+    .wiz-matrix-bg-low { background: #22c55e; }
+    .wiz-matrix-bg-med { background: #eab308; }
+    .wiz-matrix-bg-high { background: #f97316; }
+    .wiz-matrix-bg-crit { background: #ef4444; }
+    .wiz-matrix-legend { display: flex; flex-wrap: wrap; gap: .65rem; margin-top: .55rem; font-size: var(--fs-xs); color: #6b7280; }
+    .wiz-matrix-legend span { display: inline-flex; align-items: center; gap: .25rem; }
+    .wiz-matrix-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+    .wiz-checkbox-row { display: inline-flex; align-items: center; gap: .4rem; padding-top: .25rem; }
+    .pc-pill-score-low { background: #dcfce7; color: #166534; }
+    .pc-pill-score-med { background: #fef3c7; color: #92400e; }
+    .pc-pill-score-high { background: #ffedd5; color: #9a3412; }
+    .pc-pill-score-crit { background: #fee2e2; color: #991b1b; }
+</style>
+
+<div class="wiz-pageheader">
+    <h1 class="wiz-pagetitle"><i data-lucide="shield-alert" style="width:20px;height:20px;color:#005B99;"></i>@ViewData["Title"]</h1>
+    <div style="display:inline-flex;align-items:center;gap:.85rem;">
+        <span class="wiz-stepcount">@(isRtl ? "الخطوة" : "Step") <b id="stepCounter">1</b> @(isRtl ? "من" : "of") 2</span>
+        <a asp-action="Details" asp-route-id="@Model.Id" class="wiz-cancellink"><i data-lucide="x" style="width:14px;height:14px;"></i> @Shared["Button_Cancel"]</a>
+    </div>
+</div>
+
+<form asp-action="Edit" method="post" id="wizardForm" novalidate data-guard-unsaved>
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="Id" />
+    <input type="hidden" asp-for="RiskNumber" />
+    <input type="hidden" asp-for="CreatedAt" />
+    <input type="hidden" asp-for="CreatedById" />
+    <input type="hidden" asp-for="UpdatedAt" />
+    <input type="hidden" asp-for="UpdatedById" />
+    <input type="hidden" asp-for="Version" />
+    <div asp-validation-summary="ModelOnly" style="margin-bottom:.6rem;padding:.6rem .8rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.375rem;color:#b91c1c;font-size: var(--fs-xs);"></div>
+
+    <div class="wiz-grid">
+        <aside class="wiz-rail">
+            <ul class="wiz-steps" id="wizardSteps">
+                <li class="wiz-step active" data-step="1" onclick="wizGoTo(1)">
+                    <span class="wiz-stepnum">1</span>
+                    <span class="wiz-steptext"><span class="wiz-steptitle">@step1</span><span class="wiz-stepsub">@(isRtl ? "الاسم، الفئة، الاحتمال، الأثر" : "Name, category, likelihood, impact")</span></span>
+                </li>
+                <li class="wiz-step" data-step="2" onclick="wizGoTo(2)">
+                    <span class="wiz-stepnum">2</span>
+                    <span class="wiz-steptext"><span class="wiz-steptitle">@step2</span><span class="wiz-stepsub">@(isRtl ? "المتبقي، الضوابط، الاستجابة" : "Residual, controls, response")</span></span>
+                </li>
+            </ul>
+        </aside>
+
+        <section class="wiz-main">
+            <!-- Step 1 -->
+            <div class="wiz-step-content active" data-step="1">
+                <div class="wiz-stephdr"><i data-lucide="info" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 1: @step1</h2></div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="NameEn" class="pc-label">@Shared["Label_NameEnglish"] <span class="req">*</span></label>
+                        <input asp-for="NameEn" id="NameEn" class="pc-input" />
+                        <span asp-validation-for="NameEn" class="pc-err"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NameAr" class="pc-label">@Shared["Label_NameArabic"]</label>
+                        <input asp-for="NameAr" dir="rtl" class="pc-input" />
+                    </div>
+                </div>
+
+                <div class="pc-row">
+                    <label asp-for="CategoryId" class="pc-label">@Shared["Label_Category"] <span class="req">*</span></label>
+                    <select asp-for="CategoryId" id="CategorySel" asp-items="@ViewBag.Categories" class="pc-select"></select>
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label class="pc-label">@Shared["Label_Likelihood"] (1-5) <span class="req">*</span></label>
+                        <select asp-for="Likelihood" id="likelihoodSelect" class="pc-select">
+                            <option value="1">1 - @Shared["Likelihood_Rare"]</option>
+                            <option value="2">2 - @Shared["Likelihood_Unlikely"]</option>
+                            <option value="3">3 - @Shared["Likelihood_Possible"]</option>
+                            <option value="4">4 - @Shared["Likelihood_Likely"]</option>
+                            <option value="5">5 - @Shared["Likelihood_AlmostCertain"]</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="pc-label">@Shared["Label_Impact"] (1-5) <span class="req">*</span></label>
+                        <select asp-for="Impact" id="impactSelect" class="pc-select">
+                            <option value="1">1 - @Shared["Impact_Insignificant"]</option>
+                            <option value="2">2 - @Shared["Impact_Minor"]</option>
+                            <option value="3">3 - @Shared["Impact_Moderate"]</option>
+                            <option value="4">4 - @Shared["Impact_Major"]</option>
+                            <option value="5">5 - @Shared["Impact_Catastrophic"]</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="pc-label" style="display:flex;align-items:center;gap:.4rem;">
+                        <i data-lucide="grid-3x3" style="width:14px;height:14px;color:#005B99;"></i>
+                        @Shared["Label_RiskMatrix"]
+                        <span style="margin-inline-start:auto;font-weight:700;color:#005B99;" id="riskScoreDisplay">Score: @(Model.Likelihood * Model.Impact)</span>
+                    </label>
+                    <div class="wiz-matrix-grid" id="riskMatrix">
+                        <div class="wiz-matrix-hdr">L/I</div>
+                        <div class="wiz-matrix-hdr">1</div>
+                        <div class="wiz-matrix-hdr">2</div>
+                        <div class="wiz-matrix-hdr">3</div>
+                        <div class="wiz-matrix-hdr">4</div>
+                        <div class="wiz-matrix-hdr">5</div>
+                        @for (int l = 5; l >= 1; l--)
+                        {
+                            <div class="wiz-matrix-hdr">@l</div>
+                            @for (int i = 1; i <= 5; i++)
+                            {
+                                var score = l * i;
+                                var bgCls = score >= 15 ? "wiz-matrix-bg-crit" : score >= 10 ? "wiz-matrix-bg-high" : score >= 5 ? "wiz-matrix-bg-med" : "wiz-matrix-bg-low";
+                                <div class="wiz-matrix-cell @bgCls" data-likelihood="@l" data-impact="@i" data-score="@score">@score</div>
+                            }
+                        }
+                    </div>
+                    <div class="wiz-matrix-legend">
+                        <span><i class="wiz-matrix-bg-low"></i> Low (1-4)</span>
+                        <span><i class="wiz-matrix-bg-med"></i> Medium (5-9)</span>
+                        <span><i class="wiz-matrix-bg-high"></i> High (10-14)</span>
+                        <span><i class="wiz-matrix-bg-crit"></i> Critical (15-25)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="wiz-step-content" data-step="2">
+                <div class="wiz-stephdr"><i data-lucide="shield-check" style="width:18px;height:18px;"></i><h2>@(isRtl ? "الخطوة" : "Step") 2: @step2</h2></div>
+
+                <div class="pc-grid-3 pc-row">
+                    <div>
+                        <label asp-for="ResidualLikelihood" class="pc-label">@Shared["Label_ResidualLikelihood"]</label>
+                        <select asp-for="ResidualLikelihood" id="ResidualLikelihoodSel" class="pc-select">
+                            <option value="">-</option>
+                            <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label asp-for="ResidualImpact" class="pc-label">@Shared["Label_ResidualImpact"]</label>
+                        <select asp-for="ResidualImpact" id="ResidualImpactSel" class="pc-select">
+                            <option value="">-</option>
+                            <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label asp-for="ControlEffectiveness" class="pc-label">@Shared["Label_ControlEffectiveness"]</label>
+                        <select asp-for="ControlEffectiveness" id="ControlEffSel" class="pc-select">
+                            <option value="">-</option>
+                            <option value="1">1 - @Shared["Effectiveness_VeryLow"]</option>
+                            <option value="2">2 - @Shared["Effectiveness_Low"]</option>
+                            <option value="3">3 - @Shared["Effectiveness_Medium"]</option>
+                            <option value="4">4 - @Shared["Effectiveness_High"]</option>
+                            <option value="5">5 - @Shared["Effectiveness_VeryHigh"]</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="pc-grid-2 pc-row">
+                    <div>
+                        <label asp-for="ToleranceLevel" class="pc-label">@Shared["Label_ToleranceLevel"]</label>
+                        <select asp-for="ToleranceLevel" id="ToleranceSel" asp-items="@(new SelectList(Enum.GetValues<RiskLevel>().Select(v => new { Value = v.ToString(), Display = Shared[$"RiskLevel_{v}"].Value }), "Value", "Display"))" class="pc-select">
+                            <option value="">-</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label asp-for="NextReviewDate" class="pc-label">@Shared["Label_NextReviewDate"]</label>
+                        <input asp-for="NextReviewDate" type="date" id="NextReviewInp" class="pc-input" />
+                    </div>
+                </div>
+
+                <div class="pc-row">
+                    <label class="wiz-checkbox-row">
+                        <input asp-for="IsActive" type="checkbox" id="IsActiveInp" />
+                        <span style="font-size: var(--fs-xs);color:#374151;">@Shared["Label_IsActive"]</span>
+                    </label>
+                </div>
+
+                <div class="pc-row">
+                    <label asp-for="CurrentControls" class="pc-label">@Shared["Label_CurrentControls"]</label>
+                    <textarea asp-for="CurrentControls" rows="3" class="pc-textarea"></textarea>
+                </div>
+
+                <div>
+                    <label asp-for="ResponseStrategy" class="pc-label">@Shared["Label_ResponseStrategy"]</label>
+                    <textarea asp-for="ResponseStrategy" rows="2" class="pc-textarea"></textarea>
+                </div>
+            </div>
+
+            <div class="wiz-footer">
+                <button type="button" class="pc-btn pc-btn-ghost" id="prevBtn" disabled>
+                    <i data-lucide="@(isRtl ? "chevron-right" : "chevron-left")" style="width:16px;height:16px;"></i>
+                    @(isRtl ? "السابق" : "Previous")
+                </button>
+                <button type="button" class="pc-btn pc-btn-primary" id="nextBtn">
+                    @(isRtl ? "التالي" : "Next")
+                    <i data-lucide="@(isRtl ? "chevron-left" : "chevron-right")" style="width:16px;height:16px;"></i>
+                </button>
+            </div>
+        </section>
+
+        <aside class="wiz-summary">
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="hash"></i><h3>@(isRtl ? "رقم المخاطرة" : "Risk #")</h3></div>
+                <div class="wiz-sum-codepreview">@Model.RiskNumber</div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="activity"></i><h3>@(isRtl ? "تقييم المخاطر" : "Risk Assessment")</h3></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="trending-up"></i> @(isRtl ? "كامنة" : "Inherent")</span><span class="wiz-sum-pill pc-pill-score-med" id="sumInherent">@(Model.Likelihood * Model.Impact)</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="trending-down"></i> @(isRtl ? "متبقية" : "Residual")</span><span class="wiz-sum-pill" id="sumResidual">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="shield"></i> @(isRtl ? "ضوابط" : "Controls")</span><span class="wiz-sum-pill" id="sumControls">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="circle"></i> @Shared["Label_IsActive"]</span><span class="wiz-sum-pill wiz-sum-pill-on" id="sumActive">@(Model.IsActive ? (isRtl ? "نعم" : "Yes") : (isRtl ? "لا" : "No"))</span></div>
+            </div>
+
+            <div class="wiz-sum-card">
+                <div class="wiz-sum-hdr"><i data-lucide="folder"></i><h3>@(isRtl ? "السياق" : "Context")</h3></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="bookmark"></i> @Shared["Label_Category"]</span><span class="wiz-sum-pill" id="sumCategory">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="layers"></i> @Shared["Label_ToleranceLevel"]</span><span class="wiz-sum-pill" id="sumTolerance">—</span></div>
+                <div class="wiz-sum-row"><span class="wiz-sum-label"><i data-lucide="calendar"></i> @Shared["Label_NextReviewDate"]</span><span class="wiz-sum-pill" id="sumReview">—</span></div>
+            </div>
+
+            <div class="wiz-sum-actions">
+                <button type="submit" class="pc-btn pc-btn-primary pc-btn-block" id="submitBtn" disabled
+                        title="@(isRtl ? "أكمل جميع الخطوات لتفعيل الزر" : "Complete all steps to enable")">
+                    <i data-lucide="save" style="width:16px;height:16px;"></i>
+                    @Shared["Button_SaveChanges"]
+                </button>
+                <a asp-action="Details" asp-route-id="@Model.Id" class="pc-btn pc-btn-ghost pc-btn-block">
+                    <i data-lucide="x" style="width:16px;height:16px;"></i>
+                    @Shared["Button_Cancel"]
+                </a>
+            </div>
+        </aside>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script nonce="@Context.CspNonce()">
+        if (window.lucide) lucide.createIcons();
+        const isRtl = @Html.Raw(isRtl ? "true" : "false");
+        const TOTAL_STEPS = 2;
+        let currentStep = 1, highestVisited = 1;
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const submitBtn = document.getElementById('submitBtn');
+        const stepCounterEl = document.getElementById('stepCounter');
+
+        function validateStep(n) {
+            if (n !== 1) return true;
+            const errors = [];
+            const mark = (id, label) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (!(el.value || '').trim()) { el.classList.add('invalid'); errors.push(label); } else { el.classList.remove('invalid'); }
+            };
+            mark('NameEn',      isRtl ? "الاسم بالإنجليزية مطلوب" : "English name is required");
+            mark('CategorySel', isRtl ? "الفئة مطلوبة" : "Category is required");
+            if (errors.length) {
+                Swal.fire({ icon:'warning', title: isRtl ? "حقول مطلوبة" : "Required Fields", html: errors.join('<br>'), confirmButtonColor:'#005B99' });
+                return false;
+            }
+            return true;
+        }
+
+        function showStep(n) {
+            currentStep = Math.max(1, Math.min(TOTAL_STEPS, n));
+            highestVisited = Math.max(highestVisited, currentStep);
+            document.querySelectorAll('.wiz-step').forEach(el => {
+                const s = parseInt(el.dataset.step, 10);
+                el.classList.toggle('active', s === currentStep);
+                el.classList.toggle('completed', s < highestVisited && s !== currentStep);
+            });
+            document.querySelectorAll('.wiz-step-content').forEach(p => {
+                p.classList.toggle('active', parseInt(p.dataset.step, 10) === currentStep);
+            });
+            prevBtn.disabled = (currentStep === 1);
+            nextBtn.classList.toggle('d-none', currentStep === TOTAL_STEPS);
+            if (submitBtn) submitBtn.disabled = (currentStep !== TOTAL_STEPS);
+            if (stepCounterEl) stepCounterEl.textContent = currentStep;
+            if (window.lucide) lucide.createIcons();
+        }
+        window.wizGoTo = function (n) {
+            if (n <= currentStep) { showStep(n); return; }
+            if (n === currentStep + 1) { if (validateStep(currentStep)) showStep(n); return; }
+            if (validateStep(currentStep)) showStep(currentStep + 1);
+        };
+        prevBtn.addEventListener('click', () => showStep(currentStep - 1));
+        nextBtn.addEventListener('click', () => { if (validateStep(currentStep)) showStep(currentStep + 1); });
+
+        // ----- Risk matrix interaction (event delegation, no inline onclick) -----
+        const matrix = document.getElementById('riskMatrix');
+        const likelihoodSelect = document.getElementById('likelihoodSelect');
+        const impactSelect = document.getElementById('impactSelect');
+        const scoreDisplay = document.getElementById('riskScoreDisplay');
+
+        function scoreClass(s) {
+            if (s >= 15) return 'pc-pill-score-crit';
+            if (s >= 10) return 'pc-pill-score-high';
+            if (s >= 5)  return 'pc-pill-score-med';
+            return 'pc-pill-score-low';
+        }
+        function updateMatrixSelection() {
+            const l = parseInt(likelihoodSelect.value, 10) || 3;
+            const i = parseInt(impactSelect.value, 10) || 3;
+            const score = l * i;
+            scoreDisplay.textContent = 'Score: ' + score;
+            matrix.querySelectorAll('.wiz-matrix-cell').forEach(c => c.classList.remove('is-selected'));
+            const sel = matrix.querySelector(`.wiz-matrix-cell[data-likelihood="${l}"][data-impact="${i}"]`);
+            if (sel) sel.classList.add('is-selected');
+            const sumI = document.getElementById('sumInherent');
+            sumI.textContent = score; sumI.className = 'wiz-sum-pill ' + scoreClass(score);
+        }
+        matrix.addEventListener('click', function (e) {
+            const cell = e.target.closest('.wiz-matrix-cell');
+            if (!cell) return;
+            likelihoodSelect.value = cell.dataset.likelihood;
+            impactSelect.value     = cell.dataset.impact;
+            updateMatrixSelection();
+        });
+        likelihoodSelect.addEventListener('change', updateMatrixSelection);
+        impactSelect.addEventListener('change', updateMatrixSelection);
+
+        // ----- Summary refresh -----
+        function refresh() {
+            const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v || '—'; };
+            const rl = parseInt(document.getElementById('ResidualLikelihoodSel')?.value, 10);
+            const ri = parseInt(document.getElementById('ResidualImpactSel')?.value, 10);
+            const sumR = document.getElementById('sumResidual');
+            if (rl && ri) {
+                const rs = rl * ri;
+                sumR.textContent = rs; sumR.className = 'wiz-sum-pill ' + scoreClass(rs);
+            } else {
+                sumR.textContent = '—'; sumR.className = 'wiz-sum-pill';
+            }
+            const ce = document.getElementById('ControlEffSel');
+            set('sumControls', ce?.value ? ce.options[ce.selectedIndex]?.text?.trim() : '');
+            const cat = document.getElementById('CategorySel');
+            set('sumCategory', cat?.value ? cat.options[cat.selectedIndex]?.text?.trim() : '');
+            const tol = document.getElementById('ToleranceSel');
+            set('sumTolerance', tol?.value ? tol.options[tol.selectedIndex]?.text?.trim() : '');
+            set('sumReview', document.getElementById('NextReviewInp')?.value);
+            const a = !!document.getElementById('IsActiveInp')?.checked;
+            const sa = document.getElementById('sumActive');
+            sa.textContent = a ? (isRtl ? 'نعم' : 'Yes') : (isRtl ? 'لا' : 'No');
+            sa.className = 'wiz-sum-pill ' + (a ? 'wiz-sum-pill-on' : 'wiz-sum-pill-off');
+        }
+        ['ResidualLikelihoodSel','ResidualImpactSel','ControlEffSel','CategorySel','ToleranceSel','NextReviewInp','IsActiveInp'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', refresh);
+            document.getElementById(id)?.addEventListener('input', refresh);
+        });
+        document.getElementById('wizardForm').addEventListener('submit', function (e) {
+            if (!validateStep(1)) { e.preventDefault(); showStep(1); }
+        });
+
+        showStep(1);
+        updateMatrixSelection();
+        refresh();
+    </script>
+}
