@@ -115,6 +115,60 @@
                             <i data-lucide="redo-2" class="h-4 w-4"></i>
                         </button>
                     </div>
+
+                    @* Pool / Lane creation. Horizontal pools stack lanes
+                       vertically (lt-> rt or rt->lt flow); vertical pools
+                       lay lanes side-by-side (top->bottom flow). For RTL
+                       diagrams, new pools stagger leftward and lane
+                       "before/after" swap to bpmn-js's bottom/top so the
+                       new lane lands on the visually-correct side. *@
+                    <div class="btn-group btn-group-sm" role="group">
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-primary dropdown-toggle d-flex align-items-center gap-1"
+                                    data-bs-toggle="dropdown" aria-expanded="false"
+                                    title="@(isRtl ? "إضافة مسبح" : "Add Pool")">
+                                <i data-lucide="rectangle-horizontal" class="h-4 w-4"></i>
+                                <span class="d-none d-xl-inline small">@(isRtl ? "مسبح" : "Pool")</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li>
+                                    <button type="button" class="dropdown-item d-flex align-items-center gap-2 ai-add-pool" data-orientation="horizontal">
+                                        <i data-lucide="rectangle-horizontal" style="width: 16px; height: 16px;"></i>
+                                        <span>@(isRtl ? "مسبح أفقي (المسارات أسفل بعضها)" : "Horizontal Pool (lanes stack vertically)")</span>
+                                    </button>
+                                </li>
+                                <li>
+                                    <button type="button" class="dropdown-item d-flex align-items-center gap-2 ai-add-pool" data-orientation="vertical">
+                                        <i data-lucide="rectangle-vertical" style="width: 16px; height: 16px;"></i>
+                                        <span>@(isRtl ? "مسبح عمودي (المسارات جنباً إلى جنب)" : "Vertical Pool (lanes side-by-side)")</span>
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-primary dropdown-toggle d-flex align-items-center gap-1"
+                                    data-bs-toggle="dropdown" aria-expanded="false"
+                                    title="@(isRtl ? "إضافة مسار" : "Add Lane")">
+                                <i data-lucide="rows-3" class="h-4 w-4"></i>
+                                <span class="d-none d-xl-inline small">@(isRtl ? "مسار" : "Lane")</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li>
+                                    <button type="button" class="dropdown-item d-flex align-items-center gap-2 ai-add-lane" data-location="before">
+                                        <i data-lucide="arrow-up" style="width: 14px; height: 14px;"></i>
+                                        <span>@(isRtl ? "قبل المحدد" : "Before selection")</span>
+                                    </button>
+                                </li>
+                                <li>
+                                    <button type="button" class="dropdown-item d-flex align-items-center gap-2 ai-add-lane" data-location="after">
+                                        <i data-lucide="arrow-down" style="width: 14px; height: 14px;"></i>
+                                        <span>@(isRtl ? "بعد المحدد" : "After selection")</span>
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
                     <div class="btn-group btn-group-sm">
                         <button id="btnZoomIn" class="btn btn-outline-secondary" title="@(isRtl ? "تكبير" : "Zoom In")">
                             <i data-lucide="zoom-in" class="h-4 w-4"></i>
@@ -194,6 +248,17 @@
                         <i data-lucide="save" class="h-4 w-4 me-1"></i>
                         @(isRtl ? "حفظ للعملية" : "Save to Process")
                     </button>
+                    @* "Enhance Drawing" — server-side tidies the current
+                       diagram: resizes tasks to fit labels, pushes
+                       overlapping shapes apart with RTL-aware direction,
+                       re-routes edges around obstacles with orthogonal
+                       waypoints, centres edge labels. Empty diagrams fall
+                       back to the picker modal so the button still does
+                       something useful on a fresh canvas. *@
+                    <button id="btnEnhanceDrawing" type="button" class="btn btn-info btn-sm text-white d-flex align-items-center gap-1" title="@(isRtl ? "تحسين الرسم الحالي تلقائياً" : "Auto-tidy the current diagram")">
+                        <i data-lucide="sparkles" class="h-4 w-4"></i>
+                        <span>@(isRtl ? "تحسين الرسم" : "Enhance Drawing")</span>
+                    </button>
                     <span id="toolbarLinkedBadge" class="linked-process-badge d-none">
                         <i data-lucide="link" style="width:12px;height:12px"></i>
                         <span id="toolbarLinkedName"></span>
@@ -232,6 +297,53 @@
                         <p class="text-muted fw-medium">@(isRtl ? "جاري التوليد..." : "Generating...")</p>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Enhance Drawing Modal — pick a process, fetch & auto-tidy its BPMN -->
+<div class="modal fade" id="enhanceDrawingModal" tabindex="-1" aria-labelledby="enhanceDrawingModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="enhanceDrawingModalLabel">
+                    <i data-lucide="sparkles" style="width:18px;height:18px;margin-inline-end:6px;color:#0ea5e9"></i>
+                    @(isRtl ? "تحسين رسم BPMN" : "Enhance BPMN Drawing")
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info small py-2 mb-3 d-flex align-items-start gap-2">
+                    <i data-lucide="info" style="width:14px;height:14px;flex-shrink:0;margin-top:2px"></i>
+                    <div>
+                        @(isRtl
+                            ? "اختر عملية لديها رسم BPMN. سيقوم النظام بتحميل الرسم وإعادة توجيه الأسهم بشكل متعامد، وتوسيط النصوص على الحواف، وتكبير المهام التي لا تتسع لنصها، ثم عرض النتيجة في المحرر للحفظ."
+                            : "Pick a process that already has a BPMN diagram. The server will fetch it, re-route every edge with orthogonal waypoints, centre labels on the new midpoints, grow tasks whose labels overflow, then drop the cleaned diagram into the editor.")
+                    </div>
+                </div>
+                <label class="form-label small fw-semibold">@(isRtl ? "العملية" : "Process")</label>
+                <div class="search-dropdown position-relative">
+                    <input type="text" id="enhanceProcessSearch" class="form-control form-control-sm"
+                           placeholder="@(isRtl ? "اكتب للبحث بالاسم أو الرمز..." : "Type to search by name or code...")"
+                           autocomplete="off" />
+                    <input type="hidden" id="enhanceProcessId" />
+                    <div id="enhanceProcessResults" class="search-results border bg-white shadow-sm" style="display:none;position:absolute;left:0;right:0;top:100%;max-height:240px;overflow:auto;z-index:5;"></div>
+                </div>
+                <div id="enhanceSelectedProcess" class="mt-2 small text-muted d-none">
+                    <i data-lucide="check-circle" style="width:14px;height:14px;color:#16a34a;"></i>
+                    <span id="enhanceSelectedName"></span>
+                </div>
+                <div id="enhanceStatus" class="mt-3 small d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">
+                    @(isRtl ? "إلغاء" : "Cancel")
+                </button>
+                <button type="button" id="btnRunEnhance" class="btn btn-sm btn-info text-white" disabled>
+                    <i data-lucide="wand-2" style="width:14px;height:14px;margin-inline-end:4px"></i>
+                    @(isRtl ? "تحميل وتحسين" : "Load & Enhance")
+                </button>
             </div>
         </div>
     </div>
@@ -389,4 +501,378 @@
         window.bpmnPageConfig = @Html.Raw(configJson);
     </script>
     <script src="~/js/bpmn-page.js" asp-append-version="true"></script>
+
+    @* Pool / Lane creation with RTL awareness. RTL detection combines the
+       page culture (Razor's isRtl) with a content check on the modeler's
+       current XML — that way an English UI viewing an Arabic process
+       still flips the stagger and lane direction.
+       For BPMN, "horizontal pool" = isHorizontal=true (lanes stack
+       vertically). bpmn-js's addLane(target, 'top'|'bottom') is relative
+       to the pool's stacking axis. To honour reading order we map:
+         LTR + "after"  → 'bottom'  (next lane is south / east)
+         LTR + "before" → 'top'     (new lane is north / west)
+         RTL + "after"  → 'top'     (next lane is north / WEST for v-pool)
+         RTL + "before" → 'bottom'  (new lane is south / EAST for v-pool)
+       Only the X-axis flips in RTL because Arabic reading direction
+       affects horizontal layout, not vertical. *@
+    <script nonce="@Context.CspNonce()">
+    (function () {
+        var PAGE_RTL = @(isRtl ? "true" : "false");
+
+        function aiBpmnType(el) { return el && el.businessObject ? el.businessObject.$type : null; }
+        function aiFindAncestor(el, types) {
+            for (var cur = el; cur; cur = cur.parent) {
+                if (types.indexOf(aiBpmnType(cur)) >= 0) return cur;
+            }
+            return null;
+        }
+
+        // Content-level RTL check: scan label/name text for the Arabic
+        // Unicode block. Combined with the page culture so a mixed-locale
+        // user still gets RTL behaviour on an Arabic diagram.
+        var arabicRangeRe = /[؀-ۿݐ-ݿࢠ-ࣿ]/;
+        async function isCurrentDiagramRtl() {
+            if (PAGE_RTL) return true;
+            if (!window.bpmnModeler) return false;
+            try {
+                var res = await window.bpmnModeler.saveXML({ format: false });
+                var xml = (res && res.xml) || '';
+                return arabicRangeRe.test(xml);
+            } catch (e) { return false; }
+        }
+
+        async function aiAddPool(orientation) {
+            if (!window.bpmnModeler) return;
+            try {
+                var modeler = window.bpmnModeler;
+                var elementFactory = modeler.get('elementFactory');
+                var modeling = modeler.get('modeling');
+                var canvas = modeler.get('canvas');
+                var root = canvas.getRootElement();
+                var isHorizontal = orientation !== 'vertical';
+                var isRtl = await isCurrentDiagramRtl();
+
+                // Stagger new pools so they don't overlap existing ones.
+                // Direction follows reading order — LTR pushes new pools
+                // to the right of the cluster, RTL to the left.
+                var existingPools = (root.children || []).filter(function (c) {
+                    return aiBpmnType(c) === 'bpmn:Participant';
+                });
+                var n = existingPools.length;
+                var position;
+                if (isHorizontal) {
+                    position = { x: 400, y: 200 + n * 280 };
+                } else {
+                    var xStep = isRtl ? -280 : 280;
+                    position = { x: 400 + n * xStep, y: 200 };
+                }
+
+                var participant = elementFactory.createParticipantShape({
+                    type: 'bpmn:Participant',
+                    isExpanded: true
+                });
+                if (!isHorizontal) {
+                    var w = participant.width || 600;
+                    var h = participant.height || 250;
+                    participant.width = h;
+                    participant.height = w;
+                }
+                var created = modeling.createShape(participant, position, root);
+                if (!isHorizontal && created.di) {
+                    modeling.updateModdleProperties(created, created.di, { isHorizontal: false });
+                }
+                modeler.get('selection').select(created);
+            } catch (err) {
+                console.error('AI Add Pool failed:', err);
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ icon: 'error', title: PAGE_RTL ? 'تعذر إضافة المسبح' : 'Could not add pool', text: err.message, confirmButtonColor: '#005B99' });
+                }
+            }
+        }
+
+        async function aiAddLane(direction) {
+            if (!window.bpmnModeler) return;
+            try {
+                var modeler = window.bpmnModeler;
+                var selection = modeler.get('selection').get();
+                var target = selection.length ? aiFindAncestor(selection[0], ['bpmn:Lane', 'bpmn:Participant']) : null;
+
+                if (!target) {
+                    var root = modeler.get('canvas').getRootElement();
+                    var pools = (root.children || []).filter(function (c) { return aiBpmnType(c) === 'bpmn:Participant'; });
+                    if (pools.length === 1) {
+                        target = pools[0];
+                    } else if (pools.length === 0) {
+                        if (typeof Swal !== 'undefined') {
+                            Swal.fire({
+                                icon: 'info',
+                                title: PAGE_RTL ? 'لا يوجد مسبح' : 'No pool yet',
+                                text: PAGE_RTL ? 'أضف مسبحاً أولاً ثم أضف المسارات بداخله.' : 'Add a pool first, then add lanes inside it.',
+                                confirmButtonColor: '#005B99'
+                            });
+                        }
+                        return;
+                    } else {
+                        if (typeof Swal !== 'undefined') {
+                            Swal.fire({
+                                icon: 'info',
+                                title: PAGE_RTL ? 'حدد مسبحاً أو مساراً' : 'Select a pool or lane',
+                                text: PAGE_RTL ? 'لديك أكثر من مسبح — انقر على المسبح المستهدف أولاً.' : 'Multiple pools on the canvas — click the target pool first.',
+                                confirmButtonColor: '#005B99'
+                            });
+                        }
+                        return;
+                    }
+                }
+
+                // Figure out the target pool's orientation. For a vertical
+                // pool in RTL, "after" should land on the LEFT (west) side
+                // and "before" on the right; bpmn-js's 'top' is the
+                // primary-axis start ("west" for vertical pools), 'bottom'
+                // is the primary-axis end. So swap direction → location
+                // when the parent is vertical AND content is RTL.
+                var pool = aiFindAncestor(target, ['bpmn:Participant']) || target;
+                var poolIsHorizontal = !pool.di || pool.di.isHorizontal !== false;
+                var isRtl = await isCurrentDiagramRtl();
+                // Default LTR mapping: after → bottom, before → top.
+                var location = direction === 'before' ? 'top' : 'bottom';
+                if (!poolIsHorizontal && isRtl) {
+                    // RTL + vertical pool: flip — "after" goes west, "before" east.
+                    location = direction === 'before' ? 'bottom' : 'top';
+                }
+
+                modeler.get('modeling').addLane(target, location);
+            } catch (err) {
+                console.error('AI Add Lane failed:', err);
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ icon: 'error', title: PAGE_RTL ? 'تعذر إضافة المسار' : 'Could not add lane', text: err.message, confirmButtonColor: '#005B99' });
+                }
+            }
+        }
+
+        document.querySelectorAll('.ai-add-pool').forEach(function (btn) {
+            btn.addEventListener('click', function () { aiAddPool(btn.dataset.orientation); });
+        });
+        document.querySelectorAll('.ai-add-lane').forEach(function (btn) {
+            btn.addEventListener('click', function () { aiAddLane(btn.dataset.location); });
+        });
+    })();
+    </script>
+
+    @* Enhance Drawing — primary action: enhance whatever is currently in
+       the modeler (the diagram the user has been working on, whether
+       drawn from scratch, AI-generated, or loaded via "Load from
+       Process"). Fallback: when the canvas is empty, open the
+       process-picker modal so the button still does something useful. *@
+    <script nonce="@Context.CspNonce()">
+    (function () {
+        var IS_RTL = @(isRtl ? "true" : "false");
+        var modalEl = document.getElementById('enhanceDrawingModal');
+        if (!modalEl) return;
+
+        var input    = document.getElementById('enhanceProcessSearch');
+        var hidden   = document.getElementById('enhanceProcessId');
+        var resultsBox = document.getElementById('enhanceProcessResults');
+        var selected = document.getElementById('enhanceSelectedProcess');
+        var selectedName = document.getElementById('enhanceSelectedName');
+        var statusEl = document.getElementById('enhanceStatus');
+        var runBtn   = document.getElementById('btnRunEnhance');
+        var enhanceBtn = document.getElementById('btnEnhanceDrawing');
+
+        var processes = [];
+        var loaded = false;
+
+        // Antiforgery token helper — required by the POST endpoint that
+        // takes ad-hoc XML. Reads from the hidden form the layout emits.
+        function getAntiForgeryToken() {
+            var el = document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]');
+            return el ? el.value : '';
+        }
+
+        // "Is this an empty / default diagram?" — used to decide whether
+        // the button should enhance in place or open the picker modal.
+        // Counts task / event / gateway shape openings; a fresh template
+        // has the default start event, which is fine to enhance too, so
+        // we only treat "zero shapes" as truly empty.
+        function diagramHasContent(xml) {
+            if (!xml) return false;
+            return /<bpmn:(?:userTask|serviceTask|task|manualTask|sendTask|receiveTask|scriptTask|businessRuleTask|subProcess|callActivity|exclusiveGateway|parallelGateway|inclusiveGateway|eventBasedGateway|intermediateThrowEvent|intermediateCatchEvent|startEvent|endEvent)\b/.test(xml);
+        }
+
+        // Light-touch status indicator that doesn't fight with the
+        // existing #bpmnStatus banner (which shares this script's host
+        // card). Re-used after the run so the user knows what happened.
+        function setStatus(msg, kind) {
+            var s = document.getElementById('bpmnStatus');
+            if (!s) return;
+            s.textContent = msg;
+            s.style.color = kind === 'error' ? '#dc2626' : (kind === 'success' ? '#16a34a' : '');
+        }
+
+        async function enhanceCurrent() {
+            if (!window.bpmnModeler) {
+                setStatus(IS_RTL ? 'المحرر غير جاهز' : 'Modeler not ready', 'error');
+                return;
+            }
+            try {
+                enhanceBtn.disabled = true;
+                setStatus(IS_RTL ? 'جاري تحسين الرسم…' : 'Enhancing diagram…');
+                var xmlRes = await window.bpmnModeler.saveXML({ format: true });
+                var xml = (xmlRes && xmlRes.xml) || '';
+
+                // No real content? Drop into the picker modal so the user
+                // can pick something to enhance instead of staring at an
+                // empty canvas.
+                if (!diagramHasContent(xml)) {
+                    enhanceBtn.disabled = false;
+                    setStatus('');
+                    var m = bootstrap.Modal.getOrCreateInstance(modalEl);
+                    m.show();
+                    return;
+                }
+
+                var resp = await fetch('/AI/EnhanceBpmnXml', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': getAntiForgeryToken()
+                    },
+                    body: JSON.stringify({ bpmnXml: xml })
+                });
+                var d = await resp.json();
+                if (!d || !d.success || !d.bpmnXml) {
+                    setStatus((d && d.error) || (IS_RTL ? 'فشل التحسين' : 'Enhance failed'), 'error');
+                    return;
+                }
+                await window.bpmnModeler.importXML(d.bpmnXml);
+                try { window.bpmnModeler.get('canvas').zoom('fit-viewport'); } catch (e) {}
+                setStatus(IS_RTL ? 'تم تحسين الرسم' : 'Diagram enhanced', 'success');
+            } catch (err) {
+                console.error('Enhance current failed:', err);
+                setStatus(err.message || (IS_RTL ? 'فشل التحسين' : 'Enhance failed'), 'error');
+            } finally {
+                enhanceBtn.disabled = false;
+            }
+        }
+
+        if (enhanceBtn) enhanceBtn.addEventListener('click', enhanceCurrent);
+
+        function escHtml(s) {
+            return (s == null ? '' : String(s)).replace(/[&<>"']/g, function (c) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' })[c];
+            });
+        }
+
+        async function loadProcesses() {
+            if (loaded) return;
+            try {
+                var r = await fetch('/AI/GetProcessesWithBPMN', { credentials: 'include' });
+                var d = await r.json();
+                if (d && d.success && Array.isArray(d.processes)) processes = d.processes;
+                loaded = true;
+            } catch (e) { console.error('Enhance: failed to load process list', e); }
+        }
+
+        function renderResults(filtered) {
+            if (!filtered.length) {
+                resultsBox.innerHTML = '<div class="p-2 text-muted small">' +
+                    (IS_RTL ? 'لا توجد نتائج' : 'No results') + '</div>';
+                resultsBox.style.display = 'block';
+                return;
+            }
+            resultsBox.innerHTML = filtered.slice(0, 40).map(function (p) {
+                return '<button type="button" class="enhance-result d-block w-100 text-start border-0 bg-transparent py-1 px-2 small" ' +
+                       'data-id="' + escHtml(p.id) + '" data-name="' + escHtml(p.Name || p.name) + '">' +
+                       '<code class="text-muted me-1">' + escHtml(p.Code || p.code) + '</code> ' +
+                       escHtml(p.Name || p.name) +
+                       '</button>';
+            }).join('');
+            resultsBox.style.display = 'block';
+        }
+
+        input.addEventListener('focus', async function () {
+            await loadProcesses();
+            renderResults(processes);
+        });
+
+        input.addEventListener('input', function () {
+            var q = input.value.trim().toLowerCase();
+            if (!loaded || !processes.length) { renderResults([]); return; }
+            if (!q) { renderResults(processes); return; }
+            renderResults(processes.filter(function (p) {
+                var name = (p.Name || p.name || '').toLowerCase();
+                var code = (p.Code || p.code || '').toLowerCase();
+                return name.indexOf(q) >= 0 || code.indexOf(q) >= 0;
+            }));
+        });
+
+        resultsBox.addEventListener('click', function (ev) {
+            var btn = ev.target && ev.target.closest ? ev.target.closest('.enhance-result') : null;
+            if (!btn) return;
+            ev.preventDefault();
+            hidden.value = btn.getAttribute('data-id');
+            var name = btn.getAttribute('data-name');
+            input.value = name;
+            selectedName.textContent = name;
+            selected.classList.remove('d-none');
+            resultsBox.style.display = 'none';
+            runBtn.disabled = false;
+        });
+
+        // Hide results when clicking outside the dropdown.
+        document.addEventListener('click', function (ev) {
+            if (!resultsBox || resultsBox.style.display === 'none') return;
+            if (resultsBox.contains(ev.target) || ev.target === input) return;
+            resultsBox.style.display = 'none';
+        });
+
+        // Reset on close so a second open starts clean.
+        modalEl.addEventListener('hidden.bs.modal', function () {
+            input.value = '';
+            hidden.value = '';
+            selected.classList.add('d-none');
+            statusEl.classList.add('d-none');
+            statusEl.textContent = '';
+            runBtn.disabled = true;
+            resultsBox.style.display = 'none';
+        });
+
+        runBtn.addEventListener('click', async function () {
+            var processId = hidden.value;
+            if (!processId) return;
+            statusEl.className = 'mt-3 small text-muted';
+            statusEl.textContent = IS_RTL ? 'جاري التحميل والتحسين…' : 'Loading and enhancing…';
+            statusEl.classList.remove('d-none');
+            runBtn.disabled = true;
+            try {
+                var r = await fetch('/AI/EnhanceProcessBPMN?id=' + encodeURIComponent(processId), { credentials: 'include' });
+                var d = await r.json();
+                if (!d || !d.success || !d.bpmnXml) {
+                    statusEl.className = 'mt-3 small text-danger';
+                    statusEl.textContent = (d && d.error) || (IS_RTL ? 'فشل التحميل' : 'Load failed');
+                    runBtn.disabled = false;
+                    return;
+                }
+                if (!window.bpmnModeler) {
+                    statusEl.className = 'mt-3 small text-danger';
+                    statusEl.textContent = IS_RTL ? 'المحرر غير جاهز' : 'Modeler not ready yet';
+                    runBtn.disabled = false;
+                    return;
+                }
+                await window.bpmnModeler.importXML(d.bpmnXml);
+                try { window.bpmnModeler.get('canvas').zoom('fit-viewport'); } catch (e) {}
+                statusEl.className = 'mt-3 small text-success';
+                statusEl.textContent = IS_RTL ? 'تم تحميل المخطط المحسّن' : 'Enhanced diagram loaded';
+                setTimeout(function () {
+                    bootstrap.Modal.getInstance(modalEl)?.hide();
+                }, 600);
+            } catch (e) {
+                statusEl.className = 'mt-3 small text-danger';
+                statusEl.textContent = e.message || (IS_RTL ? 'فشل التحميل' : 'Load failed');
+                runBtn.disabled = false;
+            }
+        });
+    })();
+    </script>
 }

@@ -96,13 +96,25 @@ public class ProcessesController : BaseController
         ViewBag.SelectedProcessGroupId = processGroupId;
         ViewBag.SelectedStatus = status;
 
-        // Get process IDs that have BPMN diagrams in their tasks (through activities)
-        var processIdsWithBpmn = await _context.ProcessTasks
+        // A Process is "has BPMN" if either:
+        //   (a) Process.BpmnDiagram itself is populated (the canonical L3 diagram
+        //       — what the library importer and the in-app editor write), or
+        //   (b) any of its ProcessTasks (L5) carry a per-task BPMN diagram.
+        // Previously we only checked (b), so any process whose diagram lived on
+        // the Process row (the common case after the bulk library import) showed
+        // an em-dash here and looked unimported.
+        var processIdsWithProcessLevelBpmn = await _context.Processes
+            .Where(p => !p.IsDeleted && p.BpmnDiagram != null && p.BpmnDiagram.Length > 10)
+            .Select(p => p.Id)
+            .ToListAsync();
+        var processIdsWithTaskBpmn = await _context.ProcessTasks
             .Where(t => !t.IsDeleted && t.BpmnDiagram != null && t.BpmnDiagram.Length > 10)
             .Select(t => t.Activity!.ProcessId)
             .Distinct()
             .ToListAsync();
-        ViewBag.ProcessIdsWithBpmn = new HashSet<string>(processIdsWithBpmn);
+        var processIdsWithBpmn = new HashSet<string>(processIdsWithProcessLevelBpmn);
+        foreach (var id in processIdsWithTaskBpmn) processIdsWithBpmn.Add(id);
+        ViewBag.ProcessIdsWithBpmn = processIdsWithBpmn;
 
         return View(processes);
     }

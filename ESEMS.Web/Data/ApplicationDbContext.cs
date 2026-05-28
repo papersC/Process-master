@@ -32,6 +32,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Activity> Activities { get; set; }
     public DbSet<ProcessTask> ProcessTasks { get; set; }
     public DbSet<BpmnLane> BpmnLanes { get; set; } = null!;
+    public DbSet<OrphanBpmnDrawing> OrphanBpmnDrawings { get; set; } = null!;
 
     // Organization
     public DbSet<OrganizationUnit> OrganizationUnits { get; set; }

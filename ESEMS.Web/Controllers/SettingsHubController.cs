@@ -7,6 +7,7 @@ using ESEMS.Web.Models.Enums;
 using ESEMS.Web.Models.Workflow;
 using ESEMS.Web.Models.Import;
 using ESEMS.Web.Security;
+using ESEMS.Web.Services.Bpmn;
 
 namespace ESEMS.Web.Controllers;
 
@@ -35,19 +36,22 @@ public class SettingsHubController : BaseController
 
     private readonly ESEMS.Web.Services.Email.IEmailService? _email;
     private readonly ESEMS.Web.Services.Import.IExcelImportService _importer;
+    private readonly IBpmnLibraryImporter _bpmnLibrary;
 
     public SettingsHubController(
         ApplicationDbContext context,
         ILogger<SettingsHubController> logger,
         IWebHostEnvironment env,
         ESEMS.Web.Services.Email.IEmailService email,
-        ESEMS.Web.Services.Import.IExcelImportService importer)
+        ESEMS.Web.Services.Import.IExcelImportService importer,
+        IBpmnLibraryImporter bpmnLibrary)
     {
         _context = context;
         _logger = logger;
         _env = env;
         _email = email;
         _importer = importer;
+        _bpmnLibrary = bpmnLibrary;
     }
 
     /// <summary>
@@ -847,6 +851,138 @@ public class SettingsHubController : BaseController
         "risks"          => ar ? "المخاطر"  : "Risks",
         _ => kind
     };
+
+    // ═══════════════════════════════════════════════════════════════════
+    // BPMN LIBRARY IMPORT — bulk-import .bpmn files from output2/
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Build the per-file mapping preview WITHOUT writing anything. The
+    /// Data tab calls this when the user clicks "Preview BPMN library", and
+    /// the resulting list is rendered in a confirmation modal so the user
+    /// can override any auto-suggestion before committing.
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> BpmnLibraryPreview(CancellationToken ct)
+    {
+        var folder = ResolveBpmnLibraryFolder();
+        if (!Directory.Exists(folder))
+        {
+            return Json(new { success = false, error = $"BPMN library folder not found at '{folder}'." });
+        }
+
+        try
+        {
+            var preview = await _bpmnLibrary.PreviewAsync(folder, ct);
+            return Json(new
+            {
+                success = true,
+                folder = preview.FolderPath,
+                totalFiles = preview.TotalFiles,
+                matchedCount = preview.MatchedCount,
+                unmatchedCount = preview.UnmatchedCount,
+                readErrorCount = preview.ReadErrorCount,
+                files = preview.Files.Select(f => new
+                {
+                    fileName = f.FileName,
+                    filePrefix = f.FilePrefix,
+                    detectedName = f.DetectedName,
+                    xmlSizeBytes = f.XmlSizeBytes,
+                    suggestedProcessId = f.SuggestedProcessId,
+                    suggestedProcessCode = f.SuggestedProcessCode,
+                    suggestedProcessNameAr = f.SuggestedProcessNameAr,
+                    suggestedProcessNameEn = f.SuggestedProcessNameEn,
+                    score = f.Score,
+                    matchHow = f.MatchHow,
+                    processAlreadyHasDiagram = f.ProcessAlreadyHasDiagram,
+                    readError = f.ReadError,
+                    readErrorMessage = f.ReadErrorMessage,
+                    alternatives = f.Alternatives.Select(a => new
+                    {
+                        processId = a.ProcessId,
+                        code = a.Code,
+                        nameAr = a.NameAr,
+                        nameEn = a.NameEn,
+                        score = a.Score
+                    })
+                })
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "BpmnLibraryPreview failed");
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Commit the user-confirmed mapping. Body shape:
+    ///   { "mappings": { "<fileName>": "<processId or empty>" , ... } }
+    /// Empty string / missing key → file stored as <see cref="OrphanBpmnDrawing"/>.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> BpmnLibraryImport([FromBody] BpmnLibraryImportRequest req, CancellationToken ct)
+    {
+        var folder = ResolveBpmnLibraryFolder();
+        if (!Directory.Exists(folder))
+            return Json(new { success = false, error = $"BPMN library folder not found at '{folder}'." });
+
+        var mappings = req?.Mappings ?? new Dictionary<string, string?>();
+        try
+        {
+            var result = await _bpmnLibrary.ImportAsync(folder, mappings, User?.Identity?.Name, ct);
+
+            var msg = $"Processed {result.FilesProcessed} file(s): " +
+                      $"{result.Linked} linked to Process, {result.Orphaned} stored as orphans" +
+                      (result.Skipped > 0 ? $", {result.Skipped} skipped" : "") +
+                      (result.Errors.Count > 0 ? $", {result.Errors.Count} error(s)" : "") + ".";
+
+            return Json(new
+            {
+                success = result.Errors.Count == 0,
+                message = msg,
+                filesProcessed = result.FilesProcessed,
+                linked = result.Linked,
+                orphaned = result.Orphaned,
+                skipped = result.Skipped,
+                versionsCreated = result.VersionsCreated,
+                errors = result.Errors
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "BpmnLibraryImport failed");
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Resolves the on-disk path to the BPMN library folder. Looks at three
+    /// locations in priority order so the importer works under both the
+    /// VS run profile (cwd = ESEMS.Web/) and the published-to-IIS layout
+    /// (cwd = the published folder, with output2/ next to it):
+    ///   1. <c>{ContentRoot}/output2</c>
+    ///   2. <c>{ContentRoot}/../output2</c> (repo root, where the files live in dev)
+    ///   3. <c>{cwd}/output2</c> (fallback)
+    /// </summary>
+    private string ResolveBpmnLibraryFolder()
+    {
+        var contentRoot = _env.ContentRootPath;
+        var candidates = new[]
+        {
+            Path.Combine(contentRoot, "output2"),
+            Path.GetFullPath(Path.Combine(contentRoot, "..", "output2")),
+            Path.Combine(Directory.GetCurrentDirectory(), "output2")
+        };
+        return candidates.FirstOrDefault(Directory.Exists) ?? candidates[1];
+    }
+
+    public class BpmnLibraryImportRequest
+    {
+        /// <summary>FileName → chosen Process ID. Empty/null value = orphan.</summary>
+        public Dictionary<string, string?>? Mappings { get; set; }
+    }
 
     // ═══════════════════════════════════════════════════════════════════
     // Helpers

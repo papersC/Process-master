@@ -214,6 +214,84 @@
     </div>
 </div>
 
+<!-- BPMN drawings library — bulk import of .bpmn files from output2/ -->
+<div class="mt-4">
+    <h6 class="fw-bold mb-2">
+        <i data-lucide="file-code-2" style="width:16px;height:16px;margin-inline-end:4px;"></i>
+        @(isRtl ? "مكتبة رسومات BPMN" : "BPMN Drawings Library")
+    </h6>
+    <div class="alert alert-info small py-2 mb-3">
+        <i data-lucide="info" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+        @(isRtl
+            ? "يستورد ملفات BPMN من مجلد output2/ في جذر التطبيق ويربط كل ملف برشاقة بعملية المستوى الثالث المقابلة بالاسم العربي. الملفات التي لا يتم العثور على عملية مناسبة لها تُحفظ في النظام لربطها لاحقاً يدوياً أو لإنشاء عملية جديدة من رسمها."
+            : "Imports the .bpmn files from the output2/ folder at the app root and fuzzy-matches each one to an L3 Process by Arabic/English name. Files that don't auto-match are kept in the system so you can later link them by hand or create a Process from the drawing.")
+    </div>
+    <div class="card shadow-sm border-secondary-subtle">
+        <div class="card-body">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <i data-lucide="library-big" style="width:22px;height:22px;color:#475569;"></i>
+                    <div>
+                        <div class="fw-bold">@(isRtl ? "استيراد كل رسومات BPMN" : "Import All BPMN Drawings")</div>
+                        <div class="text-muted small" id="bpmnLibSubtitle">
+                            @(isRtl
+                                ? "اضغط «معاينة» لمسح المجلد ورؤية اقتراحات الربط قبل تنفيذ الاستيراد."
+                                : "Click Preview to scan the folder and review match suggestions before any DB write.")
+                        </div>
+                    </div>
+                </div>
+                <button type="button" id="bpmnLibPreviewBtn" class="btn btn-sm btn-primary">
+                    <i data-lucide="search" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                    @(isRtl ? "معاينة الربط" : "Preview mappings")
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- BPMN library preview modal — populated on demand -->
+<div class="modal fade" id="bpmnLibModal" tabindex="-1" aria-labelledby="bpmnLibModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold" id="bpmnLibModalLabel">
+                    <i data-lucide="library-big" style="width:18px;height:18px;margin-inline-end:6px;"></i>
+                    @(isRtl ? "تأكيد ربط ملفات BPMN" : "Confirm BPMN file mappings")
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="bpmnLibSummary" class="alert alert-light border small mb-3"></div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle small">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:50px;">@(isRtl ? "رقم" : "#")</th>
+                                <th>@(isRtl ? "الملف" : "File")</th>
+                                <th style="min-width:280px;">@(isRtl ? "ربط بعملية" : "Link to Process")</th>
+                                <th>@(isRtl ? "نتيجة المطابقة" : "Match")</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bpmnLibTbody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer d-flex justify-content-between align-items-center">
+                <div class="small text-muted" id="bpmnLibFooterMeta"></div>
+                <div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">
+                        @(isRtl ? "إلغاء" : "Cancel")
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" id="bpmnLibConfirmBtn">
+                        <i data-lucide="check" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                        @(isRtl ? "تنفيذ الاستيراد" : "Run import")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Recent legacy imports — undo a run -->
 <div class="mt-4">
     <h6 class="fw-bold mb-2">
@@ -398,5 +476,215 @@ window.DataImport = (function() {
     else document.addEventListener('DOMContentLoaded', loadRecent);
 
     return { upload: upload, loadRecent: loadRecent, revert: revert };
+})();
+
+// BPMN library importer — preview-then-confirm flow against /SettingsHub/BpmnLibrary*
+window.BpmnLibraryImport = (function () {
+    var IS_RTL = @(isRtl ? "true" : "false");
+    var T = IS_RTL ? {
+        previewing:   'جارٍ مسح المجلد…',
+        importing:    'جارٍ تنفيذ الاستيراد…',
+        noFiles:      'لم يتم العثور على ملفات .bpmn في المجلد.',
+        scanFailed:   'فشل مسح المجلد',
+        importFailed: 'فشل تنفيذ الاستيراد',
+        summary:      function (t, m, u, e) { return 'تم العثور على ' + t + ' ملف(ات): ' + m + ' مطابقة تلقائية، ' + u + ' بدون مطابقة، ' + e + ' خطأ قراءة.'; },
+        leaveOrphan:  '— احفظ كرسم منفصل (بدون عملية) —',
+        orphanBadge:  'سيتم حفظه للاستخدام لاحقاً',
+        overwriteWarn: 'لدى هذه العملية رسم BPMN حالياً — الاستيراد سيستبدله (مع الاحتفاظ بنسخة قديمة).',
+        scoreLabel:   'النقاط',
+        readError:    'خطأ قراءة',
+        existingDiagram: 'يوجد رسم',
+        done:         'تم'
+    } : {
+        previewing:   'Scanning folder…',
+        importing:    'Importing…',
+        noFiles:      'No .bpmn files found in the folder.',
+        scanFailed:   'Folder scan failed',
+        importFailed: 'Import failed',
+        summary:      function (t, m, u, e) { return t + ' file(s): ' + m + ' auto-matched, ' + u + ' unmatched, ' + e + ' read error(s).'; },
+        leaveOrphan:  '— Store as orphan (no Process) —',
+        orphanBadge:  'Will be stored for later',
+        overwriteWarn:'This Process already has a BPMN diagram — importing will replace it (old kept as a version).',
+        scoreLabel:   'score',
+        readError:    'read error',
+        existingDiagram: 'has diagram',
+        done:         'Done'
+    };
+
+    var bsModal = null;
+    var latest = null;
+
+    function esc(s) {
+        return (s == null ? '' : String(s)).replace(/[&<>"']/g, function (c) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' })[c];
+        });
+    }
+
+    function getModal() {
+        if (!bsModal) {
+            var el = document.getElementById('bpmnLibModal');
+            bsModal = bootstrap.Modal.getOrCreateInstance(el);
+        }
+        return bsModal;
+    }
+
+    function buildOptions(file) {
+        // Suggested goes first when present; then alternatives; then explicit orphan choice.
+        var seen = {};
+        var optionsHtml = '';
+
+        if (file.suggestedProcessId) {
+            seen[file.suggestedProcessId] = true;
+            var label = (file.suggestedProcessCode ? '[' + file.suggestedProcessCode + '] ' : '')
+                + (IS_RTL ? (file.suggestedProcessNameAr || file.suggestedProcessNameEn || file.suggestedProcessId)
+                          : (file.suggestedProcessNameEn || file.suggestedProcessNameAr || file.suggestedProcessId));
+            optionsHtml += '<option value="' + esc(file.suggestedProcessId) + '" selected>'
+                + esc(label) + ' (' + (file.score != null ? file.score.toFixed(2) : '—') + ')'
+                + '</option>';
+        }
+
+        (file.alternatives || []).forEach(function (a) {
+            if (seen[a.processId]) return;
+            seen[a.processId] = true;
+            var label = (a.code ? '[' + a.code + '] ' : '')
+                + (IS_RTL ? (a.nameAr || a.nameEn || a.processId) : (a.nameEn || a.nameAr || a.processId));
+            optionsHtml += '<option value="' + esc(a.processId) + '">'
+                + esc(label) + ' (' + (a.score != null ? a.score.toFixed(2) : '—') + ')'
+                + '</option>';
+        });
+
+        // Orphan option — present even when there's a suggestion so the user can opt out.
+        var orphanSelected = file.suggestedProcessId ? '' : ' selected';
+        optionsHtml = '<option value=""' + orphanSelected + '>' + esc(T.leaveOrphan) + '</option>' + optionsHtml;
+
+        return optionsHtml;
+    }
+
+    function renderRow(file, idx) {
+        var meta = [];
+        if (file.processAlreadyHasDiagram) {
+            meta.push('<span class="badge text-bg-warning" title="' + esc(T.overwriteWarn) + '">' + esc(T.existingDiagram) + '</span>');
+        }
+        if (file.readError) {
+            meta.push('<span class="badge text-bg-danger">' + esc(T.readError) + '</span>');
+            if (file.readErrorMessage) {
+                meta.push('<span class="text-muted small">' + esc(file.readErrorMessage) + '</span>');
+            }
+        }
+        if (!file.suggestedProcessId && !file.readError) {
+            meta.push('<span class="badge text-bg-secondary">' + esc(T.orphanBadge) + '</span>');
+        }
+        if (file.matchHow && file.matchHow !== 'none') {
+            meta.push('<code class="small text-muted">' + esc(file.matchHow) + '</code>');
+        }
+
+        var disabled = file.readError ? ' disabled' : '';
+        var detected = file.detectedName || '';
+        var sizeKb = (file.xmlSizeBytes / 1024).toFixed(1);
+
+        return '<tr data-file="' + esc(file.fileName) + '">'
+            + '<td class="text-muted">' + esc(file.filePrefix || (idx + 1)) + '</td>'
+            + '<td>'
+            +   '<div class="fw-semibold">' + esc(detected) + '</div>'
+            +   '<div class="text-muted small">' + esc(file.fileName) + ' · ' + esc(sizeKb) + ' KB</div>'
+            + '</td>'
+            + '<td>'
+            +   '<select class="form-select form-select-sm bpmn-lib-pick"' + disabled + '>'
+            +     buildOptions(file)
+            +   '</select>'
+            + '</td>'
+            + '<td class="small">' + meta.join(' ') + '</td>'
+            + '</tr>';
+    }
+
+    function renderPreview(data) {
+        latest = data;
+        var modalLabel = document.getElementById('bpmnLibModalLabel');
+        if (modalLabel && data.folder) {
+            // Folder path on the title row helps the user spot misconfig.
+        }
+        var summary = document.getElementById('bpmnLibSummary');
+        if (data.totalFiles === 0) {
+            summary.innerHTML = '<div>' + esc(T.noFiles) + '</div>'
+                + '<div class="text-muted small">' + esc(data.folder) + '</div>';
+            document.getElementById('bpmnLibTbody').innerHTML = '';
+            document.getElementById('bpmnLibFooterMeta').textContent = '';
+            return;
+        }
+        summary.innerHTML = '<div class="fw-semibold">' + esc(T.summary(data.totalFiles, data.matchedCount, data.unmatchedCount, data.readErrorCount)) + '</div>'
+            + '<div class="text-muted small mt-1">' + esc(data.folder) + '</div>';
+
+        var rowsHtml = (data.files || []).map(renderRow).join('');
+        document.getElementById('bpmnLibTbody').innerHTML = rowsHtml;
+        document.getElementById('bpmnLibFooterMeta').textContent = data.folder;
+
+        if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+    }
+
+    async function preview() {
+        var btn = document.getElementById('bpmnLibPreviewBtn');
+        if (btn) { btn.disabled = true; }
+        ShubToast('info', T.previewing);
+        try {
+            var r = await fetch('/SettingsHub/BpmnLibraryPreview', {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            var d = await r.json();
+            if (!d.success) {
+                ShubToast('error', d.error || T.scanFailed);
+                return;
+            }
+            renderPreview(d);
+            getModal().show();
+        } catch (e) {
+            ShubToast('error', e.message || T.scanFailed);
+        } finally {
+            if (btn) { btn.disabled = false; }
+        }
+    }
+
+    async function runImport() {
+        if (!latest || !latest.files) return;
+        var mappings = {};
+        document.querySelectorAll('#bpmnLibTbody tr').forEach(function (tr) {
+            var fname = tr.getAttribute('data-file');
+            var sel = tr.querySelector('select.bpmn-lib-pick');
+            mappings[fname] = sel && !sel.disabled ? (sel.value || '') : '';
+        });
+
+        var confirmBtn = document.getElementById('bpmnLibConfirmBtn');
+        if (confirmBtn) { confirmBtn.disabled = true; }
+        ShubToast('info', T.importing);
+        try {
+            var r = await fetch('/SettingsHub/BpmnLibraryImport', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'RequestVerificationToken': ShubToken()
+                },
+                body: JSON.stringify({ mappings: mappings })
+            });
+            var d = await r.json();
+            if (d.success) {
+                ShubToast('success', d.message || T.done);
+                getModal().hide();
+            } else {
+                ShubToast('error', d.error || (d.message || T.importFailed));
+            }
+        } catch (e) {
+            ShubToast('error', e.message || T.importFailed);
+        } finally {
+            if (confirmBtn) { confirmBtn.disabled = false; }
+        }
+    }
+
+    document.addEventListener('click', function (ev) {
+        var trg = ev.target && ev.target.closest ? ev.target.closest('#bpmnLibPreviewBtn') : null;
+        if (trg) { ev.preventDefault(); preview(); return; }
+        var conf = ev.target && ev.target.closest ? ev.target.closest('#bpmnLibConfirmBtn') : null;
+        if (conf) { ev.preventDefault(); runImport(); }
+    });
+
+    return { preview: preview, runImport: runImport };
 })();
 </script>

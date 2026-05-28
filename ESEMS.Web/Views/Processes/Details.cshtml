@@ -1037,7 +1037,7 @@
                         @Shared["BPMN_EditMode"]
                     </span>
                 </div>
-                <div class="d-flex align-items-center gap-2">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
                     <button id="btnEditDiagram" class="btn btn-sm btn-primary" title="@Shared["Action_Edit"]">
                         <i data-lucide="edit" style="width: 16px; height: 16px;"></i>
                         @Shared["Action_Edit"]
@@ -1051,6 +1051,138 @@
                         <i data-lucide="x" style="width: 16px; height: 16px;"></i>
                         @Shared["Button_Cancel"]
                     </button>
+
+                    @* Edit-only group: undo / redo (visible only while modeler is active) *@
+                    <div class="btn-group btn-group-sm edit-only d-none" role="group">
+                        <button id="btnPdUndo" type="button" class="btn btn-outline-secondary" title="@Shared["BPMN_Undo"]">
+                            <i data-lucide="undo-2" style="width: 16px; height: 16px;"></i>
+                        </button>
+                        <button id="btnPdRedo" type="button" class="btn btn-outline-secondary" title="@Shared["BPMN_Redo"]">
+                            <i data-lucide="redo-2" style="width: 16px; height: 16px;"></i>
+                        </button>
+                    </div>
+
+                    @* Edit-only: pool / lane creation with orientation choice.
+                       BPMN's <bpmndi:BPMNShape isHorizontal="…"> drives the
+                       orientation; horizontal pools stack lanes vertically
+                       (flow left→right), vertical pools stack lanes
+                       side-by-side (flow top→bottom). Both Add Lane buttons
+                       pick the correct insertion direction off the pool's
+                       current orientation, so adding to a horizontal pool
+                       puts the new lane below, and adding to a vertical
+                       pool puts it to the right. *@
+                    <div class="btn-group btn-group-sm edit-only d-none" role="group">
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-primary dropdown-toggle d-flex align-items-center gap-1"
+                                    data-bs-toggle="dropdown" aria-expanded="false"
+                                    title="@(isRtl ? "إضافة مسبح" : "Add Pool")">
+                                <i data-lucide="rectangle-horizontal" style="width: 16px; height: 16px;"></i>
+                                <span class="small d-none d-xl-inline">@(isRtl ? "مسبح" : "Pool")</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li>
+                                    <button type="button" class="dropdown-item d-flex align-items-center gap-2 pd-add-pool" data-orientation="horizontal">
+                                        <i data-lucide="rectangle-horizontal" style="width: 16px; height: 16px;"></i>
+                                        <span>@(isRtl ? "مسبح أفقي (المسارات أسفل بعضها)" : "Horizontal Pool (lanes stack vertically)")</span>
+                                    </button>
+                                </li>
+                                <li>
+                                    <button type="button" class="dropdown-item d-flex align-items-center gap-2 pd-add-pool" data-orientation="vertical">
+                                        <i data-lucide="rectangle-vertical" style="width: 16px; height: 16px;"></i>
+                                        <span>@(isRtl ? "مسبح عمودي (المسارات جنباً إلى جنب)" : "Vertical Pool (lanes side-by-side)")</span>
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-primary dropdown-toggle d-flex align-items-center gap-1"
+                                    data-bs-toggle="dropdown" aria-expanded="false"
+                                    title="@(isRtl ? "إضافة مسار" : "Add Lane")">
+                                <i data-lucide="rows-3" style="width: 16px; height: 16px;"></i>
+                                <span class="small d-none d-xl-inline">@(isRtl ? "مسار" : "Lane")</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li>
+                                    <button type="button" class="dropdown-item d-flex align-items-center gap-2 pd-add-lane" data-location="top">
+                                        <i data-lucide="arrow-up" style="width: 14px; height: 14px;"></i>
+                                        <span>@(isRtl ? "أعلى المحدد (أو يسار للعمودي)" : "Before selection (top / left)")</span>
+                                    </button>
+                                </li>
+                                <li>
+                                    <button type="button" class="dropdown-item d-flex align-items-center gap-2 pd-add-lane" data-location="bottom">
+                                        <i data-lucide="arrow-down" style="width: 14px; height: 14px;"></i>
+                                        <span>@(isRtl ? "أسفل المحدد (أو يمين للعمودي)" : "After selection (bottom / right)")</span>
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    @* Edit-only: fill colour picker — applies to currently-selected shape(s) *@
+                    <div class="dropdown edit-only d-none">
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle d-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" title="@(isRtl ? "لون التعبئة" : "Fill Color")">
+                            <i data-lucide="paint-bucket" style="width: 16px; height: 16px;"></i>
+                        </button>
+                        <div class="dropdown-menu p-2" style="min-width: 200px;">
+                            <div class="d-flex flex-wrap gap-1 mb-2">
+                                <button type="button" class="pd-color-swatch" style="background:#dbeafe;border-color:#2563eb" data-fill="#dbeafe" data-stroke="#2563eb" title="Blue"></button>
+                                <button type="button" class="pd-color-swatch" style="background:#dcfce7;border-color:#16a34a" data-fill="#dcfce7" data-stroke="#16a34a" title="Green"></button>
+                                <button type="button" class="pd-color-swatch" style="background:#fef9c3;border-color:#ca8a04" data-fill="#fef9c3" data-stroke="#ca8a04" title="Yellow"></button>
+                                <button type="button" class="pd-color-swatch" style="background:#fee2e2;border-color:#dc2626" data-fill="#fee2e2" data-stroke="#dc2626" title="Red"></button>
+                                <button type="button" class="pd-color-swatch" style="background:#f3e8ff;border-color:#9333ea" data-fill="#f3e8ff" data-stroke="#9333ea" title="Purple"></button>
+                                <button type="button" class="pd-color-swatch" style="background:#ffedd5;border-color:#ea580c" data-fill="#ffedd5" data-stroke="#ea580c" title="Orange"></button>
+                                <button type="button" class="pd-color-swatch" style="background:#ccfbf1;border-color:#0d9488" data-fill="#ccfbf1" data-stroke="#0d9488" title="Teal"></button>
+                                <button type="button" class="pd-color-swatch" style="background:#fce7f3;border-color:#db2777" data-fill="#fce7f3" data-stroke="#db2777" title="Pink"></button>
+                                <button type="button" class="pd-color-swatch" style="background:#e2e8f0;border-color:#475569" data-fill="#e2e8f0" data-stroke="#475569" title="Slate"></button>
+                                <button type="button" class="pd-color-swatch" data-reset="true" title="@(isRtl ? "إزالة اللون" : "Reset")" style="background:#fff;border-color:#aaa;">
+                                    <i data-lucide="x" style="width: 12px; height: 12px;"></i>
+                                </button>
+                            </div>
+                            <div class="d-flex align-items-center gap-2 border-top pt-2">
+                                <input type="color" id="pdCustomFill" value="#dbeafe" class="form-control form-control-color p-0 border-0" style="width:28px;height:28px" title="@(isRtl ? "تعبئة" : "Fill")">
+                                <input type="color" id="pdCustomStroke" value="#2563eb" class="form-control form-control-color p-0 border-0" style="width:28px;height:28px" title="@(isRtl ? "الحد" : "Stroke")">
+                                <button id="pdCustomColorApply" type="button" class="btn btn-sm btn-outline-primary py-0 px-2">
+                                    <i data-lucide="check" style="width: 12px; height: 12px;"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    @* Edit-only: font size — reinits the modeler with new default text style *@
+                    <div class="dropdown edit-only d-none">
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle d-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" title="@(isRtl ? "حجم الخط" : "Font Size")">
+                            <i data-lucide="type" style="width: 16px; height: 16px;"></i>
+                            <span id="pdFontSizeLabel" class="small">12px</span>
+                        </button>
+                        <ul class="dropdown-menu" style="min-width: 100px;">
+                            <li><button type="button" class="dropdown-item small pd-font-size" data-font-size="10">10px</button></li>
+                            <li><button type="button" class="dropdown-item small pd-font-size fw-bold" data-font-size="12">12px</button></li>
+                            <li><button type="button" class="dropdown-item small pd-font-size" data-font-size="14">14px</button></li>
+                            <li><button type="button" class="dropdown-item small pd-font-size" data-font-size="16">16px</button></li>
+                            <li><button type="button" class="dropdown-item small pd-font-size" data-font-size="18">18px</button></li>
+                            <li><button type="button" class="dropdown-item small pd-font-size" data-font-size="20">20px</button></li>
+                            <li><button type="button" class="dropdown-item small pd-font-size" data-font-size="24">24px</button></li>
+                        </ul>
+                    </div>
+
+                    @* Edit-only: font family *@
+                    <div class="dropdown edit-only d-none">
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle d-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" title="@(isRtl ? "نوع الخط" : "Font Family")">
+                            <i data-lucide="a-large-small" style="width: 16px; height: 16px;"></i>
+                            <span id="pdFontFamilyLabel" class="small d-none d-xl-inline">Arial</span>
+                        </button>
+                        <ul class="dropdown-menu" style="min-width: 160px;">
+                            <li><button type="button" class="dropdown-item small pd-font-family fw-bold" style="font-family:Arial" data-font-family="Arial, sans-serif" data-font-label="Arial">Arial</button></li>
+                            <li><button type="button" class="dropdown-item small pd-font-family" style="font-family:Verdana" data-font-family="Verdana, sans-serif" data-font-label="Verdana">Verdana</button></li>
+                            <li><button type="button" class="dropdown-item small pd-font-family" style="font-family:Tahoma" data-font-family="Tahoma, sans-serif" data-font-label="Tahoma">Tahoma</button></li>
+                            <li><button type="button" class="dropdown-item small pd-font-family" style="font-family:Calibri" data-font-family="Calibri, sans-serif" data-font-label="Calibri">Calibri</button></li>
+                            <li><button type="button" class="dropdown-item small pd-font-family" style="font-family:Georgia" data-font-family="Georgia, serif" data-font-label="Georgia">Georgia</button></li>
+                            <li><button type="button" class="dropdown-item small pd-font-family" style="font-family:'Times New Roman'" data-font-family="Times New Roman, serif" data-font-label="Times New Roman">Times New Roman</button></li>
+                            <li><button type="button" class="dropdown-item small pd-font-family" style="font-family:'Courier New'" data-font-family="Courier New, monospace" data-font-label="Courier New">Courier New</button></li>
+                            <li><button type="button" class="dropdown-item small pd-font-family" style="font-family:'Segoe UI'" data-font-family="Segoe UI, sans-serif" data-font-label="Segoe UI">Segoe UI</button></li>
+                        </ul>
+                    </div>
+
                     <div class="vr mx-1"></div>
                     <button id="btnZoomIn" class="btn btn-sm btn-outline-secondary" title="@Shared["BPMN_ZoomIn"]">
                         <i data-lucide="zoom-in" style="width: 16px; height: 16px;"></i>
@@ -1060,6 +1192,14 @@
                     </button>
                     <button id="btnFitView" class="btn btn-sm btn-outline-secondary" title="@Shared["BPMN_FitToView"]">
                         <i data-lucide="maximize-2" style="width: 16px; height: 16px;"></i>
+                    </button>
+                    @* True fullscreen toggle — distinct from "fit to view" above. *@
+                    <button id="btnPdFullscreen" class="btn btn-sm btn-outline-secondary" title="@Shared["BPMN_FocusMode"]" aria-pressed="false">
+                        <i data-lucide="expand" style="width: 16px; height: 16px;"></i>
+                    </button>
+                    <button id="btnDownloadXml" class="btn btn-sm btn-outline-primary" title="@(isRtl ? "تصدير XML" : "Export XML")">
+                        <i data-lucide="file-code" style="width: 16px; height: 16px;"></i>
+                        XML
                     </button>
                     <button id="btnDownloadSvg" class="btn btn-sm btn-outline-primary" title="@Shared["BPMN_DownloadSVG"]">
                         <i data-lucide="download" style="width: 16px; height: 16px;"></i>
@@ -1072,9 +1212,40 @@
                 </div>
             </div>
             <div class="card-body p-0">
-                <div id="bpmnCanvas" style="height: 500px; background: #fafafa; border-radius: 0 0 8px 8px;"></div>
+                <div id="bpmnCanvas" style="height: 70vh; min-height: 520px; background: #fafafa; border-radius: 0 0 8px 8px;"></div>
             </div>
         </div>
+
+        @* Scoped styles for the inline BPMN editor — colour swatches and the
+           fullscreen overlay. Kept inline (rather than in site.css) so the
+           selector specificity stays local to #bpmnCard and doesn't bleed
+           into the AI editor's .focus-mode rules. *@
+        <style>
+            #bpmnCard .pd-color-swatch {
+                width: 24px; height: 24px; border-radius: 4px; border: 2px solid #dee2e6;
+                cursor: pointer; padding: 0; transition: transform .1s, box-shadow .1s;
+                display: inline-flex; align-items: center; justify-content: center;
+            }
+            #bpmnCard .pd-color-swatch:hover { transform: scale(1.1); box-shadow: 0 0 0 2px #cbd5e1; }
+            /* Fullscreen overlay: pin the card to the viewport and stretch the
+               canvas to the available height. The toolbar stays sticky at the
+               top so the user can still toggle out / save. */
+            #bpmnCard.pd-bpmn-fullscreen {
+                position: fixed; inset: 0; z-index: 1080;
+                margin: 0; border-radius: 0;
+                display: flex; flex-direction: column;
+            }
+            #bpmnCard.pd-bpmn-fullscreen .card-header {
+                position: sticky; top: 0; background: #fff; z-index: 2;
+                border-bottom: 1px solid #e5e7eb;
+            }
+            #bpmnCard.pd-bpmn-fullscreen .card-body { flex: 1 1 auto; min-height: 0; }
+            #bpmnCard.pd-bpmn-fullscreen #bpmnCanvas {
+                height: 100% !important; min-height: 0 !important; border-radius: 0;
+            }
+            /* While fullscreen, prevent body scroll behind the overlay. */
+            body.pd-bpmn-fullscreen-open { overflow: hidden; }
+        </style>
 
         <!-- BPMN Version History Section -->
         <div class="card" id="versionHistoryCard">
@@ -1530,13 +1701,37 @@
         <script src="~/lib/bpmn-js/bpmn-modeler.production.min.js" asp-append-version="true"></script>
         <script nonce="@Context.CspNonce()">
             (function() {
-                const bpmnXml = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.BpmnDiagram));
+                // `let` (not `const`) because the save flow reassigns this to
+                // the freshly-saved XML so the next viewer-recreate (Cancel,
+                // tab away/back) shows the latest content without a page reload.
+                let bpmnXml = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.BpmnDiagram));
                 const processId = '@Model.Id';
 
                 let viewer = null;
                 let modeler = null;
                 let isEditMode = false;
                 let currentBpmnInstance = null;
+
+                // bpmn-js's canvas.zoom('fit-viewport') divides by the SVG
+                // container's width/height. If the container is laid out as
+                // 0×0 at the moment we call it (initial paint not done, tab
+                // panel just un-hidden, accordion still expanding, post-save
+                // location.reload race), the matrix is non-finite and bpmn-js
+                // throws "Failed to execute 'scale' on 'SVGMatrix'". Waiting
+                // for two animation frames lets layout settle; the try/catch
+                // makes a still-zero container a silent skip instead of an
+                // error overlay. Mirrors the AI editor's safeFitViewport.
+                async function safeFit(instance) {
+                    if (!instance) return;
+                    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+                    try {
+                        const c = instance.get('canvas');
+                        if (typeof c.resized === 'function') c.resized();
+                        c.zoom('fit-viewport');
+                    } catch (e) {
+                        console.warn('safeFit: fit-viewport skipped (canvas not sized yet)', e);
+                    }
+                }
 
                 // Initialize viewer
                 viewer = new BpmnJS({
@@ -1550,8 +1745,7 @@
                         if (result && result.warnings && result.warnings.length) {
                             console.warn('BPMN import warnings:', result.warnings);
                         }
-                        const canvas = currentBpmnInstance.get('canvas');
-                        canvas.zoom('fit-viewport');
+                        await safeFit(currentBpmnInstance);
                     } catch (err) {
                         console.error('Error loading BPMN diagram:', err);
                         const detail = (err && (err.message || err.toString())) || 'unknown error';
@@ -1568,6 +1762,33 @@
                     }
                 }
 
+                // Track current text styling — used when re-creating the
+                // modeler on Edit toggle / font change so the new instance
+                // renders shapes with the chosen font.
+                let pdFontSize = 12;
+                let pdFontFamily = 'Arial, sans-serif';
+
+                function buildModeler() {
+                    // textRenderer overrides apply to every shape that doesn't
+                    // declare its own bpmndi:BPMNLabelStyle. Re-instantiating
+                    // is the documented bpmn-js pattern for changing defaults
+                    // (mirrors AI editor's reinitWithFont).
+                    return new BpmnJS({
+                        container: '#bpmnCanvas',
+                        keyboard: { bindTo: document },
+                        textRenderer: {
+                            defaultStyle:  { fontSize: pdFontSize, fontFamily: pdFontFamily },
+                            externalStyle: { fontSize: pdFontSize, fontFamily: pdFontFamily }
+                        }
+                    });
+                }
+
+                function pdToggleEditButtons(showEdit) {
+                    document.querySelectorAll('#bpmnCard .edit-only').forEach(el => {
+                        el.classList.toggle('d-none', showEdit);
+                    });
+                }
+
                 async function enableEditMode() {
                     try {
                         isEditMode = true;
@@ -1578,17 +1799,13 @@
                         // Destroy viewer
                         viewer.destroy();
 
-                        // Create modeler
-                        modeler = new BpmnJS({
-                            container: '#bpmnCanvas',
-                            keyboard: { bindTo: document }
-                        });
+                        // Create modeler with current font settings
+                        modeler = buildModeler();
                         currentBpmnInstance = modeler;
 
                         // Load diagram in modeler
                         await modeler.importXML(xml);
-                        const canvas = modeler.get('canvas');
-                        canvas.zoom('fit-viewport');
+                        await safeFit(modeler);
 
                         // Update UI
                         document.getElementById('btnEditDiagram').classList.add('d-none');
@@ -1596,6 +1813,7 @@
                         document.getElementById('btnCancelEdit').classList.remove('d-none');
                         document.getElementById('editModeIndicator').classList.remove('d-none');
                         document.getElementById('bpmnCard').style.border = '2px solid #ffc107';
+                        pdToggleEditButtons(false);
                         lucide.createIcons();
                     } catch (err) {
                         console.error('Error enabling edit mode:', err);
@@ -1626,8 +1844,7 @@
 
                         // Load original diagram
                         await viewer.importXML(bpmnXml);
-                        const canvas = viewer.get('canvas');
-                        canvas.zoom('fit-viewport');
+                        await safeFit(viewer);
 
                         // Update UI
                         document.getElementById('btnEditDiagram').classList.remove('d-none');
@@ -1635,6 +1852,7 @@
                         document.getElementById('btnCancelEdit').classList.add('d-none');
                         document.getElementById('editModeIndicator').classList.add('d-none');
                         document.getElementById('bpmnCard').style.border = '';
+                        pdToggleEditButtons(true);
                         lucide.createIcons();
                     } catch (err) {
                         console.error('Error disabling edit mode:', err);
@@ -1673,7 +1891,17 @@
                         const result = await response.json();
 
                         if (response.ok && result.success) {
-                            // Show success message
+                            // In-place refresh — avoids a full page reload that
+                            // races bpmn-js's fit-viewport against the SVG layout
+                            // (the cause of "Failed to execute 'scale' on
+                            // 'SVGMatrix'"). Update the cached XML, swap the
+                            // modeler back to a viewer, and let safeFit settle.
+                            bpmnXml = xml;
+                            await disableEditMode();
+                            // Refresh the version history table so the new row appears.
+                            if (typeof loadVersionHistory === 'function') {
+                                try { await loadVersionHistory(); } catch (e) { /* non-fatal */ }
+                            }
                             Swal.fire({
                                 icon: 'success',
                                 title: '@(isRtl ? "نجح!" : "Success!")',
@@ -1681,8 +1909,6 @@
                                 confirmButtonText: '@(isRtl ? "حسناً" : "OK")',
                                 timer: 2000,
                                 timerProgressBar: true
-                            }).then(() => {
-                                location.reload(); // Reload to show updated diagram
                             });
                         } else {
                             throw new Error(result.message || '@(isRtl ? "خطأ غير معروف" : "Unknown error")');
@@ -1715,7 +1941,7 @@
                 window.__pdLoadBpmn = async function () {
                     if (bpmnInitialized) {
                         // Already loaded — just re-fit in case container was resized.
-                        try { currentBpmnInstance.get('canvas').zoom('fit-viewport'); } catch (e) {}
+                        await safeFit(currentBpmnInstance);
                         return;
                     }
                     bpmnInitialized = true;
@@ -1744,8 +1970,7 @@
                 });
 
                 document.getElementById('btnFitView')?.addEventListener('click', () => {
-                    const canvas = currentBpmnInstance.get('canvas');
-                    canvas.zoom('fit-viewport');
+                    safeFit(currentBpmnInstance);
                 });
 
                 document.getElementById('btnDownloadSvg')?.addEventListener('click', async () => {
@@ -1828,6 +2053,311 @@
                             text: '@Shared["BPMN_ExportError"]',
                             confirmButtonText: '@(isRtl ? "حسناً" : "OK")'
                         });
+                    }
+                });
+
+                // ── Edit-mode toolbar: undo / redo (commandStack) ─────────
+                document.getElementById('btnPdUndo')?.addEventListener('click', () => {
+                    if (!isEditMode || !modeler) return;
+                    try { modeler.get('commandStack').undo(); } catch (e) { console.warn(e); }
+                });
+                document.getElementById('btnPdRedo')?.addEventListener('click', () => {
+                    if (!isEditMode || !modeler) return;
+                    try { modeler.get('commandStack').redo(); } catch (e) { console.warn(e); }
+                });
+
+                // ── Pool / Lane creation ───────────────────────────────────
+                // Helpers — find a Participant or Lane by walking up from any
+                // selected element, and BPMN type checks that don't rely on
+                // bpmn-js's `is(...)` (not always exported).
+                function pdBpmnType(el) {
+                    return el && el.businessObject ? el.businessObject.$type : null;
+                }
+                function pdFindAncestor(el, types) {
+                    let cur = el;
+                    while (cur) {
+                        if (types.indexOf(pdBpmnType(cur)) >= 0) return cur;
+                        cur = cur.parent;
+                    }
+                    return null;
+                }
+
+                // RTL detection: combine the page's culture (isRtl from
+                // Razor) with a content scan of the modeler's current XML.
+                // The content check catches the "Arabic process in an
+                // English UI" case where stagger/lane direction must
+                // still flip to follow the diagram's reading order.
+                const PD_PAGE_RTL = @(isRtl ? "true" : "false");
+                const pdArabicRangeRe = /[؀-ۿݐ-ݿࢠ-ࣿ]/;
+                async function pdIsDiagramRtl() {
+                    if (PD_PAGE_RTL) return true;
+                    if (!currentBpmnInstance) return false;
+                    try {
+                        const r = await currentBpmnInstance.saveXML({ format: false });
+                        return pdArabicRangeRe.test((r && r.xml) || '');
+                    } catch (e) { return false; }
+                }
+
+                // Add Pool — orientation comes from the dropdown's
+                // data-orientation. bpmn-js auto-converts the root from
+                // bpmn:Process to bpmn:Collaboration when a Participant is
+                // dropped onto it. Orientation is a DI property (isHorizontal
+                // on <bpmndi:BPMNShape>), so we update modddle properties on
+                // the created shape's di element AFTER createShape.
+                async function pdCreatePool(orientation) {
+                    if (!isEditMode || !modeler) return;
+                    try {
+                        const elementFactory = modeler.get('elementFactory');
+                        const modeling = modeler.get('modeling');
+                        const canvas = modeler.get('canvas');
+                        const root = canvas.getRootElement();
+                        const isHorizontal = orientation !== 'vertical';
+                        const isRtl = await pdIsDiagramRtl();
+
+                        // Stagger so a new pool doesn't drop on top of an
+                        // existing one. Horizontal pools stack downward
+                        // regardless of direction (vertical axis isn't
+                        // language-sensitive). Vertical pools stack along
+                        // the reading axis — LTR pushes rightward, RTL
+                        // pushes leftward so the newest pool sits at the
+                        // "next" position for the reader.
+                        const existingPools = (root.children || []).filter(c => pdBpmnType(c) === 'bpmn:Participant');
+                        const offset = existingPools.length;
+                        const xStep = isRtl ? -280 : 280;
+                        const position = isHorizontal
+                            ? { x: 400, y: 200 + offset * 280 }
+                            : { x: 400 + offset * xStep, y: 200 };
+
+                        // Create the participant. createParticipantShape
+                        // defaults to 600×250 (horizontal aspect). For a
+                        // vertical pool we swap to 250×600 BEFORE createShape
+                        // so the initial geometry already matches the new
+                        // orientation; the di.isHorizontal flag below is the
+                        // canonical marker that BPMN tooling reads.
+                        const participant = elementFactory.createParticipantShape({
+                            type: 'bpmn:Participant',
+                            isExpanded: true
+                        });
+                        if (!isHorizontal) {
+                            const w = participant.width || 600;
+                            const h = participant.height || 250;
+                            participant.width = h;
+                            participant.height = w;
+                        }
+
+                        const created = modeling.createShape(participant, position, root);
+
+                        // Flip isHorizontal on the diagram-interchange (di)
+                        // element. Without this, BPMN tooling re-opens the
+                        // file as a horizontal pool regardless of its width/
+                        // height. updateModdleProperties wraps the change in
+                        // a command-stack entry so undo/redo still works.
+                        if (!isHorizontal && created.di) {
+                            modeling.updateModdleProperties(created, created.di, { isHorizontal: false });
+                        }
+
+                        modeler.get('selection').select(created);
+                    } catch (err) {
+                        console.error('Add Pool failed:', err);
+                        Swal.fire({
+                            icon: 'error',
+                            title: '@(isRtl ? "تعذر إضافة المسبح" : "Could not add pool")',
+                            text: err.message,
+                            confirmButtonColor: '#005B99'
+                        });
+                    }
+                }
+                document.querySelectorAll('#bpmnCard .pd-add-pool').forEach(btn => {
+                    btn.addEventListener('click', () => pdCreatePool(btn.dataset.orientation));
+                });
+
+                // Add Lane — `location` is the user's intent ('top' for
+                // "before", 'bottom' for "after"). bpmn-js's addLane takes
+                // a canonical axis: for horizontal pools 'top' is north,
+                // 'bottom' is south. For vertical pools 'top' is west,
+                // 'bottom' is east. In RTL diagrams, "after the selection"
+                // along the reading axis means leftward (west), so we
+                // swap 'top' ↔ 'bottom' only for vertical pools.
+                async function pdCreateLane(intent) {
+                    if (!isEditMode || !modeler) return;
+                    try {
+                        const selection = modeler.get('selection').get();
+                        let target = selection.length
+                            ? pdFindAncestor(selection[0], ['bpmn:Lane', 'bpmn:Participant'])
+                            : null;
+
+                        // Fallback: no usable selection. If there's exactly
+                        // one pool, target it. If there are zero, prompt to
+                        // add a pool first. If there are multiple, force a
+                        // pick (ambiguous).
+                        if (!target) {
+                            const root = modeler.get('canvas').getRootElement();
+                            const pools = (root.children || []).filter(c => pdBpmnType(c) === 'bpmn:Participant');
+                            if (pools.length === 1) {
+                                target = pools[0];
+                            } else if (pools.length === 0) {
+                                Swal.fire({
+                                    icon: 'info',
+                                    title: '@(isRtl ? "لا يوجد مسبح" : "No pool yet")',
+                                    text: '@(isRtl ? "أضف مسبحاً أولاً ثم أضف المسارات بداخله." : "Add a pool first, then add lanes inside it.")',
+                                    confirmButtonColor: '#005B99'
+                                });
+                                return;
+                            } else {
+                                Swal.fire({
+                                    icon: 'info',
+                                    title: '@(isRtl ? "حدد مسبحاً أو مساراً" : "Select a pool or lane")',
+                                    text: '@(isRtl ? "لديك أكثر من مسبح — انقر على المسبح المستهدف أولاً." : "Multiple pools on the canvas — click the target pool first.")',
+                                    confirmButtonColor: '#005B99'
+                                });
+                                return;
+                            }
+                        }
+
+                        // Map the user's intent → bpmn-js direction with
+                        // RTL flip for vertical pools.
+                        const pool = pdFindAncestor(target, ['bpmn:Participant']) || target;
+                        const poolIsHorizontal = !pool.di || pool.di.isHorizontal !== false;
+                        const isRtl = await pdIsDiagramRtl();
+                        let location = intent === 'top' ? 'top' : 'bottom';
+                        if (!poolIsHorizontal && isRtl) {
+                            location = (location === 'top') ? 'bottom' : 'top';
+                        }
+
+                        const modeling = modeler.get('modeling');
+                        modeling.addLane(target, location);
+                    } catch (err) {
+                        console.error('Add Lane failed:', err);
+                        Swal.fire({
+                            icon: 'error',
+                            title: '@(isRtl ? "تعذر إضافة المسار" : "Could not add lane")',
+                            text: err.message,
+                            confirmButtonColor: '#005B99'
+                        });
+                    }
+                }
+                document.querySelectorAll('#bpmnCard .pd-add-lane').forEach(btn => {
+                    btn.addEventListener('click', () => pdCreateLane(btn.dataset.location));
+                });
+
+                // ── Colour: apply selected swatch to currently-selected shapes ──
+                function pdApplyColor(fill, stroke) {
+                    if (!isEditMode || !modeler) return;
+                    const selection = modeler.get('selection').get();
+                    if (!selection.length) {
+                        Swal.fire({
+                            icon: 'info',
+                            title: '@(isRtl ? "حدد عنصراً" : "Select an element")',
+                            text: '@(isRtl ? "اختر شكلاً من المخطط أولاً ثم اختر اللون" : "Pick a shape on the diagram first, then choose a colour.")',
+                            confirmButtonColor: '#005B99'
+                        });
+                        return;
+                    }
+                    modeler.get('modeling').setColor(selection, { fill: fill, stroke: stroke });
+                }
+                document.querySelectorAll('#bpmnCard .pd-color-swatch').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        if (btn.dataset.reset === 'true') {
+                            pdApplyColor(undefined, undefined);
+                        } else {
+                            pdApplyColor(btn.dataset.fill, btn.dataset.stroke);
+                        }
+                    });
+                });
+                document.getElementById('pdCustomColorApply')?.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const fill = document.getElementById('pdCustomFill').value;
+                    const stroke = document.getElementById('pdCustomStroke').value;
+                    pdApplyColor(fill, stroke);
+                });
+
+                // ── Font size / family: re-instantiate the modeler with the new
+                // default text style. bpmn-js applies textRenderer settings at
+                // construction time, so this is the supported (and only)
+                // way to change fonts without manually patching every label. ──
+                async function pdReinitWithFont() {
+                    if (!isEditMode || !modeler) return;
+                    try {
+                        const { xml } = await modeler.saveXML({ format: true });
+                        modeler.destroy();
+                        modeler = buildModeler();
+                        currentBpmnInstance = modeler;
+                        await modeler.importXML(xml);
+                        await safeFit(modeler);
+                    } catch (err) {
+                        console.error('Font reinit failed:', err);
+                        Swal.fire({ icon: 'error', title: 'Error', text: err.message, confirmButtonColor: '#005B99' });
+                    }
+                }
+                document.querySelectorAll('#bpmnCard .pd-font-size').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        pdFontSize = parseInt(btn.dataset.fontSize, 10) || 12;
+                        document.getElementById('pdFontSizeLabel').textContent = pdFontSize + 'px';
+                        await pdReinitWithFont();
+                    });
+                });
+                document.querySelectorAll('#bpmnCard .pd-font-family').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        pdFontFamily = btn.dataset.fontFamily;
+                        const label = btn.dataset.fontLabel || pdFontFamily.split(',')[0];
+                        document.getElementById('pdFontFamilyLabel').textContent = label;
+                        await pdReinitWithFont();
+                    });
+                });
+
+                // ── XML export — give the user the raw .bpmn ─────────────
+                document.getElementById('btnDownloadXml')?.addEventListener('click', async () => {
+                    if (!currentBpmnInstance) return;
+                    try {
+                        const { xml } = await currentBpmnInstance.saveXML({ format: true });
+                        const blob = new Blob([xml], { type: 'application/xml' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = '@(Model.Code)_diagram.bpmn';
+                        a.click();
+                        URL.revokeObjectURL(url);
+                    } catch (err) {
+                        console.error('XML export failed:', err);
+                        Swal.fire({ icon: 'error', title: 'Error', text: err.message, confirmButtonColor: '#005B99' });
+                    }
+                });
+
+                // ── Fullscreen toggle — overlays the BPMN card on top of the
+                // whole viewport so multi-lane diagrams have room to breathe.
+                // Browser Fullscreen API isn't used because it loses focus when
+                // SweetAlert / dropdowns open; CSS overlay keeps modals on top. ──
+                function pdSetFullscreen(on) {
+                    const card = document.getElementById('bpmnCard');
+                    const btn = document.getElementById('btnPdFullscreen');
+                    if (!card || !btn) return;
+                    card.classList.toggle('pd-bpmn-fullscreen', on);
+                    document.body.classList.toggle('pd-bpmn-fullscreen-open', on);
+                    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                    // Swap icon between expand (enter) and minimize-2 (exit).
+                    const icon = btn.querySelector('[data-lucide]');
+                    if (icon) icon.setAttribute('data-lucide', on ? 'minimize-2' : 'expand');
+                    if (window.lucide) lucide.createIcons();
+                    // bpmn-js caches viewport dimensions; nudge it to recompute.
+                    setTimeout(() => {
+                        if (!currentBpmnInstance) return;
+                        try {
+                            const c = currentBpmnInstance.get('canvas');
+                            if (typeof c.resized === 'function') c.resized();
+                            c.zoom('fit-viewport');
+                        } catch (e) { /* canvas may not be sized yet */ }
+                    }, 120);
+                }
+                document.getElementById('btnPdFullscreen')?.addEventListener('click', () => {
+                    const card = document.getElementById('bpmnCard');
+                    pdSetFullscreen(!card.classList.contains('pd-bpmn-fullscreen'));
+                });
+                // Escape exits fullscreen
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') {
+                        const card = document.getElementById('bpmnCard');
+                        if (card && card.classList.contains('pd-bpmn-fullscreen')) pdSetFullscreen(false);
                     }
                 });
 
@@ -1917,7 +2447,7 @@
 
                             versionViewer = new BpmnJS({ container: container });
                             await versionViewer.importXML(data.version.bpmnXml);
-                            versionViewer.get('canvas').zoom('fit-viewport');
+                            await safeFit(versionViewer);
                         }, 300);
                     } catch (err) {
                         console.error('Error viewing version:', err);

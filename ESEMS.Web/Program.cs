@@ -88,6 +88,7 @@ builder.Services.AddScoped<IBpmnProcessingService, BpmnProcessingService>();
 builder.Services.AddSingleton<IBpmnValidator, BpmnValidator>();
 builder.Services.AddSingleton<IBpmnPostProcessor, BpmnPostProcessor>();
 builder.Services.AddScoped<IBpmnLaneReconciler, BpmnLaneReconciler>();
+builder.Services.AddScoped<IBpmnLibraryImporter, BpmnLibraryImporter>();
 builder.Services.AddSingleton<IVisioExtractor, VisioExtractor>();
 builder.Services.AddScoped<IProcessAnalysisService, ProcessAnalysisService>();
 builder.Services.AddScoped<IImprovementWorkflowService, ImprovementWorkflowService>();

@@ -157,6 +157,82 @@ public class AIBpmnReadController : BaseController
         }
     }
 
+    /// <summary>
+    /// "Enhance Drawing" — loads a Process's BPMN and pipes it through
+    /// <see cref="IBpmnProcessingService.EnhanceBpmnLayout"/>, which
+    /// re-routes every edge with orthogonal waypoints anchored to shape
+    /// boundaries, centres edge labels on the new midpoints, resizes
+    /// tasks whose labels visibly overflow, and runs the standard
+    /// diagonal/RTL/colour repair pipeline along the way. Returns the
+    /// enhanced XML alongside the process metadata so the modeler can
+    /// import it directly.
+    /// </summary>
+    [HttpGet("EnhanceProcessBPMN")]
+    public async Task<IActionResult> EnhanceProcessBPMN(string id)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                return Json(new { success = false, error = "Process ID is required." });
+
+            var entity = await _context.Processes
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted);
+
+            // Same SEC-003 IDOR guard as LoadProcessBPMN — never leak the
+            // existence of an out-of-scope process via this endpoint.
+            if (entity == null || !await CanAccessProcessAsync(entity))
+                return Json(new { success = false, error = "Process not found." });
+
+            if (string.IsNullOrWhiteSpace(entity.BpmnDiagram))
+                return Json(new { success = false, error = "This process has no BPMN diagram." });
+
+            var enhanced = _bpmnService.EnhanceBpmnLayout(entity.BpmnDiagram);
+
+            return Json(new
+            {
+                success = true,
+                processId = entity.Id,
+                processCode = entity.Code,
+                processName = IsArabic ? entity.NameAr : entity.NameEn,
+                bpmnXml = enhanced
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error enhancing BPMN from process {Id}", id);
+            return Json(new { success = false, error = "An error occurred while processing your request." });
+        }
+    }
+
+    /// <summary>
+    /// "Enhance Drawing" for an ad-hoc XML payload — used when the user
+    /// wants to clean up whatever is currently in the modeler (rather
+    /// than a stored Process). Returns the enhanced XML.
+    /// </summary>
+    [HttpPost("EnhanceBpmnXml")]
+    [ValidateAntiForgeryToken]
+    public IActionResult EnhanceBpmnXml([FromBody] EnhanceXmlRequest req)
+    {
+        if (req == null || string.IsNullOrWhiteSpace(req.BpmnXml))
+            return Json(new { success = false, error = "BPMN XML is required." });
+        try
+        {
+            var enhanced = _bpmnService.EnhanceBpmnLayout(req.BpmnXml);
+            return Json(new { success = true, bpmnXml = enhanced });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "EnhanceBpmnXml failed");
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    public class EnhanceXmlRequest
+    {
+        public string? BpmnXml { get; set; }
+    }
+
     [HttpGet("LoadProcessBPMN")]
     public async Task<IActionResult> LoadProcessBPMN(string id)
     {
