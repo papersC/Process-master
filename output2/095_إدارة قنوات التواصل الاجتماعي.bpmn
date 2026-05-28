@@ -1,0 +1,95 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:color="http://www.omg.org/spec/BPMN/non-normative/color/1.0" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_095" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:collaboration id="Collaboration_095">
+    <bpmn:participant id="Participant_095" name="إدارة قنوات التواصل الاجتماعي" processRef="Process_095" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_095" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_095"><bpmn:lane id="Lane_Inputs" name="المدخلات"><bpmn:flowNodeRef>DataIn_1</bpmn:flowNodeRef></bpmn:lane><bpmn:lane id="Lane_Requester" name="الجهة الطالبة"><bpmn:flowNodeRef>StartEvent_1</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_Submit</bpmn:flowNodeRef></bpmn:lane><bpmn:lane id="Lane_Owner" name="الجهة المختصة"><bpmn:flowNodeRef>Task_Review</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_Process</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_NotifyRejection</bpmn:flowNodeRef></bpmn:lane><bpmn:lane id="Lane_Approver" name="جهة الاعتماد"><bpmn:flowNodeRef>Gateway_Approve</bpmn:flowNodeRef></bpmn:lane><bpmn:lane id="Lane_Outputs" name="المخرجات"><bpmn:flowNodeRef>EndEvent_Success</bpmn:flowNodeRef><bpmn:flowNodeRef>EndEvent_Rejected</bpmn:flowNodeRef></bpmn:lane></bpmn:laneSet>
+    
+    <bpmn:startEvent id="StartEvent_1" name="البداية">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="Task_Submit" name="تقديم الطلب">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_Review" name="مراجعة الطلب">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_3</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:exclusiveGateway id="Gateway_Approve" name="موافقة؟">
+      <bpmn:incoming>Flow_3</bpmn:incoming>
+      <bpmn:outgoing>Flow_Yes</bpmn:outgoing>
+      <bpmn:outgoing>Flow_No</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Task_Process" name="تنفيذ الطلب">
+      <bpmn:incoming>Flow_Yes</bpmn:incoming>
+      <bpmn:outgoing>Flow_4</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_NotifyRejection" name="إشعار بالرفض">
+      <bpmn:incoming>Flow_No</bpmn:incoming>
+      <bpmn:outgoing>Flow_5</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="EndEvent_Success" name="النهاية">
+      <bpmn:incoming>Flow_4</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="EndEvent_Rejected" name="النهاية">
+      <bpmn:incoming>Flow_5</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:dataObjectReference id="DataIn_1" name="نموذج الطلب" />
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Task_Submit" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_Submit" targetRef="Task_Review" />
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="Task_Review" targetRef="Gateway_Approve" />
+    <bpmn:sequenceFlow id="Flow_Yes" name="نعم" sourceRef="Gateway_Approve" targetRef="Task_Process" />
+    <bpmn:sequenceFlow id="Flow_No" name="لا" sourceRef="Gateway_Approve" targetRef="Task_NotifyRejection" />
+    <bpmn:sequenceFlow id="Flow_4" sourceRef="Task_Process" targetRef="EndEvent_Success" />
+    <bpmn:sequenceFlow id="Flow_5" sourceRef="Task_NotifyRejection" targetRef="EndEvent_Rejected" />
+    
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_095">
+      <bpmndi:BPMNShape id="Participant_095_di" bpmnElement="Participant_095" isHorizontal="false"><dc:Bounds x="100" y="80" width="1030" height="1700" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Inputs_di" bpmnElement="Lane_Inputs" isHorizontal="false"><dc:Bounds x="130" y="80" width="200" height="1700" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Requester_di" bpmnElement="Lane_Requester" isHorizontal="false"><dc:Bounds x="330" y="80" width="200" height="1700" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Owner_di" bpmnElement="Lane_Owner" isHorizontal="false"><dc:Bounds x="530" y="80" width="200" height="1700" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Approver_di" bpmnElement="Lane_Approver" isHorizontal="false"><dc:Bounds x="730" y="80" width="200" height="1700" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Outputs_di" bpmnElement="Lane_Outputs" isHorizontal="false"><dc:Bounds x="930" y="80" width="200" height="1700" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1" color:background-color="#C8E6C9" color:border-color="#1B5E20">
+      <dc:Bounds x="412" y="130" width="36" height="36" />
+      <bpmndi:BPMNLabel><dc:Bounds x="412" y="170" width="36" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Submit_di" bpmnElement="Task_Submit" color:background-color="#BBDEFB" color:border-color="#0D47A1">
+      <dc:Bounds x="370" y="220" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Review_di" bpmnElement="Task_Review" color:background-color="#BBDEFB" color:border-color="#0D47A1">
+      <dc:Bounds x="570" y="350" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Approve_di" bpmnElement="Gateway_Approve" isMarkerVisible="true" color:background-color="#FFE082" color:border-color="#E65100">
+      <dc:Bounds x="805" y="470" width="50" height="50" />
+      <bpmndi:BPMNLabel><dc:Bounds x="790" y="525" width="80" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Process_di" bpmnElement="Task_Process" color:background-color="#BBDEFB" color:border-color="#0D47A1">
+      <dc:Bounds x="570" y="590" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_NotifyRejection_di" bpmnElement="Task_NotifyRejection" color:background-color="#BBDEFB" color:border-color="#0D47A1">
+      <dc:Bounds x="770" y="590" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_Success_di" bpmnElement="EndEvent_Success" color:background-color="#FFCDD2" color:border-color="#B71C1C">
+      <dc:Bounds x="1012" y="720" width="36" height="36" />
+      <bpmndi:BPMNLabel><dc:Bounds x="1012" y="760" width="36" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_Rejected_di" bpmnElement="EndEvent_Rejected" color:background-color="#FFCDD2" color:border-color="#B71C1C">
+      <dc:Bounds x="1012" y="820" width="36" height="36" />
+      <bpmndi:BPMNLabel><dc:Bounds x="1012" y="860" width="36" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DataIn_1_di" bpmnElement="DataIn_1"><dc:Bounds x="212" y="220" width="36" height="50" /><bpmndi:BPMNLabel><dc:Bounds x="190" y="275" width="80" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1"><di:waypoint x="430" y="166" /><di:waypoint x="430" y="220" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2"><di:waypoint x="430" y="260" /><di:waypoint x="630" y="260" /><di:waypoint x="630" y="350" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_3_di" bpmnElement="Flow_3"><di:waypoint x="630" y="430" /><di:waypoint x="630" y="495" /><di:waypoint x="805" y="495" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Yes_di" bpmnElement="Flow_Yes"><di:waypoint x="830" y="520" /><di:waypoint x="830" y="630" /><di:waypoint x="690" y="630" /><bpmndi:BPMNLabel><dc:Bounds x="745" y="568" width="30" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_No_di" bpmnElement="Flow_No"><di:waypoint x="830" y="520" /><di:waypoint x="830" y="590" /><bpmndi:BPMNLabel><dc:Bounds x="815" y="548" width="30" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_4_di" bpmnElement="Flow_4"><di:waypoint x="630" y="670" /><di:waypoint x="630" y="738" /><di:waypoint x="1012" y="738" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_5_di" bpmnElement="Flow_5"><di:waypoint x="830" y="670" /><di:waypoint x="830" y="838" /><di:waypoint x="1012" y="838" /></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -1,0 +1,246 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:color="http://www.omg.org/spec/BPMN/non-normative/color/1.0" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_011" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:collaboration id="Collaboration_011">
+    <bpmn:participant id="Participant_011" name="استثمار المشروع" processRef="Process_011" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_011" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_011">
+      <bpmn:lane id="Lane_Inputs" name="المدخلات">
+        <bpmn:flowNodeRef>DataIn_FinalApproval</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>DataIn_ProjectPapers</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_BizSust" name="قسم استدامة الأعمال">
+        <bpmn:flowNodeRef>StartEvent_1</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_PrepareTender</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_GetApproval</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Announce</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_LaunchTender</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_GetOffers</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_PrepareReport</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_PrepareLease</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_InvCommittee" name="لجنة الاستثمار">
+        <bpmn:flowNodeRef>Gateway_Approved1</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_Approved2</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Legal" name="مكتب الشؤون القانونية">
+        <bpmn:flowNodeRef>Task_ReviewContracts</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_DeputyCEO" name="مساعد المدير التنفيذي">
+        <bpmn:flowNodeRef>Gateway_Notes</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_SignContracts</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EndEvent_1</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Outputs" name="المخرجات">
+        <bpmn:flowNodeRef>DataOut_Contracts</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="StartEvent_1" name="البداية">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="Task_PrepareTender" name="اعداد اوراق المزايده الفنية والمالية ودراسة القيم الإيجارية وإرسالها للجنة">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:incoming>Flow_NoApproval</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_GetApproval" name="الحصول على اعتماد لجنة الاستثمار والشراكة لطرح المشروع علناً او بشكل خاص">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_3</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:exclusiveGateway id="Gateway_Approved1" name="هل تم الاعتماد">
+      <bpmn:incoming>Flow_3</bpmn:incoming>
+      <bpmn:outgoing>Flow_Yes1</bpmn:outgoing>
+      <bpmn:outgoing>Flow_NoApproval</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Task_Announce" name="الإعلان عن الفرصة الاستثمارية">
+      <bpmn:incoming>Flow_Yes1</bpmn:incoming>
+      <bpmn:outgoing>Flow_4</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_LaunchTender" name="طرح المزايده حسب الاعتماد">
+      <bpmn:incoming>Flow_4</bpmn:incoming>
+      <bpmn:outgoing>Flow_5</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_GetOffers" name="الحصول على عروض الفنية والمالية">
+      <bpmn:incoming>Flow_5</bpmn:incoming>
+      <bpmn:incoming>Flow_NoApproval2</bpmn:incoming>
+      <bpmn:outgoing>Flow_6</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_PrepareReport" name="اعداد التقرير الفني والمالي للمزايده">
+      <bpmn:incoming>Flow_6</bpmn:incoming>
+      <bpmn:outgoing>Flow_7</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:exclusiveGateway id="Gateway_Approved2" name="هل تم الاعتماد">
+      <bpmn:incoming>Flow_7</bpmn:incoming>
+      <bpmn:outgoing>Flow_Yes2</bpmn:outgoing>
+      <bpmn:outgoing>Flow_NoApproval2</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Task_PrepareLease" name="إعداد عقود الإيجار">
+      <bpmn:incoming>Flow_Yes2</bpmn:incoming>
+      <bpmn:incoming>Flow_YesNotes</bpmn:incoming>
+      <bpmn:outgoing>Flow_8</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_ReviewContracts" name="إعداد ومراجعة العقود والاتفاقيات القانونية">
+      <bpmn:incoming>Flow_8</bpmn:incoming>
+      <bpmn:outgoing>Flow_9</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:exclusiveGateway id="Gateway_Notes" name="يوجد ملاحظات؟">
+      <bpmn:incoming>Flow_9</bpmn:incoming>
+      <bpmn:outgoing>Flow_YesNotes</bpmn:outgoing>
+      <bpmn:outgoing>Flow_NoNotes</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Task_SignContracts" name="توقيع عقود الإيجار">
+      <bpmn:incoming>Flow_NoNotes</bpmn:incoming>
+      <bpmn:outgoing>Flow_10</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="EndEvent_1" name="النهاية">
+      <bpmn:incoming>Flow_10</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:dataObjectReference id="DataIn_FinalApproval" name="الاعتماد النهائي من اللجنة" />
+    <bpmn:dataObjectReference id="DataIn_ProjectPapers" name="أوراق استلام المشروع" />
+    <bpmn:dataObjectReference id="DataOut_Contracts" name="عقود الإيجار الاستثمارية" />
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Task_PrepareTender" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_PrepareTender" targetRef="Task_GetApproval" />
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="Task_GetApproval" targetRef="Gateway_Approved1" />
+    <bpmn:sequenceFlow id="Flow_Yes1" name="نعم" sourceRef="Gateway_Approved1" targetRef="Task_Announce" />
+    <bpmn:sequenceFlow id="Flow_NoApproval" name="لا" sourceRef="Gateway_Approved1" targetRef="Task_PrepareTender" />
+    <bpmn:sequenceFlow id="Flow_4" sourceRef="Task_Announce" targetRef="Task_LaunchTender" />
+    <bpmn:sequenceFlow id="Flow_5" sourceRef="Task_LaunchTender" targetRef="Task_GetOffers" />
+    <bpmn:sequenceFlow id="Flow_6" sourceRef="Task_GetOffers" targetRef="Task_PrepareReport" />
+    <bpmn:sequenceFlow id="Flow_7" sourceRef="Task_PrepareReport" targetRef="Gateway_Approved2" />
+    <bpmn:sequenceFlow id="Flow_Yes2" name="نعم" sourceRef="Gateway_Approved2" targetRef="Task_PrepareLease" />
+    <bpmn:sequenceFlow id="Flow_NoApproval2" name="لا" sourceRef="Gateway_Approved2" targetRef="Task_GetOffers" />
+    <bpmn:sequenceFlow id="Flow_8" sourceRef="Task_PrepareLease" targetRef="Task_ReviewContracts" />
+    <bpmn:sequenceFlow id="Flow_9" sourceRef="Task_ReviewContracts" targetRef="Gateway_Notes" />
+    <bpmn:sequenceFlow id="Flow_YesNotes" name="نعم" sourceRef="Gateway_Notes" targetRef="Task_PrepareLease" />
+    <bpmn:sequenceFlow id="Flow_NoNotes" name="لا" sourceRef="Gateway_Notes" targetRef="Task_SignContracts" />
+    <bpmn:sequenceFlow id="Flow_10" sourceRef="Task_SignContracts" targetRef="EndEvent_1" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_011">
+      <bpmndi:BPMNShape id="Participant_011_di" bpmnElement="Participant_011" isHorizontal="false">
+        <dc:Bounds x="100" y="80" width="1200" height="1700" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Inputs_di" bpmnElement="Lane_Inputs" isHorizontal="false">
+        <dc:Bounds x="130" y="80" width="180" height="1700" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_BizSust_di" bpmnElement="Lane_BizSust" isHorizontal="false">
+        <dc:Bounds x="310" y="80" width="240" height="1700" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_InvCommittee_di" bpmnElement="Lane_InvCommittee" isHorizontal="false">
+        <dc:Bounds x="550" y="80" width="180" height="1700" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Legal_di" bpmnElement="Lane_Legal" isHorizontal="false">
+        <dc:Bounds x="730" y="80" width="200" height="1700" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_DeputyCEO_di" bpmnElement="Lane_DeputyCEO" isHorizontal="false">
+        <dc:Bounds x="930" y="80" width="200" height="1700" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Outputs_di" bpmnElement="Lane_Outputs" isHorizontal="false">
+        <dc:Bounds x="1130" y="80" width="170" height="1700" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1" color:background-color="#C8E6C9" color:border-color="#1B5E20">
+        <dc:Bounds x="412" y="130" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="412" y="170" width="36" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PrepareTender_di" bpmnElement="Task_PrepareTender" color:background-color="#BBDEFB" color:border-color="#0D47A1">
+        <dc:Bounds x="370" y="210" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_GetApproval_di" bpmnElement="Task_GetApproval" color:background-color="#BBDEFB" color:border-color="#0D47A1">
+        <dc:Bounds x="370" y="330" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Approved1_di" bpmnElement="Gateway_Approved1" isMarkerVisible="true" color:background-color="#FFE082" color:border-color="#E65100">
+        <dc:Bounds x="605" y="450" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="590" y="505" width="80" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Announce_di" bpmnElement="Task_Announce" color:background-color="#BBDEFB" color:border-color="#0D47A1">
+        <dc:Bounds x="370" y="540" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_LaunchTender_di" bpmnElement="Task_LaunchTender" color:background-color="#BBDEFB" color:border-color="#0D47A1">
+        <dc:Bounds x="370" y="660" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_GetOffers_di" bpmnElement="Task_GetOffers" color:background-color="#BBDEFB" color:border-color="#0D47A1">
+        <dc:Bounds x="370" y="780" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PrepareReport_di" bpmnElement="Task_PrepareReport" color:background-color="#BBDEFB" color:border-color="#0D47A1">
+        <dc:Bounds x="370" y="900" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Approved2_di" bpmnElement="Gateway_Approved2" isMarkerVisible="true" color:background-color="#FFE082" color:border-color="#E65100">
+        <dc:Bounds x="605" y="1020" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="590" y="1075" width="80" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PrepareLease_di" bpmnElement="Task_PrepareLease" color:background-color="#BBDEFB" color:border-color="#0D47A1">
+        <dc:Bounds x="370" y="1110" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ReviewContracts_di" bpmnElement="Task_ReviewContracts" color:background-color="#BBDEFB" color:border-color="#0D47A1">
+        <dc:Bounds x="770" y="1110" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Notes_di" bpmnElement="Gateway_Notes" isMarkerVisible="true" color:background-color="#FFE082" color:border-color="#E65100">
+        <dc:Bounds x="1005" y="1125" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="990" y="1180" width="80" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_SignContracts_di" bpmnElement="Task_SignContracts" color:background-color="#BBDEFB" color:border-color="#0D47A1">
+        <dc:Bounds x="970" y="1260" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1" color:background-color="#FFCDD2" color:border-color="#B71C1C">
+        <dc:Bounds x="1012" y="1390" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1012" y="1430" width="36" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DataIn_FinalApproval_di" bpmnElement="DataIn_FinalApproval">
+        <dc:Bounds x="190" y="220" width="36" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="170" y="275" width="80" height="28" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DataIn_ProjectPapers_di" bpmnElement="DataIn_ProjectPapers">
+        <dc:Bounds x="190" y="800" width="36" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="170" y="855" width="80" height="28" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DataOut_Contracts_di" bpmnElement="DataOut_Contracts">
+        <dc:Bounds x="1190" y="1280" width="36" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1170" y="1335" width="80" height="28" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <di:waypoint x="430" y="166" /><di:waypoint x="430" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
+        <di:waypoint x="430" y="290" /><di:waypoint x="430" y="330" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_3_di" bpmnElement="Flow_3">
+        <di:waypoint x="490" y="370" /><di:waypoint x="605" y="370" /><di:waypoint x="605" y="475" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Yes1_di" bpmnElement="Flow_Yes1">
+        <di:waypoint x="605" y="475" /><di:waypoint x="490" y="475" /><di:waypoint x="490" y="580" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_NoApproval_di" bpmnElement="Flow_NoApproval">
+        <di:waypoint x="630" y="450" /><di:waypoint x="630" y="250" /><di:waypoint x="490" y="250" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_4_di" bpmnElement="Flow_4">
+        <di:waypoint x="430" y="620" /><di:waypoint x="430" y="660" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_5_di" bpmnElement="Flow_5">
+        <di:waypoint x="430" y="740" /><di:waypoint x="430" y="780" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_6_di" bpmnElement="Flow_6">
+        <di:waypoint x="430" y="860" /><di:waypoint x="430" y="900" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_7_di" bpmnElement="Flow_7">
+        <di:waypoint x="490" y="940" /><di:waypoint x="605" y="940" /><di:waypoint x="605" y="1045" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Yes2_di" bpmnElement="Flow_Yes2">
+        <di:waypoint x="605" y="1045" /><di:waypoint x="490" y="1045" /><di:waypoint x="490" y="1150" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_NoApproval2_di" bpmnElement="Flow_NoApproval2">
+        <di:waypoint x="630" y="1020" /><di:waypoint x="630" y="820" /><di:waypoint x="490" y="820" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_8_di" bpmnElement="Flow_8">
+        <di:waypoint x="490" y="1150" /><di:waypoint x="770" y="1150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_9_di" bpmnElement="Flow_9">
+        <di:waypoint x="890" y="1150" /><di:waypoint x="1005" y="1150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_YesNotes_di" bpmnElement="Flow_YesNotes">
+        <di:waypoint x="1030" y="1175" /><di:waypoint x="1030" y="1220" /><di:waypoint x="430" y="1220" /><di:waypoint x="430" y="1190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_NoNotes_di" bpmnElement="Flow_NoNotes">
+        <di:waypoint x="1030" y="1175" /><di:waypoint x="1030" y="1260" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_10_di" bpmnElement="Flow_10">
+        <di:waypoint x="1030" y="1340" /><di:waypoint x="1030" y="1390" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
