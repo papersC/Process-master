@@ -722,9 +722,17 @@ public class ServicesController : BaseController
     /// processes, assets, risks, catalog sidecar, incidents, problems, or
     /// improvement links. Audit finding C8 (2026-05-19 QA): the previous
     /// version soft-deleted unconditionally, orphaning every M2M and FK.
+    ///
+    /// RBAC-001 (QA 2026-06-02): this action previously required CanAdmin
+    /// (the *.* wildcard), so granting a role Service.Delete in the matrix had
+    /// no effect — only full administrators could delete. Every other action
+    /// on this controller, and the parallel Incident/Problem controllers, gate
+    /// on the granular Module.<Entity>.Delete policy. Aligned here so the
+    /// permission matrix is honored. Record-level scope + dependency guards
+    /// below remain the real safety net.
     /// </summary>
     [HttpPost]
-    [Authorize(Policy = AppPolicies.CanAdmin)]
+    [Authorize(Policy = AppPolicies.Module.Service.Delete)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Delete(string id)
     {
