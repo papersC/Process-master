@@ -306,7 +306,7 @@
                 </h3>
                 <div class="flex items-center gap-2">
                     <span class="px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">@Model.AssetRisks.Count(ar => ar.IsActive)</span>
-                    @if (User.HasClaim("Permission", "CanEdit"))
+                    @if (User.HasPermission("Asset.Edit"))
                     {
                         <button onclick="openLinkRiskModal()" class="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
                             <i data-lucide="plus" class="w-3 h-3"></i>
@@ -341,7 +341,7 @@
                                         <p class="text-xs text-gray-500 mt-1"><i data-lucide="file-text" class="w-3 h-3 inline"></i> @assetRisk.Notes</p>
                                     }
                                 </a>
-                                @if (User.HasClaim("Permission", "CanEdit"))
+                                @if (User.HasPermission("Asset.Edit"))
                                 {
                                     <div class="flex items-center gap-1">
                                         <button onclick="editAssetRisk('@Model.Id', '@risk.Id', @assetRisk.ImpactLevel, '@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(assetRisk.SpecificControls ?? ""))', '@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(assetRisk.Notes ?? ""))')" class="p-1 text-blue-600 hover:bg-blue-50 rounded" title="Edit">

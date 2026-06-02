@@ -709,7 +709,7 @@
             </div>
             <div class="d-flex align-items-center gap-2">
                 <span class="badge badge-secondary">@totalServices</span>
-                @if (User.HasClaim("Permission", "CanEdit"))
+                @if (User.HasPermission("Process.Edit"))
                 {
                     <button onclick="openLinkServiceModal()" class="btn btn-sm btn-primary" title="@(isRtl ? "ربط خدمة" : "Link Service")">
                         <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
@@ -749,7 +749,7 @@
                                             </small>
                                         }
                                     </a>
-                                    @if (User.HasClaim("Permission", "CanEdit"))
+                                    @if (User.HasPermission("Process.Edit"))
                                     {
                                         <div class="d-flex gap-1">
                                             <button onclick="editProcessService('@Model.Id', '@svc.Id', @ps.Criticality, @ps.IsMandatory.ToString().ToLower(), '@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(ps.Notes ?? ""))')" class="btn btn-sm btn-link text-primary p-0" title="Edit">

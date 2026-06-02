@@ -507,7 +507,7 @@
                 @Shared["Section_LinkedProcesses"]
                 <span class="sd2-card-count">@totalProcesses</span>
             </span>
-            @if (User.HasClaim("Permission", "CanEdit"))
+            @if (User.HasPermission("Service.Edit"))
             {
                 <button onclick="openLinkProcessModal()" class="btn btn-sm btn-primary" title="Link Process">
                     <i data-lucide="plus" style="width:14px;height:14px;"></i>
@@ -548,7 +548,7 @@
                                             </small>
                                         }
                                     </a>
-                                    @if (User.HasClaim("Permission", "CanEdit"))
+                                    @if (User.HasPermission("Service.Edit"))
                                     {
                                         <div class="d-flex gap-1">
                                             <button onclick="editServiceProcess('@Model.Id', '@proc.Id', @ps.Criticality, @ps.IsMandatory.ToString().ToLower(), '@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(ps.Notes ?? ""))')" class="btn btn-sm btn-link text-primary p-0" title="Edit">
@@ -628,7 +628,7 @@
                                             </small>
                                         }
                                     </a>
-                                    @if (User.HasClaim("Permission", "CanEdit"))
+                                    @if (User.HasPermission("Service.Edit"))
                                     {
                                         <div class="d-flex gap-1">
                                             <button onclick="editServiceAsset('@Model.Id', '@asset.Id', @serviceAsset.Criticality, @serviceAsset.IsRequired.ToString().ToLower(), '@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(serviceAsset.UsageDescription ?? ""))')" class="btn btn-sm btn-link text-primary p-0" title="Edit">
@@ -704,7 +704,7 @@
                                             </small>
                                         }
                                     </a>
-                                    @if (User.HasClaim("Permission", "CanEdit"))
+                                    @if (User.HasPermission("Service.Edit"))
                                     {
                                         <div class="d-flex gap-1">
                                             <button onclick="editServiceRisk('@Model.Id', '@risk.Id', @serviceRisk.ImpactLevel, '@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(serviceRisk.SpecificControls ?? ""))', '@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(serviceRisk.Notes ?? ""))')" class="btn btn-sm btn-link text-primary p-0" title="Edit">
