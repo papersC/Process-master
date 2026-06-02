@@ -419,11 +419,15 @@ lucide.createIcons();
             // Filter helper — returns role <option>s scoped to a unit id.
             // Unit-specific roles surface above globals.
             function rolesForUnit(unitId) {
+                // Coerce both sides to string: j.unitId is a serialized int while
+                // unitId comes from a data-attribute/dropdown value (string), so a
+                // raw === never matched and unit-scoped roles never appeared.
+                const uid = unitId == null ? '' : String(unitId);
                 const eligible = JOB_ROLES
-                    .filter(j => !j.unitId || j.unitId === unitId)
+                    .filter(j => !j.unitId || String(j.unitId) === uid)
                     .sort((a, b) => {
-                        const aScoped = a.unitId === unitId ? 0 : 1;
-                        const bScoped = b.unitId === unitId ? 0 : 1;
+                        const aScoped = String(a.unitId) === uid ? 0 : 1;
+                        const bScoped = String(b.unitId) === uid ? 0 : 1;
                         if (aScoped !== bScoped) return aScoped - bScoped;
                         return (a.name || '').localeCompare(b.name || '');
                     });

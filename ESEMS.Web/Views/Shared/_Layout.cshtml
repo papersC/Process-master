@@ -716,7 +716,7 @@
                     var assetControllers = new[] { "AssetCategories", "Assets", "Maintenance" };
                     var riskControllers = new[] { "EnterpriseRisks" };
                     var improvementControllers = new[] { "Improvements", "ChangeRequests" };
-                    var adminControllers = new[] { "Users", "RoleGroups", "OrganizationUnits", "Import", "SettingsHub", "AuditLogs" };
+                    var adminControllers = new[] { "Users", "RoleGroups", "OrganizationUnits", "JobPositions", "Import", "SettingsHub", "AuditLogs" };
                     var workloadControllers = new[] { "WorkloadAnalysis" };
                     var helpControllers = new[] { "Home", "Help" };
 
@@ -1035,6 +1035,10 @@
                         <a asp-controller="OrganizationUnits" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "OrganizationUnits" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
                             <i data-lucide="building-2" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@Shared["Nav_OrganizationUnits"]</span>
+                        </a>
+                        <a asp-controller="JobPositions" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "JobPositions" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="briefcase" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@(isRtl ? "المسميات الوظيفية" : "Job Positions")</span>
                         </a>
                     </div>
                 </div>
