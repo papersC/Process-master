@@ -531,6 +531,7 @@ public class SettingsHubController : BaseController
                 "mbrhe-services" => await _importer.ImportMbrheServicesCatalogAsync(stream, ct),
                 "mbrhe-org"      => await _importer.ImportMbrheOrgStructureAsync(stream, ct),
                 "mbrhe-apqc"     => await _importer.ImportApqcProcessMappingAsync(stream, ct),
+                "job-titles"     => await _importer.ImportJobTitlesAsync(stream, ct),
                 _ => null!
             };
             if (result == null)
@@ -668,6 +669,7 @@ public class SettingsHubController : BaseController
         var svcCatIds  = Ids("ServiceCategories");
         var assetIds   = Ids("Assets");
         var riskIds    = Ids("EnterpriseRisks"); // F-024: standard Risks template undo
+        var jobRoleIds = Ids("JobRoles");        // approved job-titles import undo
 
         int deleted = 0, kept = 0;
 
@@ -700,6 +702,16 @@ public class SettingsHubController : BaseController
             {
                 var del = await _context.ServiceCatalogInfos.Where(c => catalogIds.Contains(c.Id)).ToListAsync(ct);
                 _context.ServiceCatalogInfos.RemoveRange(del);
+                await _context.SaveChangesAsync(ct);
+                deleted += del.Count;
+            }
+
+            // Job titles — leaf here (RACI references JobPositionId with ON DELETE
+            // SET NULL), so a straight delete is safe.
+            if (jobRoleIds.Count > 0)
+            {
+                var del = await _context.JobPositions.Where(j => jobRoleIds.Contains(j.Id)).ToListAsync(ct);
+                _context.JobPositions.RemoveRange(del);
                 await _context.SaveChangesAsync(ct);
                 deleted += del.Count;
             }
@@ -865,6 +877,7 @@ public class SettingsHubController : BaseController
         "services"       => ar ? "الخدمات"  : "Services",
         "assets"         => ar ? "الأصول"   : "Assets",
         "risks"          => ar ? "المخاطر"  : "Risks",
+        "job-titles"     => ar ? "المسميات الوظيفية المعتمدة" : "Approved Job Titles",
         _ => kind
     };
 

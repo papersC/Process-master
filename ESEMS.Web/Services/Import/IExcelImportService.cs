@@ -81,6 +81,16 @@ public interface IExcelImportService
     /// transaction; throws on failure so the caller can abort before parsing.
     /// </summary>
     Task WipeForKindAsync(string kind, CancellationToken ct = default);
+
+    /// <summary>
+    /// Approved Job Titles (المسميات المعتمدة) import. 4-column client xlsx
+    /// (Job Name / Job Name Arabic / Direct Org Name En / Direct Org Name Ar).
+    /// Each row creates a JobPosition (the RACI role catalog, table JobRoles)
+    /// linked to its OrganizationUnit by normalized Arabic name. Insert-only;
+    /// idempotent on (NameAr, OrganizationUnitId). Unmatched org ⇒ a unit-less
+    /// title plus a soft warning.
+    /// </summary>
+    Task<ImportResult> ImportJobTitlesAsync(Stream xlsx, CancellationToken ct = default);
 }
 
 public sealed class ImportResult

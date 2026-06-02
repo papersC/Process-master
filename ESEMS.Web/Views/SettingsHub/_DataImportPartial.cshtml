@@ -223,6 +223,26 @@
                 </div>
             </div>
         </div>
+        <div class="col-md-6 col-lg-4">
+            <div class="card shadow-sm h-100 border-secondary-subtle">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <i data-lucide="users" style="width:22px;height:22px;color:#475569;"></i>
+                        <h6 class="fw-bold mb-0">@(isRtl ? "المسميات الوظيفية المعتمدة (MBRHE)" : "MBRHE Approved Job Titles")</h6>
+                    </div>
+                    <p class="text-muted small mb-3">
+                        @(isRtl
+                            ? "ملف العميل بأربعة أعمدة (المسمى بالإنجليزية، المسمى بالعربية، الوحدة التنظيمية بالإنجليزية، الوحدة بالعربية). يُنشئ مسمى وظيفياً لكل صف ويربطه بوحدته التنظيمية بالاسم العربي — لتظهر المسميات المعتمدة في مصفوفة RACI لكل وحدة. (إلحاق افتراضياً؛ اختر «استبدال» لمسح المسميات المستوردة سابقاً.)"
+                            : "The client's 4-column xlsx (Job Name, Job Name Arabic, Direct Org Name En/Ar). Creates a JobPosition per row, linked to its OrganizationUnit by Arabic name, so each unit's approved titles appear in the RACI role picker. (Append by default; pick Replace to clear previously-imported titles first.)")
+                    </p>
+                    <label class="btn btn-sm btn-primary w-100 mb-0">
+                        <i data-lucide="upload" style="width:14px;height:14px;margin-inline-end:4px;"></i>
+                        @Shared["Button_Upload"]
+                        <input type="file" accept=".xlsx,.xls" hidden onchange="DataImport.upload('job-titles', this.files[0])" />
+                    </label>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -370,7 +390,8 @@ window.DataImport = (function() {
         'mbrhe-services': 'الخدمات',
         'assets':         'الأصول',
         'mbrhe-assets':   'الأصول',
-        'risks':          'المخاطر'
+        'risks':          'المخاطر',
+        'job-titles':     'المسميات الوظيفية المعتمدة'
     } : {
         'processes':      'Processes',
         'mbrhe-apqc':     'Categories, Process Groups & Processes (APQC catalog)',
@@ -378,7 +399,8 @@ window.DataImport = (function() {
         'mbrhe-services': 'Services',
         'assets':         'Assets',
         'mbrhe-assets':   'Assets',
-        'risks':          'Risks'
+        'risks':          'Risks',
+        'job-titles':     'approved job titles'
     };
 
     function esc(s) {

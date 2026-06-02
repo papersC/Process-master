@@ -6,6 +6,7 @@ using ESEMS.Web.Models.AssetManagement;
 using ESEMS.Web.Models.Enums;
 using ESEMS.Web.Models.RiskManagement;
 using ESEMS.Web.Models.Services;
+using ESEMS.Web.Models.Common;
 
 namespace ESEMS.Web.Services.Import;
 
@@ -71,6 +72,9 @@ public sealed class ExcelImportService : IExcelImportService
             "services" or "mbrhe-services" => "SET XACT_ABORT ON;\nDELETE FROM Services;",
             "assets" or "mbrhe-assets"     => "SET XACT_ABORT ON;\nDELETE FROM Assets;",
             "risks"                        => "SET XACT_ABORT ON;\nDELETE FROM EnterpriseRisks;",
+            // Job titles carry a JP- code; wipe only those (keep hand-made roles).
+            // RACI rows reference JobPositionId with ON DELETE SET NULL, so safe.
+            "job-titles"                   => "SET XACT_ABORT ON;\nDELETE FROM JobRoles WHERE Code LIKE 'JP-%';",
             _                              => null    // org / unknown → no-op (append)
         };
         if (sql == null) return;
@@ -1456,6 +1460,162 @@ DELETE FROM Processes;
             result.Imported = catsToAdd.Count + groupsToAdd.Count + processesToAdd.Count;
         }
         return result;
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // APPROVED JOB TITLES (المسميات المعتمدة) — 4-column client xlsx
+    //   Job Name | Job Name Arabic | Direct Org Name En | Direct Org Name Ar
+    // Each row → one JobPosition (the RACI role-level catalog, table JobRoles),
+    // linked to its OrganizationUnit by Arabic name. Insert-only; idempotent on
+    // (NameAr, OrganizationUnitId). Unmatched org ⇒ imported without a unit link
+    // (soft warning). Codes auto-assigned "JP-####".
+    // ════════════════════════════════════════════════════════════════════
+    private static readonly string[] JobTitleHeaders = new[]
+    {
+        "Job Name", "Job Name Arabic", "Direct Org Name En", "Direct Org Name Ar"
+    };
+
+    // File→DB org-name aliases the Arabic normalizer can't bridge (genuine
+    // spelling differences between the titles file and the org-structure import).
+    private static readonly Dictionary<string, string> JobOrgAliases = new(StringComparer.Ordinal)
+    {
+        ["التميز والريادة المؤسسية"] = "قسم التميز والريادة المؤسسية",
+        ["قسم التخطيط والموازنة"]    = "قسم التخطيط الموازنة",
+        ["قسم خدمات الدعم التقني"]   = "قسم خدمات الدعم الفني",
+        ["قسم مراكز التعهيد"]        = "مركز التعهد",
+    };
+
+    public async Task<ImportResult> ImportJobTitlesAsync(Stream xlsx, CancellationToken ct = default)
+    {
+        var result = new ImportResult();
+        var ws = OpenFirstWorksheet(xlsx, result);
+        if (ws == null) return result;
+
+        var cols = ReadHeaders(ws);
+        if (!ValidateHeaders(cols, JobTitleHeaders, result)) return result;
+
+        // Org units keyed by normalized Arabic name for linking.
+        var units = await _context.OrganizationUnits.AsNoTracking()
+            .Where(u => !u.IsDeleted)
+            .Select(u => new { u.Id, u.NameAr })
+            .ToListAsync(ct);
+        var unitByNorm = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var u in units)
+        {
+            var k = NormalizeArabic(u.NameAr);
+            if (k.Length > 0 && !unitByNorm.ContainsKey(k)) unitByNorm[k] = u.Id;
+        }
+
+        // Existing positions: dedup key (normalized NameAr | unitId) + code sequence.
+        var existing = await _context.JobPositions.AsNoTracking()
+            .Where(j => !j.IsDeleted)
+            .Select(j => new { j.NameAr, j.OrganizationUnitId, j.Code })
+            .ToListAsync(ct);
+        var existingKeys = new HashSet<string>(
+            existing.Select(e => NormalizeArabic(e.NameAr) + "|" + (e.OrganizationUnitId?.ToString() ?? "")),
+            StringComparer.Ordinal);
+        int nextSeq = NextSeq(existing.Where(e => e.Code != null).Select(e => e.Code!), "JP-");
+        int order = (existing.Count + 1) * 10;
+
+        var toAdd = new List<JobPosition>();
+        var seenInFile = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var row in DataRows(ws))
+        {
+            var en = ReadString(row, cols, "Job Name");
+            var ar = ReadString(row, cols, "Job Name Arabic");
+            var orgAr = ReadString(row, cols, "Direct Org Name Ar");
+
+            var nameAr = (ar ?? en ?? "").Trim();
+            var nameEn = (en ?? ar ?? "").Trim();
+            if (nameAr.Length == 0 && nameEn.Length == 0) continue;
+            if (nameEn.Length == 0) nameEn = nameAr;
+            if (nameAr.Length == 0) nameAr = nameEn;
+
+            int? unitId = null;
+            if (!string.IsNullOrWhiteSpace(orgAr))
+            {
+                if (unitByNorm.TryGetValue(NormalizeArabic(orgAr), out var uid)) unitId = uid;
+                else if (JobOrgAliases.TryGetValue(orgAr.Trim(), out var alias)
+                         && unitByNorm.TryGetValue(NormalizeArabic(alias), out var uid2)) unitId = uid2;
+                else result.Warnings.Add(new RowError(row.RowNumber(),
+                    $"Org unit '{orgAr}' not matched — title imported without a unit link."));
+            }
+
+            var key = NormalizeArabic(nameAr) + "|" + (unitId?.ToString() ?? "");
+            if (existingKeys.Contains(key) || !seenInFile.Add(key)) { result.Skipped++; continue; }
+
+            toAdd.Add(new JobPosition
+            {
+                Id = Guid.NewGuid().ToString(),
+                Code = $"JP-{nextSeq++:D4}",
+                NameEn = nameEn,
+                NameAr = nameAr,
+                Category = InferJobCategory(nameEn),
+                IsLeadership = InferJobLeadership(nameEn, nameAr),
+                DisplayOrder = order,
+                OrganizationUnitId = unitId,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            });
+            order += 10;
+        }
+
+        if (toAdd.Count > 0)
+        {
+            _context.JobPositions.AddRange(toAdd);
+            await _context.SaveChangesAsync(ct);
+            result.Imported = toAdd.Count;
+            // Table name must match the DbSet for RevertImport (JobPositions → "JobRoles").
+            foreach (var j in toAdd) result.Created.Add(new("JobRoles", j.Id));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Normalizes an Arabic string for matching: drops diacritics + tatweel,
+    /// folds hamza/alef variants (أ/إ/آ → ا), ى/ئ → ي, ؤ → و, ة → ه, and removes
+    /// whitespace. Lets the titles-file org names match the org-structure import.
+    /// </summary>
+    private static string NormalizeArabic(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return string.Empty;
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (var ch in s)
+        {
+            if (ch >= 'ً' && ch <= 'ْ') continue;  // harakat
+            if (ch == 'ـ') continue;                    // tatweel
+            if (char.IsWhiteSpace(ch)) continue;
+            char c = ch switch
+            {
+                'أ' or 'إ' or 'آ' or 'ٱ' => 'ا',
+                'ى' or 'ئ' => 'ي',
+                'ؤ' => 'و',
+                'ة' => 'ه',
+                _ => ch
+            };
+            sb.Append(c);
+        }
+        return sb.ToString();
+    }
+
+    private static bool InferJobLeadership(string? en, string? ar)
+    {
+        if (System.Text.RegularExpressions.Regex.IsMatch(en ?? string.Empty,
+                @"\b(Director|Head|Manager)\b",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase)) return true;
+        var a = (ar ?? string.Empty).TrimStart();
+        return a.StartsWith("مدير") || a.StartsWith("رئيس");
+    }
+
+    private static string InferJobCategory(string? en)
+    {
+        var e = (en ?? string.Empty).ToLowerInvariant();
+        if (System.Text.RegularExpressions.Regex.IsMatch(e, @"\b(director|head|manager)\b")) return "Leadership";
+        if (e.Contains("engineer")) return "Technical";
+        if (System.Text.RegularExpressions.Regex.IsMatch(e, @"(specialist|consultant|expert|advisor)")) return "Specialist";
+        if (System.Text.RegularExpressions.Regex.IsMatch(e, @"(officer|coordinator|admin)")) return "Administrative";
+        return "Specialist";
     }
 
     private static ESEMS.Web.Models.Enums.ProcessType MapClassificationToProcessType(string? ar) => ar switch
