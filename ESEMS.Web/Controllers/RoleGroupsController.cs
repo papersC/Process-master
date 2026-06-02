@@ -104,6 +104,17 @@ public class RoleGroupsController : BaseController
                 isNew = true;
             }
 
+            // RBAC-003 (QA 2026-06-02): capture the pre-edit permission/scope so
+            // we can detect a real change below and invalidate the live sessions
+            // of this group's members. Permission claims are snapshotted at login
+            // (AccountController.BuildSignInPrincipalAsync) and only re-checked via
+            // the security stamp (Program.cs OnValidatePrincipal), so without
+            // rolling the stamp a grant/revoke would NOT reach already-signed-in
+            // users until they happened to log in again — the "I granted Edit/Delete
+            // but it didn't take effect" symptom.
+            var oldPermissions = isNew ? null : g.Permissions;
+            var oldScope = isNew ? null : g.ScopeLevel;
+
             // System roles cannot be renamed or deleted via the UI — permissions
             // can still be edited.
             if (!g.IsSystemRole || isNew)
@@ -154,6 +165,36 @@ public class RoleGroupsController : BaseController
             g.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
+
+            // RBAC-003: if an existing group's effective permissions or scope
+            // actually changed, roll the SecurityStamp of every assigned user.
+            // Their next request fails the OnValidatePrincipal stamp check and is
+            // signed out, so the new claim set is re-emitted on re-login (within
+            // the ≤30-min validation interval, or immediately on re-login). New
+            // groups have no members yet, so this only runs on edits.
+            if (!isNew && (oldPermissions != g.Permissions || oldScope != g.ScopeLevel))
+            {
+                var affectedUserIds = await _context.UserRoleGroups
+                    .Where(urg => urg.RoleGroupId == g.Id)
+                    .Select(urg => urg.UserId)
+                    .Distinct()
+                    .ToListAsync();
+
+                if (affectedUserIds.Count > 0)
+                {
+                    var members = await _context.CustomUsers
+                        .Where(u => affectedUserIds.Contains(u.UserId))
+                        .ToListAsync();
+                    foreach (var u in members)
+                        u.SecurityStamp = Guid.NewGuid().ToString("N");
+                    await _context.SaveChangesAsync();
+
+                    _logger.LogInformation(
+                        "RoleGroup {RoleGroupId} permissions/scope changed — rolled SecurityStamp for {Count} member(s) so the grant takes effect.",
+                        g.Id, members.Count);
+                }
+            }
+
             return Json(new { success = true, id = g.Id });
         }
         catch (Exception ex)
