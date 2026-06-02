@@ -778,7 +778,7 @@ if (!app.Environment.IsEnvironment("Testing"))
           WHERE [Code]='process-owner' AND [IsSystemRole]=1;
         UPDATE [dbo].[RoleGroups] SET [Permissions]=N'Improvement.View,Improvement.Create,Improvement.Edit,Measurement.View,Measurement.Create,Reports.View'
           WHERE [Code]='improvement-analyst' AND [IsSystemRole]=1;
-        UPDATE [dbo].[RoleGroups] SET [Permissions]=N'Risk.View,Risk.Create,Risk.Edit,Risk.Approve,Incident.View,Problem.View,Reports.View,Reports.Export'
+        UPDATE [dbo].[RoleGroups] SET [Permissions]=N'Risk.View,Risk.Create,Risk.Edit,Risk.Approve,Incident.View,Problem.View,Service.View,Process.View,Asset.View,Reports.View,Reports.Export'
           WHERE [Code]='risk-manager' AND [IsSystemRole]=1;
     ");
 
@@ -813,7 +813,7 @@ if (!app.Environment.IsEnvironment("Testing"))
                 (NEWID(), N'Risk Manager', N'مدير المخاطر',
                  N'Enterprise risk owner, reviews risk treatments and incidents',
                  N'مالك مخاطر المؤسسة، يراجع معالجات المخاطر والحوادث',
-                 N'All', N'Risk.View,Risk.Create,Risk.Edit,Risk.Approve,Incident.View,Problem.View,Reports.View,Reports.Export', N'alert-triangle', N'#005B99', 1, N'risk-manager');
+                 N'All', N'Risk.View,Risk.Create,Risk.Edit,Risk.Approve,Incident.View,Problem.View,Service.View,Process.View,Asset.View,Reports.View,Reports.Export', N'alert-triangle', N'#005B99', 1, N'risk-manager');
         END
     ");
 
