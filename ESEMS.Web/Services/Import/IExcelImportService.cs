@@ -69,6 +69,18 @@ public interface IExcelImportService
     /// — those become follow-up admin work; the import lays down the spine.
     /// </summary>
     Task<ImportResult> ImportApqcProcessMappingAsync(Stream xlsx, CancellationToken ct = default);
+
+    /// <summary>
+    /// "Replace" mode for an import kind: FK-safely deletes the existing data
+    /// of the type about to be imported, so the upload replaces rather than
+    /// appends. Supported kinds: "mbrhe-apqc" (full catalog — categories,
+    /// groups, processes + children), "processes" (processes only, keeps
+    /// groups/categories), "services"/"mbrhe-services", "assets"/"mbrhe-assets",
+    /// "risks". Unsupported kinds (e.g. "mbrhe-org") are a no-op — the caller
+    /// falls back to append (those importers are already idempotent). Runs in a
+    /// transaction; throws on failure so the caller can abort before parsing.
+    /// </summary>
+    Task WipeForKindAsync(string kind, CancellationToken ct = default);
 }
 
 public sealed class ImportResult

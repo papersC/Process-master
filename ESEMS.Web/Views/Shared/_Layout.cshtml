@@ -1344,7 +1344,13 @@
 
             // DataTables initialization with localization
             if (typeof $.fn.dataTable !== 'undefined' && typeof window.ESEMS.Localization.getDataTablesConfig === 'function') {
-                $('.datatable').DataTable({
+                // Skip empty tables (only a colspan empty-state row) — initializing
+                // DataTables on them throws "Incorrect column count" (tn/18) because
+                // the placeholder's single cell doesn't match the header column count.
+                $('.datatable').filter(function () {
+                    return Array.prototype.some.call(this.querySelectorAll('tbody > tr'),
+                        function (r) { return !r.querySelector('td[colspan]'); });
+                }).DataTable({
                     language: window.ESEMS.Localization.getDataTablesConfig(),
                     pagingType: 'full_numbers',
                     pageLength: 10
@@ -1646,6 +1652,15 @@
             document.querySelectorAll('.esems-datatable').forEach(function(table) {
                 if (jQuery.fn.DataTable.isDataTable(table)) return;
 
+                // Skip empty tables: when the only tbody row is a colspan empty-state
+                // placeholder (no real data rows), DataTables throws "Incorrect column
+                // count" (tn/18) because that single cell doesn't match the header
+                // column count. The static empty-state markup renders fine on its own.
+                var hasDataRow = Array.prototype.some.call(
+                    table.querySelectorAll('tbody > tr'),
+                    function (r) { return !r.querySelector('td[colspan]'); });
+                if (!hasDataRow) return;
+
                 // Make the Actions column (usually last) non-sortable so the
                 // sort arrows don't appear on a column that can't be sorted.
                 var thCount = table.querySelectorAll('thead th').length;
@@ -1695,6 +1710,32 @@
                 });
             });
         });
+    </script>
+
+    <!-- Tag autocomplete: a native datalist of already-used tags, attached to any
+         tag input on the page (the rich #tagInput widget or a plain Tags field). -->
+    <script nonce="@Context.CspNonce()">
+    (function () {
+        function init() {
+            var inputs = document.querySelectorAll('#tagInput, #TagsInput, input[name="Tags"]:not([type="hidden"]), textarea[name="Tags"]');
+            if (!inputs.length) return;
+            fetch('@Url.Action("Suggest", "Tags")', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (d) {
+                    var tags = (d && d.tags) || [];
+                    if (!tags.length) return;
+                    var dl = document.getElementById('tagSuggestions');
+                    if (!dl) { dl = document.createElement('datalist'); dl.id = 'tagSuggestions'; document.body.appendChild(dl); }
+                    dl.innerHTML = tags.map(function (t) {
+                        return '<option value="' + String(t).replace(/"/g, '&quot;') + '"></option>';
+                    }).join('');
+                    inputs.forEach(function (inp) { if (!inp.getAttribute('list')) inp.setAttribute('list', 'tagSuggestions'); });
+                })
+                .catch(function () { /* suggestions are best-effort */ });
+        }
+        if (document.readyState !== 'loading') init();
+        else document.addEventListener('DOMContentLoaded', init);
+    })();
     </script>
 
     <style>

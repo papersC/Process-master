@@ -56,6 +56,72 @@ public sealed class ExcelImportService : IExcelImportService
     }
 
     // ════════════════════════════════════════════════════════════════════
+    // REPLACE-MODE WIPE — clears the existing data of an import kind so the
+    // upload replaces rather than appends. FK-safe (validated against the
+    // schema's cascade/restrict/set-null actions). Org is intentionally absent:
+    // it's referenced by NO_ACTION FKs from kept lookups and its importer is
+    // idempotent, so re-import-in-append is the safe path there.
+    // ════════════════════════════════════════════════════════════════════
+    public async Task WipeForKindAsync(string kind, CancellationToken ct = default)
+    {
+        var sql = (kind ?? "").Trim().ToLowerInvariant() switch
+        {
+            "mbrhe-apqc"                   => CatalogWipeSql(includeGroupsAndCategories: true),
+            "processes"                    => CatalogWipeSql(includeGroupsAndCategories: false),
+            "services" or "mbrhe-services" => "SET XACT_ABORT ON;\nDELETE FROM Services;",
+            "assets" or "mbrhe-assets"     => "SET XACT_ABORT ON;\nDELETE FROM Assets;",
+            "risks"                        => "SET XACT_ABORT ON;\nDELETE FROM EnterpriseRisks;",
+            _                              => null    // org / unknown → no-op (append)
+        };
+        if (sql == null) return;
+
+        await using var tx = await _context.Database.BeginTransactionAsync(ct);
+        await _context.Database.ExecuteSqlRawAsync(sql, ct);
+        await tx.CommitAsync(ct);
+    }
+
+    /// <summary>
+    /// FK-safe delete of the APQC catalog. Nulls the optional cross-references
+    /// into Process, deletes the RESTRICT-blocked Activity/Task subtree and the
+    /// CASCADE Process children, then the Processes themselves — plus, when
+    /// <paramref name="includeGroupsAndCategories"/> is true, the ProcessGroups
+    /// and Categories. (The per-process template import needs existing groups,
+    /// so it wipes processes only; the full APQC import wipes all three levels.)
+    /// </summary>
+    private static string CatalogWipeSql(bool includeGroupsAndCategories)
+    {
+        var sql = @"SET XACT_ABORT ON;
+UPDATE Assets                  SET ProcessId          = NULL WHERE ProcessId          IS NOT NULL;
+UPDATE EnterpriseRisks         SET ProcessId          = NULL WHERE ProcessId          IS NOT NULL;
+UPDATE Incidents               SET ProcessId          = NULL WHERE ProcessId          IS NOT NULL;
+UPDATE Problems                SET ProcessId          = NULL WHERE ProcessId          IS NOT NULL;
+UPDATE CustomerFeedbacks       SET ProcessId          = NULL WHERE ProcessId          IS NOT NULL;
+UPDATE ChangeRequests          SET ProcessId          = NULL WHERE ProcessId          IS NOT NULL;
+UPDATE ImprovementInitiatives  SET ProcessId          = NULL WHERE ProcessId          IS NOT NULL;
+UPDATE ImprovementMeasurements SET AppliesToProcessId = NULL WHERE AppliesToProcessId IS NOT NULL;
+UPDATE WorkloadLineItems       SET ProcessId          = NULL WHERE ProcessId          IS NOT NULL;
+DELETE FROM TaskRacis;
+DELETE FROM ProcessTasks;
+DELETE FROM ActivityRacis;
+DELETE FROM Activities;
+DELETE FROM ProcessRacis;
+DELETE FROM ProcessMeasurements;
+DELETE FROM ProcessRisks;
+DELETE FROM ProcessServices;
+DELETE FROM ProcessResponsibilities;
+DELETE FROM ProcessStrategicObjectives;
+DELETE FROM ImprovementProcesses;
+DELETE FROM ProcessDocuments;
+DELETE FROM ProcessBpmnVersions;
+DELETE FROM BpmnLanes;
+DELETE FROM Processes;
+";
+        if (includeGroupsAndCategories)
+            sql += "DELETE FROM ProcessGroups;\nDELETE FROM Categories;\n";
+        return sql;
+    }
+
+    // ════════════════════════════════════════════════════════════════════
     // PROCESSES
     // ════════════════════════════════════════════════════════════════════
     public async Task<ImportResult> ImportProcessesAsync(Stream xlsx, CancellationToken ct = default)
@@ -1179,10 +1245,10 @@ public sealed class ExcelImportService : IExcelImportService
                 .Where(c => !c.IsDeleted).ToListAsync(ct);
             var existingGroups = await _context.ProcessGroups.AsNoTracking()
                 .Where(g => !g.IsDeleted).ToListAsync(ct);
-            var existingProcessCodes = new HashSet<string>(
-                await _context.Processes.AsNoTracking()
-                    .Where(p => !p.IsDeleted).Select(p => p.Code).ToListAsync(ct),
-                StringComparer.OrdinalIgnoreCase);
+            var existingProcesses = await _context.Processes.AsNoTracking()
+                .Where(p => !p.IsDeleted)
+                .Select(p => new { p.Code, p.LegacyCode, p.ProcessGroupId, p.NameEn })
+                .ToListAsync(ct);
 
             var catByEn = existingCategories
                 .GroupBy(c => c.NameEn.Trim(), StringComparer.OrdinalIgnoreCase)
@@ -1191,9 +1257,49 @@ public sealed class ExcelImportService : IExcelImportService
                 .GroupBy(g => g.CategoryId + "|" + g.NameEn.Trim(), StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
-            int nextCatSeq = NextSeq(existingCategories.Select(c => c.Code), "CAT-");
-            int nextPgSeq = NextSeq(existingGroups.Select(g => g.Code), "PG-");
-            int nextPrcSeq = NextSeq(existingProcessCodes, "PRC-");
+            // ── Hierarchical-code counters (APQC X.Y.Z scheme), seeded from any
+            // existing rows so an import continues the sequence instead of
+            // colliding. Mirrors HierarchicalCodeMigration:
+            //   Category "1","2"… | ProcessGroup "{cat}.{Y}" | Process "{group}.{Z}".
+            // The Excel sheet's own document code is NOT used as the Code — it is
+            // preserved in Process.LegacyCode instead.
+            int nextCatNum = existingCategories
+                .Select(c => int.TryParse(c.Code, out var n) ? n : 0)
+                .DefaultIfEmpty(0).Max();
+
+            var perCatNextGroup = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var g in existingGroups)
+            {
+                var parts = g.Code.Split('.');
+                if (parts.Length == 2 && int.TryParse(parts[1], out var y))
+                {
+                    perCatNextGroup.TryGetValue(parts[0], out var cur);
+                    perCatNextGroup[parts[0]] = Math.Max(cur, y);
+                }
+            }
+
+            var perGroupNextProc = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in existingProcesses)
+            {
+                var parts = p.Code.Split('.');
+                if (parts.Length == 3 && int.TryParse(parts[2], out var z))
+                {
+                    var prefix = parts[0] + "." + parts[1];
+                    perGroupNextProc.TryGetValue(prefix, out var cur);
+                    perGroupNextProc[prefix] = Math.Max(cur, z);
+                }
+            }
+
+            // Process re-import dedup: by document code when the sheet supplies one
+            // (now stored in LegacyCode), else by (group, English name).
+            var existingLegacy = new HashSet<string>(
+                existingProcesses.Where(p => !string.IsNullOrEmpty(p.LegacyCode)).Select(p => p.LegacyCode!),
+                StringComparer.OrdinalIgnoreCase);
+            var existingGroupName = new HashSet<string>(
+                existingProcesses.Select(p => p.ProcessGroupId + "|" + p.NameEn),
+                StringComparer.OrdinalIgnoreCase);
+            var seenLegacy = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seenGroupName = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             var catsToAdd = new List<Category>();
             var groupsToAdd = new List<ProcessGroup>();
@@ -1251,10 +1357,12 @@ public sealed class ExcelImportService : IExcelImportService
                 // ── L1 Category — upsert by NameEn
                 if (!catByEn.TryGetValue(l1En, out var category))
                 {
+                    var catCode = (++nextCatNum).ToString();
                     category = new Category
                     {
                         Id = Guid.NewGuid().ToString(),
-                        Code = $"CAT-{nextCatSeq++:D2}",
+                        Code = catCode,
+                        SortKey = HierarchicalCodeMigration.ZeroPad(catCode),
                         NameEn = l1En,
                         NameAr = l1Ar,
                         CreatedAt = DateTime.UtcNow,
@@ -1262,16 +1370,22 @@ public sealed class ExcelImportService : IExcelImportService
                     };
                     catsToAdd.Add(category);
                     catByEn[l1En] = category;
+                    perCatNextGroup[catCode] = 0;
                 }
 
                 // ── L2 ProcessGroup — upsert by (CategoryId, NameEn)
                 var pgKey = category.Id + "|" + l2En;
                 if (!groupByCatAndEn.TryGetValue(pgKey, out var group))
                 {
+                    perCatNextGroup.TryGetValue(category.Code, out var y);
+                    y++;
+                    perCatNextGroup[category.Code] = y;
+                    var pgCode = $"{category.Code}.{y}";
                     group = new ProcessGroup
                     {
                         Id = Guid.NewGuid().ToString(),
-                        Code = $"PG-{nextPgSeq++:D3}",
+                        Code = pgCode,
+                        SortKey = HierarchicalCodeMigration.ZeroPad(pgCode),
                         CategoryId = category.Id,
                         NameEn = l2En,
                         NameAr = l2Ar,
@@ -1282,20 +1396,34 @@ public sealed class ExcelImportService : IExcelImportService
                     };
                     groupsToAdd.Add(group);
                     groupByCatAndEn[pgKey] = group;
+                    perGroupNextProc[pgCode] = 0;
                 }
 
-                // ── L3 Process — upsert by Code
-                var processCode = string.IsNullOrEmpty(docCode)
-                    ? $"PRC-{nextPrcSeq++:D4}"
-                    : docCode;
-                if (existingProcessCodes.Contains(processCode))
-                { result.Skipped++; continue; }
-                existingProcessCodes.Add(processCode);
+                // ── L3 Process — skip re-imports, then assign a hierarchical
+                // code "{group}.{Z}". The sheet's own document code (when present)
+                // is preserved in LegacyCode, never used as the Code.
+                if (!string.IsNullOrEmpty(docCode))
+                {
+                    if (existingLegacy.Contains(docCode) || !seenLegacy.Add(docCode))
+                    { result.Skipped++; continue; }
+                }
+                else
+                {
+                    var nameKey = group.Id + "|" + l3En;
+                    if (existingGroupName.Contains(nameKey) || !seenGroupName.Add(nameKey))
+                    { result.Skipped++; continue; }
+                }
+
+                perGroupNextProc.TryGetValue(group.Code, out var z);
+                z++;
+                perGroupNextProc[group.Code] = z;
+                var prCode = $"{group.Code}.{z}";
 
                 var process = new Process
                 {
                     Id = Guid.NewGuid().ToString(),
-                    Code = processCode,
+                    Code = prCode,
+                    SortKey = HierarchicalCodeMigration.ZeroPad(prCode),
                     LegacyCode = docCode,
                     NameEn = l3En,
                     NameAr = l3Ar,

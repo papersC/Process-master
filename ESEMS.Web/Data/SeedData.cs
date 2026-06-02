@@ -84,20 +84,18 @@ public static class SeedData
         await context.ProcessTasks.AddRangeAsync(tasks);
         await context.SaveChangesAsync();
 
-        // Create Services with SLA
-        var services = CreateServices(orgUnits, objectives);
-        await context.Services.AddRangeAsync(services);
-        await context.SaveChangesAsync();
+        // Services are NOT seeded — the live Services catalog comes from the
+        // Excel import (mbrhe-services); demo services would only duplicate it.
+        // Downstream seed steps still take a (now empty) services list, so no
+        // demo service-linked rows are created either.
+        var services = new List<Service>();
 
-        // Create Improvement Initiatives
-        var improvements = CreateImprovements(processes, services, orgUnits);
-        await context.ImprovementInitiatives.AddRangeAsync(improvements);
-        await context.SaveChangesAsync();
+        // Improvement Initiatives are NOT seeded — they're real data, not demo.
+        // Downstream seed steps still take a (now empty) list, so nothing is created.
+        var improvements = new List<ImprovementInitiative>();
 
-        // Create Change Requests
-        var changeRequests = CreateChangeRequests(processes, services, orgUnits);
-        await context.ChangeRequests.AddRangeAsync(changeRequests);
-        await context.SaveChangesAsync();
+        // Change Requests are NOT seeded — real data, not demo.
+        var changeRequests = new List<ChangeRequest>();
 
         // Create Process Maturity Assessments (Draft7 - 7 APQC Pillars)
         var maturityAssessments = CreateProcessMaturityAssessments();
@@ -528,31 +526,6 @@ public static class SeedData
         };
     }
 
-    /// <summary>
-    /// Creates 12 real MBRHE Housing Services from Draft8
-    /// Key Results: 98.75% happiness, AED 384 avg MBRHE savings, AED 17k avg customer savings,
-    /// 1.8 hrs avg MBRHE time saving, 2.3 hrs avg customer time saving, 5 months avg waiting time saving
-    /// </summary>
-    private static List<Service> CreateServices(List<OrganizationUnit> orgUnits, List<StrategicObjective> objectives)
-    {
-        return new List<Service>
-        {
-            // Loans (5 services)
-            new() { Id = Guid.NewGuid().ToString(), NameEn = "Loan for the Purchase of Ready-made Housing Owned by MBRHE", NameAr = "قرض شراء مسكن جاهز مملوك لمؤسسة محمد بن راشد للإسكان", Code = "SVC-001", ServiceType = ServiceType.External, Channel = ChannelType.Hybrid, OwningUnitId = orgUnits[1].Id, StrategicObjectiveId = objectives[0].Id, SLADays = 30, TargetDeliveryDays = 15, ActualDeliveryDays = 12, CustomerSatisfactionScore = 97.5m, AnnualTransactionCount = 850, DisplayOrder = 1, IsActive = true, Tags = "Loan,Purchase,Housing", DescriptionEn = "Housing loan for purchasing ready-made units owned by MBRHE", DescriptionAr = "قرض إسكاني لشراء وحدات جاهزة مملوكة للمؤسسة" },
-            new() { Id = Guid.NewGuid().ToString(), NameEn = "Construction Loan", NameAr = "قرض البناء", Code = "SVC-002", ServiceType = ServiceType.External, Channel = ChannelType.Hybrid, OwningUnitId = orgUnits[1].Id, StrategicObjectiveId = objectives[0].Id, SLADays = 45, TargetDeliveryDays = 20, ActualDeliveryDays = 18, CustomerSatisfactionScore = 96.8m, AnnualTransactionCount = 1200, DisplayOrder = 2, IsActive = true, Tags = "Loan,Construction", DescriptionEn = "Loan for constructing a new residential building on owned land", DescriptionAr = "قرض لبناء مبنى سكني جديد على أرض مملوكة" },
-            new() { Id = Guid.NewGuid().ToString(), NameEn = "Loan for the Purchase of Ready-made Housing Not Owned by MBRHE", NameAr = "قرض شراء مسكن جاهز غير مملوك للمؤسسة", Code = "SVC-003", ServiceType = ServiceType.External, Channel = ChannelType.Hybrid, OwningUnitId = orgUnits[1].Id, StrategicObjectiveId = objectives[0].Id, SLADays = 30, TargetDeliveryDays = 15, ActualDeliveryDays = 14, CustomerSatisfactionScore = 97.2m, AnnualTransactionCount = 620, DisplayOrder = 3, IsActive = true, Tags = "Loan,Purchase,External", DescriptionEn = "Housing loan for purchasing ready-made units not owned by MBRHE", DescriptionAr = "قرض إسكاني لشراء وحدات جاهزة غير مملوكة للمؤسسة" },
-            new() { Id = Guid.NewGuid().ToString(), NameEn = "Loan for Replacement Works", NameAr = "قرض أعمال الإحلال", Code = "SVC-004", ServiceType = ServiceType.External, Channel = ChannelType.Hybrid, OwningUnitId = orgUnits[1].Id, StrategicObjectiveId = objectives[0].Id, SLADays = 30, TargetDeliveryDays = 15, ActualDeliveryDays = 13, CustomerSatisfactionScore = 98.1m, AnnualTransactionCount = 340, DisplayOrder = 4, IsActive = true, Tags = "Loan,Replacement", DescriptionEn = "Loan for replacing existing housing structures", DescriptionAr = "قرض لإحلال المباني السكنية القائمة" },
-            new() { Id = Guid.NewGuid().ToString(), NameEn = "Loan for Maintenance or Addition Works", NameAr = "قرض أعمال الصيانة أو الإضافة", Code = "SVC-005", ServiceType = ServiceType.External, Channel = ChannelType.Hybrid, OwningUnitId = orgUnits[1].Id, StrategicObjectiveId = objectives[0].Id, SLADays = 20, TargetDeliveryDays = 10, ActualDeliveryDays = 8, CustomerSatisfactionScore = 98.5m, AnnualTransactionCount = 580, DisplayOrder = 5, IsActive = true, Tags = "Loan,Maintenance,Addition", DescriptionEn = "Loan for maintenance or extension works on existing housing", DescriptionAr = "قرض لأعمال الصيانة أو الإضافة على المسكن القائم" },
-            // Grants (7 services)
-            new() { Id = Guid.NewGuid().ToString(), NameEn = "Residential Land Grant", NameAr = "منحة أرض سكنية", Code = "SVC-006", ServiceType = ServiceType.External, Channel = ChannelType.Hybrid, OwningUnitId = orgUnits[1].Id, StrategicObjectiveId = objectives[2].Id, SLADays = 60, TargetDeliveryDays = 30, ActualDeliveryDays = 25, CustomerSatisfactionScore = 98.0m, AnnualTransactionCount = 450, DisplayOrder = 6, IsActive = true, Tags = "Grant,Land", DescriptionEn = "Grant of residential land for eligible citizens", DescriptionAr = "منحة أرض سكنية للمواطنين المستحقين" },
-            new() { Id = Guid.NewGuid().ToString(), NameEn = "Grant for Replacement Works", NameAr = "منحة أعمال الإحلال", Code = "SVC-007", ServiceType = ServiceType.External, Channel = ChannelType.Hybrid, OwningUnitId = orgUnits[1].Id, StrategicObjectiveId = objectives[2].Id, SLADays = 30, TargetDeliveryDays = 15, ActualDeliveryDays = 12, CustomerSatisfactionScore = 98.3m, AnnualTransactionCount = 280, DisplayOrder = 7, IsActive = true, Tags = "Grant,Replacement", DescriptionEn = "Grant for replacing housing structures", DescriptionAr = "منحة لإحلال المباني السكنية" },
-            new() { Id = Guid.NewGuid().ToString(), NameEn = "Purchase of Ready-Made House Owned by MBRHE", NameAr = "شراء مسكن جاهز مملوك للمؤسسة", Code = "SVC-008", ServiceType = ServiceType.External, Channel = ChannelType.Hybrid, OwningUnitId = orgUnits[1].Id, StrategicObjectiveId = objectives[2].Id, SLADays = 30, TargetDeliveryDays = 15, ActualDeliveryDays = 10, CustomerSatisfactionScore = 99.0m, AnnualTransactionCount = 380, DisplayOrder = 8, IsActive = true, Tags = "Purchase,Housing", DescriptionEn = "Direct purchase of ready-made housing unit from MBRHE", DescriptionAr = "شراء مباشر لوحدة سكنية جاهزة من المؤسسة" },
-            new() { Id = Guid.NewGuid().ToString(), NameEn = "Residential Apartment Grant", NameAr = "منحة شقة سكنية", Code = "SVC-009", ServiceType = ServiceType.External, Channel = ChannelType.Hybrid, OwningUnitId = orgUnits[1].Id, StrategicObjectiveId = objectives[2].Id, SLADays = 45, TargetDeliveryDays = 20, ActualDeliveryDays = 16, CustomerSatisfactionScore = 98.7m, AnnualTransactionCount = 520, DisplayOrder = 9, IsActive = true, Tags = "Grant,Apartment", DescriptionEn = "Grant of residential apartment for eligible citizens", DescriptionAr = "منحة شقة سكنية للمواطنين المستحقين" },
-            new() { Id = Guid.NewGuid().ToString(), NameEn = "Construction Grant", NameAr = "منحة البناء", Code = "SVC-010", ServiceType = ServiceType.External, Channel = ChannelType.Hybrid, OwningUnitId = orgUnits[1].Id, StrategicObjectiveId = objectives[2].Id, SLADays = 45, TargetDeliveryDays = 20, ActualDeliveryDays = 17, CustomerSatisfactionScore = 97.9m, AnnualTransactionCount = 680, DisplayOrder = 10, IsActive = true, Tags = "Grant,Construction", DescriptionEn = "Grant for constructing a new residential building", DescriptionAr = "منحة لبناء مبنى سكني جديد" },
-            new() { Id = Guid.NewGuid().ToString(), NameEn = "Grant for Maintenance or Addition Works", NameAr = "منحة أعمال الصيانة أو الإضافة", Code = "SVC-011", ServiceType = ServiceType.External, Channel = ChannelType.Hybrid, OwningUnitId = orgUnits[1].Id, StrategicObjectiveId = objectives[0].Id, SLADays = 20, TargetDeliveryDays = 10, ActualDeliveryDays = 8, CustomerSatisfactionScore = 98.9m, AnnualTransactionCount = 410, DisplayOrder = 11, IsActive = true, Tags = "Grant,Maintenance,Addition", DescriptionEn = "Grant for maintenance or addition works on existing housing", DescriptionAr = "منحة لأعمال الصيانة أو الإضافة على المسكن القائم" },
-            new() { Id = Guid.NewGuid().ToString(), NameEn = "House Grant", NameAr = "منحة مسكن", Code = "SVC-012", ServiceType = ServiceType.External, Channel = ChannelType.Hybrid, OwningUnitId = orgUnits[1].Id, StrategicObjectiveId = objectives[2].Id, SLADays = 60, TargetDeliveryDays = 30, ActualDeliveryDays = 22, CustomerSatisfactionScore = 99.2m, AnnualTransactionCount = 310, DisplayOrder = 12, IsActive = true, Tags = "Grant,House", DescriptionEn = "Full house grant for eligible citizens", DescriptionAr = "منحة مسكن كامل للمواطنين المستحقين" }
-        };
-    }
 
     private static List<ImprovementInitiative> CreateImprovements(List<Process> processes, List<Service> services, List<OrganizationUnit> orgUnits)
     {
@@ -663,7 +636,9 @@ public static class SeedData
     }
 
 
-    private static List<AssetCategory> CreateAssetCategories()
+    // internal (not private) so the standalone AssetCategorySeeder can reuse the
+    // canonical tree now that the demo SeedData.SeedAsync run is disabled.
+    internal static List<AssetCategory> CreateAssetCategories()
     {
         var hardwareId = Guid.NewGuid().ToString();
         var softwareId = Guid.NewGuid().ToString();

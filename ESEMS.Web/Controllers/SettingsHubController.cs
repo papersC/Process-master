@@ -472,7 +472,7 @@ public class SettingsHubController : BaseController
     [HttpPost]
     [ValidateAntiForgeryToken]
     [RequestSizeLimit(50_000_000)]
-    public async Task<IActionResult> ImportUpload(string kind, IFormFile file, CancellationToken ct)
+    public async Task<IActionResult> ImportUpload(string kind, IFormFile file, string? mode, CancellationToken ct)
     {
         if (file == null || file.Length == 0)
             return Json(new { success = false, error = "No file selected." });
@@ -500,6 +500,22 @@ public class SettingsHubController : BaseController
             return Json(new { success = false, error = "The uploaded file is not a valid Excel workbook." });
 
         var k = (kind ?? "").Trim().ToLowerInvariant();
+
+        // Replace mode (opt-in from the UI's Append/Replace toggle): wipe the
+        // existing data of this type before importing so the upload replaces
+        // rather than appends. No-op for kinds that don't support it (e.g. org).
+        if (string.Equals(mode, "replace", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                await _importer.WipeForKindAsync(k, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Replace-mode wipe failed for kind={Kind}", k);
+                return Json(new { success = false, error = "Replace failed while clearing existing data: " + ex.Message });
+            }
+        }
 
         using var stream = file.OpenReadStream();
         Services.Import.ImportResult result;

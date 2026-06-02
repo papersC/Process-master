@@ -1435,21 +1435,24 @@ using (var scope = app.Services.CreateScope())
             await DatabaseStartupRunner.ApplyMigrationsPipelineAsync(context, logger);
         }
 
-        // Seed sample data — gated by Bootstrap:RunSeeder so an operator can
-        // disable seeding after the first successful production boot. Default
-        // remains true for first-deploy convenience; the seeder also self-skips
-        // when OrganizationUnits already exist, but the env-var gate is a hard
-        // off-switch in case that detection ever drifts.
+        // Demo-data seeder DISABLED. The catalog is now populated exclusively
+        // from the Excel imports (Org Structure, APQC Process Mapping, Services,
+        // Asset Register). The old SeedData.SeedAsync planted a sample APQC
+        // catalog — 24 demo processes plus their categories/groups and all the
+        // dependent demo rows — which duplicated and got interleaved with the
+        // imported data (mixed/inconsistent codes). We still seed the reference
+        // lookups the importers depend on: DocumentLookupSeeder + ServiceCategorySeeder
+        // (above) and the AssetCategory tree (here, required by the asset-register
+        // import). Re-enable SeedData.SeedAsync only if you want demo data back.
         var runSeeder = app.Configuration.GetValue<bool>("Bootstrap:RunSeeder", true);
         if (runSeeder)
         {
-            logger.LogInformation("Calling SeedData.SeedAsync");
-            await SeedData.SeedAsync(context);
-            logger.LogInformation("SeedData.SeedAsync completed");
+            logger.LogInformation("Seeding reference lookups (asset categories); demo catalog seed is disabled");
+            await ESEMS.Web.Data.AssetCategorySeeder.SeedAsync(context);
         }
         else
         {
-            logger.LogInformation("Bootstrap:RunSeeder is false — skipping SeedData.SeedAsync");
+            logger.LogInformation("Bootstrap:RunSeeder is false — skipping reference-lookup seeding");
         }
 
         // === ONE-TIME BPMN IMPORT ===
@@ -1566,8 +1569,10 @@ using (var scope = app.Services.CreateScope())
         ");
         logger.LogInformation("Workload Analysis tables ensured");
 
-        // ── Seed Workload Analysis demo data ──
-        if (!await context.WorkloadScenarios.AnyAsync())
+        // ── Workload Analysis demo data — DISABLED by default (demo data removed
+        //    during cleanup). Opt back in with Bootstrap:SeedWorkloadDemo=true.
+        if (app.Configuration.GetValue<bool>("Bootstrap:SeedWorkloadDemo", false)
+            && !await context.WorkloadScenarios.AnyAsync())
         {
             logger.LogInformation("Seeding Workload Analysis demo data");
 

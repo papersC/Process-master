@@ -1,4 +1,7 @@
 @inject IStringLocalizer<SharedResource> Shared
+@{
+    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+}
 
 <div class="mb-3">
     <h5 class="fw-bold mb-1">@Shared["Heading_DataImport"]</h5>
@@ -8,6 +11,19 @@
 <div class="alert alert-info small py-2 mb-3">
     <i data-lucide="info" style="width:14px;height:14px;margin-inline-end:4px;"></i>
     @Shared["Help_DataImportWorkflow"]
+</div>
+
+<!-- Import mode: Append (default) vs Replace (wipe the imported type first) -->
+<div class="d-flex align-items-center gap-3 flex-wrap mb-3 p-2 px-3 rounded" style="background:#f8fafc;border:1px solid #e5e7eb;">
+    <span class="fw-semibold small">@(isRtl ? "وضع الاستيراد:" : "Import mode:")</span>
+    <div class="form-check form-check-inline mb-0">
+        <input class="form-check-input" type="radio" name="importMode" id="importModeAppend" value="append" checked>
+        <label class="form-check-label small" for="importModeAppend">@(isRtl ? "إلحاق — إضافة للموجود (تخطّي المكرر)" : "Append — add to existing (skip duplicates)")</label>
+    </div>
+    <div class="form-check form-check-inline mb-0">
+        <input class="form-check-input" type="radio" name="importMode" id="importModeReplace" value="replace">
+        <label class="form-check-label small text-danger fw-semibold" for="importModeReplace">@(isRtl ? "استبدال — حذف الموجود من نفس النوع أولاً" : "Replace — wipe existing of this type first")</label>
+    </div>
 </div>
 
 <!-- Quick link to full import page -->
@@ -113,10 +129,6 @@
         </div>
     </div>
 </div>
-
-@{
-    var isRtl = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
-}
 
 <!-- Legacy MBRHE Asset Register — 4-column client xlsx import -->
 <div class="mt-4">
@@ -349,6 +361,26 @@ window.DataImport = (function() {
         dismiss:       'Dismiss'
     };
 
+    // Human labels for the Replace-mode confirm. Only kinds listed here support
+    // Replace; anything else (e.g. org) silently falls back to Append.
+    var REPLACE_LABELS = IS_RTL ? {
+        'processes':      'العمليات',
+        'mbrhe-apqc':     'الفئات ومجموعات العمليات والعمليات (كتالوج APQC)',
+        'services':       'الخدمات',
+        'mbrhe-services': 'الخدمات',
+        'assets':         'الأصول',
+        'mbrhe-assets':   'الأصول',
+        'risks':          'المخاطر'
+    } : {
+        'processes':      'Processes',
+        'mbrhe-apqc':     'Categories, Process Groups & Processes (APQC catalog)',
+        'services':       'Services',
+        'mbrhe-services': 'Services',
+        'assets':         'Assets',
+        'mbrhe-assets':   'Assets',
+        'risks':          'Risks'
+    };
+
     function esc(s) {
         return (s == null ? '' : String(s)).replace(/[&<>"']/g, function(c) {
             return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', '\'':'&#39;' })[c];
@@ -357,10 +389,31 @@ window.DataImport = (function() {
 
     async function upload(kind, file) {
         if (!file) return;
+
+        // Append/Replace toggle. Replace wipes the imported type's existing data
+        // first — confirm before the destructive action; unsupported kinds append.
+        var modeEl = document.querySelector('input[name=importMode]:checked');
+        var mode = modeEl ? modeEl.value : 'append';
+        if (mode === 'replace') {
+            var label = REPLACE_LABELS[kind];
+            if (!label) {
+                ShubToast('info', IS_RTL
+                    ? 'الاستبدال غير مدعوم لهذا النوع — سيتم الإلحاق بدلاً من ذلك.'
+                    : 'Replace isn’t supported for this type — appending instead.');
+                mode = 'append';
+            } else if (!window.confirm(
+                (IS_RTL ? 'وضع الاستبدال: سيتم حذف كل سجلات «' : 'Replace mode: this permanently deletes all existing ')
+                + label
+                + (IS_RTL ? '» الحالية نهائياً قبل الاستيراد. هل تريد المتابعة؟' : ' before importing. Continue?'))) {
+                return;
+            }
+        }
+
         ShubToast('info', '@Html.Raw(Shared["Toast_UploadStarted"].Value)');
         var fd = new FormData();
         fd.append('__RequestVerificationToken', ShubToken());
         fd.append('kind', kind);
+        fd.append('mode', mode);
         fd.append('file', file);
         try {
             var r = await fetch('/SettingsHub/ImportUpload', { method: 'POST', body: fd });

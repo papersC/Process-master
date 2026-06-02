@@ -83,6 +83,7 @@
             <option value="has">@Shared["Filter_HasBPMN"]</option>
             <option value="no">@Shared["Filter_NoBPMN"]</option>
         </select>
+        <select id="filterTag" aria-label="@(isRtl ? "وسم" : "Tag")"><option value="">@(isRtl ? "وسم" : "Tag"): @Shared["Filter_All"]</option></select>
         <button onclick="clearFilters()" class="lt-btn lt-btn-outline"><i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>@Shared["Filter_Clear"]</button>
         <span style="flex:1;"></span>
         <a href="~/api/export/processes/excel" class="lt-btn lt-btn-outline"><i data-lucide="file-spreadsheet" class="w-3.5 h-3.5" aria-hidden="true"></i>Excel</a>
@@ -108,7 +109,7 @@
                     @foreach (var item in Model)
                     {
                         var hasBpmnTasks = processIdsWithBpmn.Contains(item.Id);
-                        <tr>
+                        <tr data-tags="@(item.Tags ?? "")">
                             <td><code style="font-size: var(--fs-xs);color:#475569;">@item.Code</code></td>
                             <td><span style="font-weight:500;color:#111827;">@(isRtl ? item.NameAr : item.NameEn)</span></td>
                             <td>@(item.ProcessGroup != null ? (isRtl ? item.ProcessGroup.NameAr : item.ProcessGroup.NameEn) : "—")</td>
@@ -180,6 +181,7 @@
             document.getElementById('filterStatus').value = '';
             document.getElementById('filterType').value = '';
             document.getElementById('filterBpmn').value = '';
+            const ft = document.getElementById('filterTag'); if (ft) ft.value = '';
             applyFilters();
         }
 
@@ -188,17 +190,21 @@
             const status = document.getElementById('filterStatus').value;
             const type = document.getElementById('filterType').value;
             const bpmnFilter = document.getElementById('filterBpmn').value;
+            const tagFilter = (document.getElementById('filterTag')?.value || '').toLowerCase();
             const rows = Array.from(document.querySelectorAll('tbody tr'));
             ltMatchedRows = [];
             rows.forEach(row => {
                 if (row.querySelector('td[colspan]')) return;
-                const text = row.textContent.toLowerCase();
+                const rowTags = (row.getAttribute('data-tags') || '');
+                // Fold tags into the free-text search so typing a tag matches too.
+                const text = (row.textContent + ' ' + rowTags).toLowerCase();
                 const hasBpmn = row.querySelector('td[data-has-bpmn]')?.getAttribute('data-has-bpmn');
                 let visible = true;
                 if (search && !text.includes(search)) visible = false;
                 if (status && !text.includes(status.toLowerCase())) visible = false;
                 if (type && !text.toLowerCase().includes(type.toLowerCase())) visible = false;
                 if (bpmnFilter && hasBpmn !== bpmnFilter) visible = false;
+                if (tagFilter && !rowTags.toLowerCase().split(',').map(s => s.trim()).includes(tagFilter)) visible = false;
                 if (visible) ltMatchedRows.push(row);
                 else row.style.display = 'none';
             });
@@ -282,10 +288,25 @@
             make('»', totalPages,           { disabled: ltCurrentPage === totalPages });
         }
 
-        ['searchInput','filterStatus','filterType','filterBpmn','filterProcessGroup'].forEach(id => {
+        ['searchInput','filterStatus','filterType','filterBpmn','filterProcessGroup','filterTag'].forEach(id => {
             document.getElementById(id)?.addEventListener('input', applyFilters);
             document.getElementById(id)?.addEventListener('change', applyFilters);
         });
+
+        // Populate the Tag filter with the distinct tags present in the rows.
+        (function () {
+            const sel = document.getElementById('filterTag');
+            if (!sel) return;
+            const set = new Set();
+            document.querySelectorAll('tbody tr[data-tags]').forEach(r => {
+                (r.getAttribute('data-tags') || '').split(',').forEach(t => {
+                    const v = t.trim(); if (v) set.add(v);
+                });
+            });
+            Array.from(set).sort((a, b) => a.localeCompare(b)).forEach(t => {
+                const o = document.createElement('option'); o.value = t; o.textContent = t; sel.appendChild(o);
+            });
+        })();
         document.getElementById('ltPageSize')?.addEventListener('change', () => { ltCurrentPage = 1; applyPager(); });
 
         // Initial pass — establishes ltMatchedRows + paints the first page.

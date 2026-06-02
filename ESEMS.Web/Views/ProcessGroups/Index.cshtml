@@ -73,6 +73,7 @@
                 <option value="@c.Id" selected="@(c.Id == selectedCategoryId)">@(isRtl ? c.NameAr : c.NameEn)</option>
             }
         </select>
+        <select id="filterTag" aria-label="@(isRtl ? "وسم" : "Tag")"><option value="">@(isRtl ? "وسم" : "Tag"): @Shared["Filter_All"]</option></select>
         <span id="resultCount" class="lt-result-count"></span>
         <button onclick="clearFilters()" class="lt-btn lt-btn-outline"><i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>@Shared["Button_Clear"]</button>
         <span style="flex:1;"></span>
@@ -96,7 +97,7 @@
                 <tbody>
                     @foreach (var item in Model)
                     {
-                        <tr>
+                        <tr data-tags="@(item.Tags ?? "")">
                             <td><code style="font-size: var(--fs-xs);color:#475569;">@item.Code</code></td>
                             <td><span style="font-weight:500;color:#111827;">@(isRtl ? item.NameAr : item.NameEn)</span></td>
                             <td>@(isRtl ? item.Category?.NameAr : item.Category?.NameEn)</td>
@@ -139,6 +140,7 @@
         const searchInput = document.getElementById('searchInput');
         const searchClearBtn = document.getElementById('searchClearBtn');
         const resultCount = document.getElementById('resultCount');
+        const filterTag = document.getElementById('filterTag');
         const totalRows = tableRows.filter(r => !r.querySelector('td[colspan]')).length;
 
         const countTemplate = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
@@ -148,14 +150,17 @@
             const q = (searchInput?.value || '').trim().toLowerCase();
             const catText = categorySelect?.options[categorySelect.selectedIndex]?.text?.trim().toLowerCase() || '';
             const catId = categorySelect?.value || '';
+            const tag = (filterTag?.value || '').toLowerCase();
             let visible = 0;
             tableRows.forEach(row => {
                 if (row.querySelector('td[colspan]')) return;
-                const text = row.textContent.toLowerCase();
+                const rowTags = (row.getAttribute('data-tags') || '');
+                const text = (row.textContent + ' ' + rowTags).toLowerCase();
                 const categoryCell = row.cells[2]?.textContent.trim().toLowerCase() || '';
                 const matchesSearch = !q || text.includes(q);
                 const matchesCategory = !catId || categoryCell === catText;
-                const show = matchesSearch && matchesCategory;
+                const matchesTag = !tag || rowTags.toLowerCase().split(',').map(s => s.trim()).includes(tag);
+                const show = matchesSearch && matchesCategory && matchesTag;
                 row.style.display = show ? '' : 'none';
                 if (show) visible++;
             });
@@ -166,13 +171,25 @@
         function clearFilters() {
             if (searchInput) searchInput.value = '';
             if (categorySelect) categorySelect.value = '';
+            if (filterTag) filterTag.value = '';
             applyFilters();
             searchInput?.focus();
         }
 
         searchInput?.addEventListener('input', applyFilters);
         categorySelect?.addEventListener('change', applyFilters);
+        filterTag?.addEventListener('change', applyFilters);
         searchClearBtn?.addEventListener('click', () => { if (searchInput) searchInput.value = ''; applyFilters(); searchInput?.focus(); });
+
+        // Populate the Tag filter with the distinct tags present in the rows.
+        (function () {
+            if (!filterTag) return;
+            const set = new Set();
+            tableRows.forEach(r => (r.getAttribute('data-tags') || '').split(',').forEach(t => { const v = t.trim(); if (v) set.add(v); }));
+            Array.from(set).sort((a, b) => a.localeCompare(b)).forEach(t => {
+                const o = document.createElement('option'); o.value = t; o.textContent = t; filterTag.appendChild(o);
+            });
+        })();
 
         applyFilters();
 

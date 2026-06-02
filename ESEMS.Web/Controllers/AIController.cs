@@ -1461,19 +1461,26 @@ Please optimize this prompt to generate a better BPMN diagram. Make it more deta
 
             // === FULL IMPORT ===
 
-            // Step 1: Clear existing BPMNs
-            var processesWithBpmn = await _context.Processes
-                .Where(p => !p.IsDeleted && p.BpmnDiagram != null)
-                .ToListAsync();
+            // Step 1: Clear existing BPMN + version history ONLY for the processes
+            // we're about to re-import. Previously this nulled EVERY process's
+            // diagram and deleted ALL ProcessBpmnVersions (no ProcessId filter),
+            // so any process with a hand-authored diagram that isn't matched by
+            // this folder lost both its diagram and its full version history.
+            var matchedProcessIds = matched.Select(m => m.processId).Distinct().ToList();
 
-            foreach (var p in processesWithBpmn)
+            var processesToReset = await _context.Processes
+                .Where(p => !p.IsDeleted && p.BpmnDiagram != null && matchedProcessIds.Contains(p.Id))
+                .ToListAsync();
+            foreach (var p in processesToReset)
             {
                 p.BpmnDiagram = null;
                 p.UpdatedAt = DateTime.UtcNow;
             }
 
-            // Clear version records
-            var existingVersions = await _context.ProcessBpmnVersions.ToListAsync();
+            // Clear version records for the same matched set only.
+            var existingVersions = await _context.ProcessBpmnVersions
+                .Where(v => matchedProcessIds.Contains(v.ProcessId))
+                .ToListAsync();
             _context.ProcessBpmnVersions.RemoveRange(existingVersions);
             await _context.SaveChangesAsync();
 

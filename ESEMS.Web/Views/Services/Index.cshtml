@@ -99,6 +99,7 @@
                 <option value="@c.Id" selected="@(c.Id == selectedCatId)">@(isRtl ? c.NameAr : c.NameEn)</option>
             }
         </select>
+        <select id="filterTag" class="lt-select" aria-label="@(isRtl ? "وسم" : "Tag")"><option value="">@(isRtl ? "وسم" : "Tag"): @Shared["Filter_All"]</option></select>
         <button type="button" id="clearFiltersBtn" class="lt-btn lt-btn-ghost" aria-label="@Shared["Filter_Clear"]">
             <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>@Shared["Filter_Clear"]
         </button>
@@ -145,7 +146,7 @@
                         var categoryText = item.ServiceCategory == null
                             ? null
                             : (isRtl ? item.ServiceCategory.NameAr : item.ServiceCategory.NameEn);
-                        <tr data-type="@typeName" data-channel="@channelName" data-category-id="@(item.ServiceCategoryId ?? "")">
+                        <tr data-type="@typeName" data-channel="@channelName" data-category-id="@(item.ServiceCategoryId ?? "")" data-tags="@(item.Tags ?? "")">
                             <td><span class="id-chip">@item.Code</span></td>
                             <td style="font-weight:600;color:#111827;">@item.Name</td>
                             <td>
@@ -199,6 +200,7 @@
         const filterType = document.getElementById('filterServiceType');
         const filterChannel = document.getElementById('filterChannel');
         const filterCategory = document.getElementById('filterCategory');
+        const filterTag = document.getElementById('filterTag');
         const resultCount = document.getElementById('resultCount');
         const tableRows = Array.from(document.querySelectorAll('tbody tr'));
         const totalCount = tableRows.filter(r => !r.querySelector('td[colspan]')).length;
@@ -210,11 +212,13 @@
             const ftype = (filterType?.value || '').trim();
             const fchan = (filterChannel?.value || '').trim();
             const fcat = (filterCategory?.value || '').trim();
-            const filterActive = !!(q || ftype || fchan || fcat);
+            const ftag = (filterTag?.value || '').toLowerCase();
+            const filterActive = !!(q || ftype || fchan || fcat || ftag);
             let shown = 0;
             tableRows.forEach(row => {
                 if (row.querySelector('td[colspan]')) return;
-                const text = row.textContent.toLowerCase();
+                const rowTags = (row.dataset.tags || '');
+                const text = (row.textContent + ' ' + rowTags).toLowerCase();
                 const t = row.dataset.type || '';
                 const c = row.dataset.channel || '';
                 const cat = row.dataset.categoryId || '';
@@ -222,7 +226,8 @@
                 const okType = !ftype || t === ftype;
                 const okChannel = !fchan || c === fchan;
                 const okCategory = !fcat || cat === fcat;
-                const visible = okSearch && okType && okChannel && okCategory;
+                const okTag = !ftag || rowTags.toLowerCase().split(',').map(s => s.trim()).includes(ftag);
+                const visible = okSearch && okType && okChannel && okCategory && okTag;
                 row.style.display = visible ? '' : 'none';
                 if (visible) shown++;
             });
@@ -241,8 +246,21 @@
             if (filterType) filterType.value = '';
             if (filterChannel) filterChannel.value = '';
             if (filterCategory) filterCategory.value = '';
+            if (filterTag) filterTag.value = '';
             applyFilters();
         });
+
+        filterTag?.addEventListener('change', applyFilters);
+        // Populate the Tag filter with the distinct tags present in the rows.
+        (function () {
+            if (!filterTag) return;
+            const set = new Set();
+            tableRows.forEach(r => (r.dataset.tags || '').split(',').forEach(t => { const v = t.trim(); if (v) set.add(v); }));
+            Array.from(set).sort((a, b) => a.localeCompare(b)).forEach(t => {
+                const o = document.createElement('option'); o.value = t; o.textContent = t; filterTag.appendChild(o);
+            });
+        })();
+
         applyFilters();
 
         // Export dropdown toggle

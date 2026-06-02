@@ -59,6 +59,7 @@
             <i data-lucide="search" class="w-4 h-4" aria-hidden="true"></i>
             <input type="text" id="searchInput" placeholder="@(isRtl ? "ابحث بالكود أو الاسم أو الوصف..." : "Search by code, name, or description...")" aria-label="@(isRtl ? "بحث" : "Search categories")" />
         </div>
+        <select id="filterTag" aria-label="@(isRtl ? "وسم" : "Tag")"><option value="">@(isRtl ? "وسم" : "Tag"): @(isRtl ? "الكل" : "All")</option></select>
         <span style="flex:1;"></span>
         <button type="button" onclick="window.print()" class="lt-btn lt-btn-outline" aria-label="@Shared["Button_Export"]">
             <i data-lucide="download" class="w-3.5 h-3.5" aria-hidden="true"></i>@Shared["Button_Export"]
@@ -82,7 +83,7 @@
                     @foreach (var item in Model)
                     {
                         var totalProcessesPerCat = item.ProcessGroups.Where(pg => !pg.IsDeleted).SelectMany(pg => pg.Processes.Where(p => !p.IsDeleted)).Count();
-                        <tr>
+                        <tr data-tags="@(item.Tags ?? "")">
                             <td><span class="lt-pill lt-pill-code">@item.Code</span></td>
                             <td>
                                 <div style="font-weight:600;color:#111827;">@(isRtl ? item.NameAr : item.NameEn)</div>
@@ -126,18 +127,33 @@
     <script nonce="@Context.CspNonce()">
         if (window.lucide) lucide.createIcons();
 
-        // Local search filter (mirrors /Processes Index pattern).
+        // Local search + tag filter (mirrors /Processes Index pattern).
         const searchInput = document.getElementById('searchInput');
+        const filterTag = document.getElementById('filterTag');
         const tableRows = Array.from(document.querySelectorAll('tbody tr'));
         function applyFilters() {
             const q = (searchInput?.value || '').toLowerCase().trim();
+            const tag = (filterTag?.value || '').toLowerCase();
             tableRows.forEach(row => {
                 if (row.querySelector('td[colspan]')) return;
-                const text = row.textContent.toLowerCase();
-                row.style.display = !q || text.includes(q) ? '' : 'none';
+                const rowTags = (row.getAttribute('data-tags') || '');
+                const text = (row.textContent + ' ' + rowTags).toLowerCase();
+                let visible = !q || text.includes(q);
+                if (tag && !rowTags.toLowerCase().split(',').map(s => s.trim()).includes(tag)) visible = false;
+                row.style.display = visible ? '' : 'none';
             });
         }
         searchInput?.addEventListener('input', applyFilters);
+        filterTag?.addEventListener('change', applyFilters);
+        // Populate the Tag filter with the distinct tags present in the rows.
+        (function () {
+            if (!filterTag) return;
+            const set = new Set();
+            tableRows.forEach(r => (r.getAttribute('data-tags') || '').split(',').forEach(t => { const v = t.trim(); if (v) set.add(v); }));
+            Array.from(set).sort((a, b) => a.localeCompare(b)).forEach(t => {
+                const o = document.createElement('option'); o.value = t; o.textContent = t; filterTag.appendChild(o);
+            });
+        })();
 
         const confirmTitle = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_AreYouSure"].Value));
         const confirmDeletePrefix = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared["Confirm_DeleteTextPrefix"].Value));
