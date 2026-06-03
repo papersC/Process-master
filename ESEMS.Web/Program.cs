@@ -2027,14 +2027,25 @@ using (var scope = app.Services.CreateScope())
         if (!await context.CustomUsers.AnyAsync(u => u.Username == "admin"))
         {
             var adminPassword = app.Configuration["SeedAdmin:Password"];
-            if (string.IsNullOrWhiteSpace(adminPassword))
-                adminPassword = "Admin123";
 
+            // PROD-HARDENING (2026-06-03): never create the bootstrap admin with the
+            // well-known weak default in Production. Refuse to start unless a strong
+            // SeedAdmin__Password is supplied via env var / user-secrets — same posture
+            // as a JWT-key placeholder guard. This only fires on FIRST boot (no admin
+            // row yet); once the admin exists the whole block is skipped, so the env
+            // var is mandatory only for the initial seed.
             if (app.Environment.IsProduction())
             {
-                logger.LogWarning(
-                    "Seeding admin with default or configured SeedAdmin password — " +
-                    "set SeedAdmin__Password on IIS and change the password after first login.");
+                if (string.IsNullOrWhiteSpace(adminPassword) ||
+                    string.Equals(adminPassword, "Admin123", StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "Set a strong SeedAdmin__Password (environment variable) before the first " +
+                        "Production boot — a blank or default 'Admin123' admin password is not allowed " +
+                        "in Production. Change it again from the UI after first login.");
+            }
+            else if (string.IsNullOrWhiteSpace(adminPassword))
+            {
+                adminPassword = "Admin123"; // dev / staging convenience only
             }
 
             logger.LogInformation("Seeding admin user");
