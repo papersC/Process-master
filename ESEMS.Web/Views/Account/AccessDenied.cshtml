@@ -1,11 +1,53 @@
 @{
     ViewData["Title"] = Shared["Title_AccessDenied"].Value;
+    var isRtl = CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft;
+
+    // Show WHO is signed in so this clearly reads as a permission block (403),
+    // not an expired session. Prefer the culture-appropriate full name; fall
+    // back to the username (always present on an authenticated principal).
+    var who = isRtl ? User.FindFirst("FullNameAr")?.Value : User.FindFirst("FullName")?.Value;
+    if (string.IsNullOrWhiteSpace(who)) who = User.Identity?.Name;
+    var isSignedIn = User?.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(who);
 }
 
-<div class="container py-5">
-    <div class="alert alert-warning">
-        <h4 class="alert-heading">@Shared["AccessDenied_Header"]</h4>
-        <p class="mb-0">@Shared["AccessDenied_Text"]</p>
+<div class="flex justify-center px-4 py-12">
+    <div class="w-full max-w-lg bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
+        <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-50">
+            <i data-lucide="shield-alert" class="h-8 w-8" style="color:#b45309;"></i>
+        </div>
+
+        <h1 class="text-xl font-bold text-gray-900 mb-2">@Shared["AccessDenied_Header"]</h1>
+
+        @if (isSignedIn)
+        {
+            <p class="text-sm text-gray-500 mb-1">
+                @Shared["AccessDenied_SignedInAsLabel"] <strong class="text-gray-700">@who</strong>
+            </p>
+        }
+
+        <p class="text-sm text-gray-500 mb-6">@Shared["AccessDenied_Text"]</p>
+
+        <div class="flex flex-wrap items-center justify-center gap-3">
+            <button type="button" id="ad-back"
+                    class="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-lg text-white transition-colors"
+                    style="background-color:#005B99;">
+                <i data-lucide="arrow-left" class="h-4 w-4"></i>@Shared["Button_Back_Short"]
+            </button>
+            <a asp-controller="MySpace" asp-action="Index"
+               class="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors">
+                <i data-lucide="home" class="h-4 w-4"></i>@Shared["AccessDenied_GoHome"]
+            </a>
+        </div>
     </div>
-    <a asp-controller="Dashboard" asp-action="Index" class="btn btn-primary">@Shared["Button_Back"]</a>
 </div>
+
+@section Scripts {
+    <script nonce="@Context.CspNonce()">
+        document.getElementById('ad-back')?.addEventListener('click', function () {
+            // Return to the page they came from; fall back to a page every
+            // signed-in user can open when there's no history (deep link/bookmark).
+            if (document.referrer && window.history.length > 1) { window.history.back(); }
+            else { window.location.href = '@Url.Action("Index", "MySpace")'; }
+        });
+    </script>
+}

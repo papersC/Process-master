@@ -468,6 +468,8 @@
 
 	  <data name="AccessDenied_Header" xml:space="preserve"><value>الوصول مقيّد</value></data>
 	  <data name="AccessDenied_Text" xml:space="preserve"><value>ليس لديك الصلاحيات المطلوبة للوصول إلى هذه الصفحة. يرجى التواصل مع مدير النظام.</value></data>
+	  <data name="AccessDenied_SignedInAsLabel" xml:space="preserve"><value>أنت مسجّل الدخول باسم</value></data>
+	  <data name="AccessDenied_GoHome" xml:space="preserve"><value>الذهاب إلى مساحتي</value></data>
 	  <data name="Lockout_Header" xml:space="preserve"><value>الحساب موقوف مؤقتاً</value></data>
 	  <data name="Lockout_Text" xml:space="preserve"><value>تم إيقاف حسابك مؤقتاً بسبب محاولات تسجيل دخول فاشلة متعددة. يرجى المحاولة لاحقاً أو التواصل مع الدعم.</value></data>
 

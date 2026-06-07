@@ -108,6 +108,15 @@
     var canIncident    = HasModuleAccess("Incident.View");
     var canProblem     = HasModuleAccess("Problem.View");
     var canWorkflow    = HasModuleAccess("Workflow.View");
+    // Action/cross-module gates so sidebar links match what the target controller
+    // actually requires (avoids "visible link → 403"). Mirror the controller policies:
+    var canChangeRequest  = HasModuleAccess("ChangeRequest.View"); // ChangeRequestsController
+    var canWorkloadCreate = HasModuleAccess("Workload.Create");    // WorkloadAnalysis/Create
+    var canWorkloadConfig = HasModuleAccess("Workload.Edit");      // WorkloadAnalysis/Config
+    // "My Approvals" → WorkflowController is [Authorize(CanApprove)]: ANY *.Approve
+    // permission (or the *.* admin claim), NOT Workflow.View.
+    var canApprove = isLegacyAdmin || userPerms.Contains("*.*")
+        || userPerms.Any(p => p.EndsWith(".Approve", StringComparison.Ordinal));
 
     // F-CC-001: tooltip text for locked sidebar sections names the specific
     // permission the user is missing, so they can request it from their admin.
@@ -327,8 +336,11 @@
             width: 100%;
             overflow: hidden;
         }
-        /* Locked sidebar sections: visible but disabled */
-        .nav-menu-item.nav-locked {
+        /* Locked sidebar sections / links: visible but disabled. Both selectors
+           so a lock on an <a class="nav-link"> (e.g. AI Diagrams) is actually
+           non-clickable, not just greyed — otherwise it still 403s on click. */
+        .nav-menu-item.nav-locked,
+        .nav-link.nav-locked {
             opacity: 0.45;
             pointer-events: none;
             cursor: not-allowed;
@@ -610,24 +622,38 @@
                                two batch inboxes most reading-due / approval-due notifications
                                point at, without having to find the sidebar items. Sits above
                                the existing 'Mark all as read / View all' row. *@
+                            @* Same action-level gating as the sidebar: only show the
+                               quick-jump button when the user can open its target. *@
+                            @if (canImprovement || canApprove)
+                            {
                             <div class="d-flex gap-2 px-3 py-2 border-top" style="background:#f9fafb;">
+                                @if (canImprovement)
+                                {
                                 <a class="btn btn-sm btn-light flex-grow-1 d-flex align-items-center gap-1 justify-content-center"
                                    href="~/Improvements/MyPendingReadings"
                                    style="font-size:var(--fs-xs);color:#005B99;border:1px solid #e5e7eb;">
                                     <i data-lucide="inbox" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                     @(isRtl ? "قراءاتي المستحقة" : "My Pending Readings")
                                 </a>
+                                }
+                                @if (canApprove)
+                                {
                                 <a class="btn btn-sm btn-light flex-grow-1 d-flex align-items-center gap-1 justify-content-center"
                                    href="~/Workflow/PendingApprovals"
                                    style="font-size:var(--fs-xs);color:#005B99;border:1px solid #e5e7eb;">
                                     <i data-lucide="clipboard-check" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                     @(isRtl ? "مهام الاعتماد" : "My Approvals")
                                 </a>
+                                }
                             </div>
+                            }
                             <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top" style="background:#f9fafb;">
                                 <button class="btn btn-sm btn-link text-decoration-none small fw-semibold p-0" style="color:#005B99;"
                                         onclick="markAllNotificationsRead()">@(isRtl ? "تعيين الكل كمقروء" : "Mark all as read")</button>
+                                @if (canApprove)
+                                {
                                 <a class="btn btn-sm btn-link text-decoration-none small fw-semibold p-0" style="color:#005B99;" href="~/Workflow/PendingApprovals">@(isRtl ? "عرض الكل" : "View All")</a>
+                                }
                             </div>
                         </div>
                     </div>
@@ -770,14 +796,20 @@
                             <i data-lucide="folder-open" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@(CultureInfo.CurrentUICulture.Name.StartsWith("ar") ? "مساحتي" : "My Space")</span>
                         </a>
+                        @if (canApprove)
+                        {
                         <a asp-controller="Workflow" asp-action="PendingApprovals" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Workflow" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
                             <i data-lucide="clipboard-check" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@(CultureInfo.CurrentUICulture.Name.StartsWith("ar") ? "مهام الاعتماد" : "My Approvals")</span>
                         </a>
+                        }
+                        @if (canImprovement)
+                        {
                         <a asp-controller="Improvements" asp-action="MyPendingReadings" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Improvements" && currentAction == "MyPendingReadings" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
                             <i data-lucide="inbox" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@(CultureInfo.CurrentUICulture.Name.StartsWith("ar") ? "قراءاتي المستحقة" : "My Pending Readings")</span>
                         </a>
+                        }
                     </div>
                 </div>
 
@@ -811,8 +843,12 @@
                             <i data-lucide="network" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@Shared["Title_ProcessHierarchy"]</span>
                         </a>
-                        @* Visual divider — separates process-architecture items above from
-                           strategy + measurement catalogs below. *@
+                        @* StrategicObjectives + KpiLibrary live in this section but are
+                           gated by Improvement.View on their controllers, so hide the
+                           divider + both links when the user lacks it (Process.View
+                           alone unlocks the section but won't open these). *@
+                        @if (canImprovement)
+                        {
                         <div class="nav-label" style="margin: .35rem 1rem .15rem; padding-inline-start: 2rem; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: rgba(255,255,255,.45); font-weight: 700;">
                             @(isRtl ? "الاستراتيجية والقياس" : "Strategy & Measurement")
                         </div>
@@ -824,6 +860,7 @@
                             <i data-lucide="library" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@(isRtl ? "مكتبة المؤشرات" : "KPI Library")</span>
                         </a>
+                        }
                         @if (aiEnabled)
                         {
                             <a asp-controller="AI" asp-action="Diagrams" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(isAIDiagrams ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white") @(!canAi ? "nav-locked" : "")" style="padding-inline-start: 3rem;" title="@(!canAi ? (isRtl ? "الوصول مقيد" : "Access restricted") : null)">
@@ -856,14 +893,20 @@
                             <i data-lucide="folder-tree" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@(System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar") ? "فئات الخدمات" : "Service Categories")</span>
                         </a>
+                        @if (canIncident)
+                        {
                         <a asp-controller="Incidents" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Incidents" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
                             <i data-lucide="alert-circle" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@Shared["Nav_Incidents"]</span>
                         </a>
+                        }
+                        @if (canProblem)
+                        {
                         <a asp-controller="Problems" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Problems" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
                             <i data-lucide="search" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@Shared["Nav_Problems"]</span>
                         </a>
+                        }
                         <a asp-controller="SLA" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "SLA" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
                             <i data-lucide="file-text" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@Shared["Nav_SLA"]</span>
@@ -917,6 +960,8 @@
                         <i data-lucide="chevron-down" class="nav-label h-4 w-4 menu-arrow transition-transform @(isRiskOrImprovementActive ? "rotate-180" : "")"></i>
                     </button>
                     <div id="risk-improvement-menu" class="submenu @(isRiskOrImprovementActive ? "open" : "") bg-primary-700">
+                        @if (canRisk)
+                        {
                         <a asp-controller="EnterpriseRisks" asp-action="Dashboard" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "EnterpriseRisks" && currentAction == "Dashboard" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
                             <i data-lucide="layout-dashboard" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@Shared["Nav_RiskOverview"]</span>
@@ -929,6 +974,9 @@
                             <i data-lucide="grid-3x3" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@Shared["Nav_RiskHeatMap"]</span>
                         </a>
+                        }
+                        @if (canImprovement)
+                        {
                         <a asp-controller="Improvements" asp-action="Dashboard" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Improvements" && currentAction == "Dashboard" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
                             <i data-lucide="rocket" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@Shared["Nav_ImprovementDashboard"]</span>
@@ -945,10 +993,14 @@
                             <i data-lucide="map" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@Shared["Nav_Roadmap"]</span>
                         </a>
+                        }
+                        @if (canChangeRequest)
+                        {
                         <a asp-controller="ChangeRequests" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "ChangeRequests" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
                             <i data-lucide="git-pull-request" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@Shared["Nav_ChangeRequests"]</span>
                         </a>
+                        }
                     </div>
                 </div>
 
@@ -970,14 +1022,20 @@
                             <i data-lucide="file-spreadsheet" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@(isRtl ? "السيناريوهات" : "Scenarios")</span>
                         </a>
+                        @if (canWorkloadCreate)
+                        {
                         <a asp-controller="WorkloadAnalysis" asp-action="Create" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "WorkloadAnalysis" && currentAction == "Create" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
                             <i data-lucide="plus-circle" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@(isRtl ? "سيناريو جديد" : "New Scenario")</span>
                         </a>
+                        }
+                        @if (canWorkloadConfig)
+                        {
                         <a asp-controller="WorkloadAnalysis" asp-action="Config" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "WorkloadAnalysis" && currentAction == "Config" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
                             <i data-lucide="settings" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@(isRtl ? "الإعدادات" : "Configuration")</span>
                         </a>
+                        }
                     </div>
                 </div>
 

@@ -477,6 +477,8 @@
 
 	  <data name="AccessDenied_Header" xml:space="preserve"><value>Access Restricted</value></data>
 	  <data name="AccessDenied_Text" xml:space="preserve"><value>You do not have the required permissions to access this page. Please contact your system administrator.</value></data>
+	  <data name="AccessDenied_SignedInAsLabel" xml:space="preserve"><value>You are signed in as</value></data>
+	  <data name="AccessDenied_GoHome" xml:space="preserve"><value>Go to My Space</value></data>
 	  <data name="Lockout_Header" xml:space="preserve"><value>Account Temporarily Locked</value></data>
 	  <data name="Lockout_Text" xml:space="preserve"><value>Your account has been temporarily locked due to multiple failed login attempts. Please try again later or contact support.</value></data>
 

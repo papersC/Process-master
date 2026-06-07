@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Negotiate;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration.Json;
 using Microsoft.Extensions.Hosting;
@@ -167,26 +168,32 @@ builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
 // .AddEntityFrameworkStores<ApplicationDbContext>()
 // .AddDefaultTokenProviders();
 
-// Cookie sign-in + Negotiate challenge for "Sign in with Windows" on IIS.
-static string AccountRoute(IConfiguration config, string action)
-{
-    var pathBase = config["AppSettings:PathBase"];
-    var prefix = string.IsNullOrEmpty(pathBase) || pathBase == "/"
-        ? string.Empty
-        : pathBase.TrimEnd('/');
-    return $"{prefix}/Account/{action}";
-}
-
+// Cookie sign-in is the default. Negotiate is registered only for the explicit
+// "Sign in with Windows" button (AccountController.WindowsLogin), NOT as the
+// default challenge — see DefaultChallengeScheme below.
 builder.Services.AddAuthentication(options =>
     {
         options.DefaultScheme = "Cookies";
-        options.DefaultChallengeScheme = NegotiateDefaults.AuthenticationScheme;
+        // Unauthenticated access to a protected page must redirect to the cookie
+        // login page — NOT issue a Windows-Negotiate challenge. When the browser
+        // can't complete the Negotiate handshake (e.g. a stale/undecryptable
+        // cookie after a deploy, or a non-domain client), IIS renders that 401 as
+        // its raw "401 — Access is denied" page instead of our login screen — the
+        // exact symptom seen after deployment. The "Sign in with Windows" button
+        // is unaffected: WindowsLogin challenges the Negotiate scheme EXPLICITLY.
+        // DefaultForbidScheme is unset, so 403s fall back to this same "Cookies"
+        // scheme (→ OnRedirectToAccessDenied below).
+        options.DefaultChallengeScheme = "Cookies";
     })
     .AddNegotiate()
     .AddCookie("Cookies", options =>
     {
-        options.LoginPath = AccountRoute(builder.Configuration, "Login");
-        options.AccessDeniedPath = AccountRoute(builder.Configuration, "AccessDenied");
+        // App-relative paths; the OnRedirectToLogin / OnRedirectToAccessDenied
+        // events below build the final URL from the live request PathBase so it
+        // resolves correctly under the /App IIS sub-application — exactly one
+        // /App prefix, neither doubled nor missing.
+        options.LoginPath = "/Account/Login";
+        options.AccessDeniedPath = "/Account/AccessDenied";
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
         // In production, ALWAYS send cookies over HTTPS to prevent
@@ -234,9 +241,66 @@ builder.Services.AddAuthentication(options =>
 
                 ctx.Properties.SetString("ss_checked", DateTimeOffset.UtcNow.ToString("o"));
                 ctx.ShouldRenew = true;
+            },
+
+            // No valid session — no cookie, an undecryptable cookie after a
+            // deploy, or one the stamp check above just rejected — always sends
+            // the user to the login page. Built from the live PathBase so there
+            // is exactly one /App prefix under sub-app hosting. returnUrl carries
+            // them back to where they were headed once they sign in.
+            OnRedirectToLogin = ctx =>
+            {
+                var returnUrl = ctx.Request.PathBase + ctx.Request.Path + ctx.Request.QueryString;
+                ctx.Response.Redirect(ctx.Request.PathBase + "/Account/Login"
+                    + QueryString.Create("returnUrl", returnUrl));
+                return Task.CompletedTask;
+            },
+
+            // Signed in but missing the required permission → the Access Denied
+            // page. A re-login wouldn't grant the permission, and bouncing an
+            // already-authenticated user to the login form would just loop.
+            OnRedirectToAccessDenied = ctx =>
+            {
+                ctx.Response.Redirect(ctx.Request.PathBase + "/Account/AccessDenied");
+                return Task.CompletedTask;
             }
         };
     });
+
+// Data Protection — persist the key ring so auth cookies and antiforgery tokens
+// survive app-pool recycles and redeploys. Behind IIS the app pool's user
+// profile is typically not loaded, so the DEFAULT key store is effectively
+// ephemeral: keys are regenerated on each restart, which silently invalidates
+// every issued auth cookie (users get bounced to the login page on every deploy
+// — the "session" symptom) and breaks in-flight antiforgery tokens. Persist to a
+// dedicated 'keys' subfolder of the content root, under a stable application
+// name. The publish zip never contains it, so an overwrite-deploy leaves it
+// intact — the same way logs/ and wwwroot/uploads/ persist across redeploys —
+// and the deploy script provisions it writable by the pool identity. Keeping it
+// inside the app folder also makes it app-specific, so sibling apps on the
+// shared box never co-mingle key files. Configurable via
+// DataProtection:KeyRingPath; in Production it defaults to <contentroot>/keys.
+// A provisioning failure degrades to the default store rather than crashing
+// startup.
+var keyRingPath = builder.Configuration["DataProtection:KeyRingPath"];
+if (string.IsNullOrWhiteSpace(keyRingPath) && builder.Environment.IsProduction())
+    keyRingPath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "keys"));
+if (!string.IsNullOrWhiteSpace(keyRingPath))
+{
+    try
+    {
+        var keyDir = Directory.CreateDirectory(keyRingPath);
+        builder.Services.AddDataProtection()
+            .PersistKeysToFileSystem(keyDir)
+            .SetApplicationName("ESEMS");
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine(
+            $"[DataProtection] Could not persist keys to '{keyRingPath}': {ex.Message}. " +
+            "Falling back to the default key store (cookies will not survive recycles until this is fixed).");
+    }
+}
 
 // Plan X: matrix-driven authorization handler. Resolves
 // [Authorize(Policy = "Module.Action")] attributes by checking the
