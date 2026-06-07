@@ -2228,8 +2228,10 @@ public class ImprovementsController : BaseController
                 .Select(ir => ir.RiskId)
                 .ToListAsync();
 
+            var scope = await _scopingService.GetScopeAsync(User);
             var available = await _context.EnterpriseRisks
                 .Where(r => !r.IsDeleted && r.IsActive && !linkedRiskIds.Contains(r.Id))
+                .ApplyOrganizationScope(scope)
                 .Include(r => r.Category)
                 .OrderByDescending(r => r.InherentRiskScore)
                 .ThenBy(r => r.RiskNumber)

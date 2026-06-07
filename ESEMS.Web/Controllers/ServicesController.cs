@@ -850,17 +850,18 @@ public class ServicesController : BaseController
             .ToListAsync();
         ViewBag.ServiceCategories = new SelectList(categories, "Id", "Name");
 
-        var processes = await _context.Processes.Where(p => !p.IsDeleted).OrderBy(p => p.Code).ToListAsync();
+        var scope = await _scopingService.GetScopeAsync(User);
+        var processes = await _context.Processes.Where(p => !p.IsDeleted).ApplyOwningUnitScope(scope).OrderBy(p => p.Code).ToListAsync();
         ViewBag.Processes = new SelectList(
             processes.Select(p => new { p.Id, DisplayName = $"{p.Code} - {(isArabic ? p.NameAr : p.NameEn)}" }),
             "Id", "DisplayName");
 
-        var assets = await _context.Assets.Where(a => !a.IsDeleted).OrderBy(a => a.AssetTag).ToListAsync();
+        var assets = await _context.Assets.Where(a => !a.IsDeleted).ApplyAssignedUnitScope(scope).OrderBy(a => a.AssetTag).ToListAsync();
         ViewBag.Assets = new SelectList(
             assets.Select(a => new { a.Id, DisplayName = $"{a.AssetTag} - {(isArabic ? a.NameAr : a.NameEn)}" }),
             "Id", "DisplayName");
 
-        var risks = await _context.EnterpriseRisks.Where(r => !r.IsDeleted).OrderBy(r => r.RiskNumber).ToListAsync();
+        var risks = await _context.EnterpriseRisks.Where(r => !r.IsDeleted).ApplyOrganizationScope(scope).OrderBy(r => r.RiskNumber).ToListAsync();
         ViewBag.Risks = new SelectList(
             risks.Select(r => new { r.Id, DisplayName = $"{r.RiskNumber} - {(isArabic ? r.NameAr : r.NameEn)}" }),
             "Id", "DisplayName");
@@ -1373,8 +1374,10 @@ public class ServicesController : BaseController
                 .ToListAsync();
 
             var isArabic = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
+            var scope = await _scopingService.GetScopeAsync(User);
             var availableProcesses = await _context.Processes
                 .Where(p => !p.IsDeleted && !linkedProcessIds.Contains(p.Id))
+                .ApplyOwningUnitScope(scope)
                 .OrderBy(p => p.Code)
                 .Select(p => new
                 {

@@ -245,6 +245,10 @@ public class ProblemsController : BaseController
         if (incident == null)
             return NotFound();
 
+        // SEC (IDOR): don't escalate — or leak the details of — an incident
+        // outside the caller's scope.
+        if (!(await _scopingService.GetScopeAsync(User)).CanAccess(incident)) return NotFound();
+
         await PopulateDropdowns();
 
         var problem = new Problem

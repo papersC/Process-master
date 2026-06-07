@@ -617,8 +617,10 @@ public class AssetsController : BaseController
                 .Select(ar => ar.AssetId)
                 .ToListAsync();
 
+            var scope = await _scopingService.GetScopeAsync(User);
             var availableAssets = await _context.Assets
                 .Where(a => !linkedAssetIds.Contains(a.Id))
+                .ApplyAssignedUnitScope(scope)
                 .Include(a => a.Category)
                 .OrderBy(a => a.AssetTag)
                 .Select(a => new

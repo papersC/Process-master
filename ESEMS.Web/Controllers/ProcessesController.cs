@@ -1440,6 +1440,7 @@ public class ProcessesController : BaseController
             var isArabic = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
             var availableServices = await _context.Services
                 .Where(s => !s.IsDeleted && !linkedServiceIds.Contains(s.Id))
+                .ApplyOwningUnitScope(scope)
                 .OrderBy(s => s.NameEn)
                 .Select(s => new
                 {
@@ -1920,7 +1921,8 @@ public class ProcessesController : BaseController
             orgUnits.Select(u => new { u.Id, DisplayName = isArabic ? u.NameAr : u.NameEn }),
             "Id", "DisplayName");
 
-        var services = await _context.Services.Where(s => !s.IsDeleted).OrderBy(s => s.NameEn).ToListAsync();
+        var scope = await _scopingService.GetScopeAsync(User);
+        var services = await _context.Services.Where(s => !s.IsDeleted).ApplyOwningUnitScope(scope).OrderBy(s => s.NameEn).ToListAsync();
         ViewBag.Services = new SelectList(
             services.Select(s => new { s.Id, DisplayName = isArabic ? s.NameAr : (!string.IsNullOrWhiteSpace(s.NameEn) && s.NameEn != s.NameAr ? s.NameEn : s.NameAr) }),
             "Id", "DisplayName");
@@ -1935,12 +1937,12 @@ public class ProcessesController : BaseController
             systems.Select(s => new { s.Id, DisplayName = isArabic ? s.NameAr : (!string.IsNullOrWhiteSpace(s.NameEn) && s.NameEn != s.NameAr ? s.NameEn : s.NameAr) }),
             "Id", "DisplayName");
 
-        var assets = await _context.Assets.Where(a => !a.IsDeleted).OrderBy(a => a.AssetTag).ToListAsync();
+        var assets = await _context.Assets.Where(a => !a.IsDeleted).ApplyAssignedUnitScope(scope).OrderBy(a => a.AssetTag).ToListAsync();
         ViewBag.Assets = new SelectList(
             assets.Select(a => new { a.Id, DisplayName = $"{a.AssetTag} - {(isArabic ? a.NameAr : a.NameEn)}" }),
             "Id", "DisplayName");
 
-        var risks = await _context.EnterpriseRisks.Where(r => !r.IsDeleted).OrderBy(r => r.RiskNumber).ToListAsync();
+        var risks = await _context.EnterpriseRisks.Where(r => !r.IsDeleted).ApplyOrganizationScope(scope).OrderBy(r => r.RiskNumber).ToListAsync();
         ViewBag.Risks = new SelectList(
             risks.Select(r => new { r.Id, DisplayName = $"{r.RiskNumber} - {(isArabic ? r.NameAr : r.NameEn)}" }),
             "Id", "DisplayName");

@@ -995,6 +995,7 @@ public class WorkloadAnalysisController : BaseController
         // Picker list — any non-deleted scenario except the left one.
         var others = await _context.WorkloadScenarios
             .Where(s => !s.IsDeleted && s.Id != left)
+            .ApplyOwningUnitScope(scope)
             .OrderByDescending(s => s.UpdatedAt)
             .Select(s => new SelectListItem(s.Code + " — " + s.NameEn, s.Id, s.Id == right))
             .ToListAsync();
@@ -1119,8 +1120,10 @@ public class WorkloadAnalysisController : BaseController
             .Select(c => new SelectListItem(isArabic ? (c.NameAr ?? c.NameEn ?? "") : (c.NameEn ?? c.NameAr ?? ""), c.Id))
             .ToList();
 
+        var scope = await _scopingService.GetScopeAsync(User);
         var processes = await _context.Processes
             .Where(p => !p.IsDeleted)
+            .ApplyOwningUnitScope(scope)
             .OrderBy(p => p.Code)
             .ToListAsync();
         ViewBag.Processes = processes
@@ -1129,6 +1132,7 @@ public class WorkloadAnalysisController : BaseController
 
         var services = await _context.Services
             .Where(s => !s.IsDeleted)
+            .ApplyOwningUnitScope(scope)
             .OrderBy(s => s.Code)
             .ToListAsync();
         ViewBag.Services = services

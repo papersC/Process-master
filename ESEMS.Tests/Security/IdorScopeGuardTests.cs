@@ -339,4 +339,37 @@ public class IdorScopeGuardTests
         var model = Assert.IsAssignableFrom<IEnumerable<ImprovementInitiative>>(result.Model);
         Assert.Equal(2, model.Count());
     }
+
+    // ── More IDOR / enumeration guards from the scoping audit ──────────────
+
+    [Fact]
+    public async Task CreateFromIncident_OutOfScope_Returns404()
+    {
+        using var db = TestDbContextFactory.Create();
+        db.Incidents.Add(new Incident { Id = "inc-b", IncidentNumber = "INC-B", NameEn = "i", NameAr = "ب", AssignedToUnitId = UnitB, IsDeleted = false });
+        await db.SaveChangesAsync();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var c = new ProblemsController(db, NullLogger<ProblemsController>.Instance,
+            new FakeLocalizer<SharedResource>(), numberGenerator: null!, new ScopingService(db, cache));
+        Attach(c, Principal("OwningUnit", UnitA));
+        // Escalating an out-of-scope incident must 404 before its details render.
+        Assert.IsType<NotFoundResult>(await c.CreateFromIncident("inc-b"));
+    }
+
+    [Fact]
+    public async Task GetAvailableAssets_OutOfScope_IsEmpty()
+    {
+        using var db = TestDbContextFactory.Create();
+        db.RiskCategories.Add(new RiskCategory { Id = "rc2", Code = "RC2", NameEn = "c", NameAr = "ف" });
+        db.EnterpriseRisks.Add(new EnterpriseRisk { Id = "risk-2", RiskNumber = "R-2", NameEn = "r", NameAr = "ر", CategoryId = "rc2", IsActive = true, IsDeleted = false });
+        db.Assets.Add(new Asset { Id = "asset-ob", AssetTag = "AST-OB", NameEn = "a", NameAr = "أ", CategoryId = "cat", AssignedToUnitId = UnitB, IsDeleted = false });
+        await db.SaveChangesAsync();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var c = new AssetsController(db, NullLogger<AssetsController>.Instance, new FakeLocalizer<SharedResource>(), new ScopingService(db, cache));
+        Attach(c, Principal("OwningUnit", UnitA));
+        // risk-2 is unit-less (accessible), but the only asset is in UnitB →
+        // the available-assets picker must not enumerate it.
+        var json = Assert.IsType<JsonResult>(await c.GetAvailableAssets("risk-2"));
+        Assert.Empty(((System.Collections.IEnumerable)json.Value!).Cast<object>());
+    }
 }
