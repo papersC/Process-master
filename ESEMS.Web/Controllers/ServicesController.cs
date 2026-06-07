@@ -40,12 +40,20 @@ public class ServicesController : BaseController
     /// </summary>
     public async Task<IActionResult> Dashboard()
     {
-        var totalServices = await _context.Services.CountAsync(s => !s.IsDeleted);
-        var internalServices = await _context.Services.CountAsync(s => !s.IsDeleted && s.ServiceType == ServiceType.Internal);
-        var externalServices = await _context.Services.CountAsync(s => !s.IsDeleted && s.ServiceType == ServiceType.External);
-        var totalIncidents = await _context.Incidents.CountAsync(i => !i.IsDeleted);
-        var openIncidents = await _context.Incidents.CountAsync(i => !i.IsDeleted && (i.Status == IncidentStatus.New || i.Status == IncidentStatus.InProgress));
-        var totalProblems = await _context.Problems.CountAsync(p => !p.IsDeleted);
+        // SCOPE: dashboard KPIs + recent list must respect the user's data scope,
+        // same as Index. Services scope by OwningUnit; Incidents/Problems by
+        // AssignedToUnit. No-op for All-scope users.
+        var scope = await _scopingService.GetScopeAsync(User);
+        var svcScoped = _context.Services.Where(s => !s.IsDeleted).ApplyOwningUnitScope(scope);
+        var incScoped = _context.Incidents.Where(i => !i.IsDeleted).ApplyAssignedUnitScope(scope);
+        var probScoped = _context.Problems.Where(p => !p.IsDeleted).ApplyAssignedUnitScope(scope);
+
+        var totalServices = await svcScoped.CountAsync();
+        var internalServices = await svcScoped.CountAsync(s => s.ServiceType == ServiceType.Internal);
+        var externalServices = await svcScoped.CountAsync(s => s.ServiceType == ServiceType.External);
+        var totalIncidents = await incScoped.CountAsync();
+        var openIncidents = await incScoped.CountAsync(i => i.Status == IncidentStatus.New || i.Status == IncidentStatus.InProgress);
+        var totalProblems = await probScoped.CountAsync();
 
         ViewBag.TotalServices = totalServices;
         ViewBag.InternalServices = internalServices;
@@ -54,9 +62,8 @@ public class ServicesController : BaseController
         ViewBag.OpenIncidents = openIncidents;
         ViewBag.TotalProblems = totalProblems;
 
-        // Get recent services
-        var recentServices = await _context.Services
-            .Where(s => !s.IsDeleted)
+        // Get recent services (scoped)
+        var recentServices = await svcScoped
             .Include(s => s.OwningUnit)
             .Include(s => s.StrategicObjective)
             .OrderByDescending(s => s.UpdatedAt)

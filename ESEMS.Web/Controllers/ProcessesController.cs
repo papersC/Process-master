@@ -40,10 +40,16 @@ public class ProcessesController : BaseController
     /// </summary>
     public async Task<IActionResult> Dashboard()
     {
-        var totalProcesses = await _context.Processes.CountAsync(p => !p.IsDeleted);
-        var activeProcesses = await _context.Processes.CountAsync(p => !p.IsDeleted && p.Status == ProcessStatus.Active);
-        var draftProcesses = await _context.Processes.CountAsync(p => !p.IsDeleted && p.Status == ProcessStatus.Draft);
-        var underImprovementProcesses = await _context.Processes.CountAsync(p => !p.IsDeleted && p.Status == ProcessStatus.UnderImprovement);
+        // SCOPE: dashboard KPIs + recent list must respect the user's data scope,
+        // same as Index — otherwise a scoped user sees org-wide counts and recent
+        // items from units they can't open. No-op for All-scope users.
+        var scope = await _scopingService.GetScopeAsync(User);
+        var scoped = _context.Processes.Where(p => !p.IsDeleted).ApplyOwningUnitScope(scope);
+
+        var totalProcesses = await scoped.CountAsync();
+        var activeProcesses = await scoped.CountAsync(p => p.Status == ProcessStatus.Active);
+        var draftProcesses = await scoped.CountAsync(p => p.Status == ProcessStatus.Draft);
+        var underImprovementProcesses = await scoped.CountAsync(p => p.Status == ProcessStatus.UnderImprovement);
         var totalCategories = await _context.Categories.CountAsync(c => !c.IsDeleted);
         var totalProcessGroups = await _context.ProcessGroups.CountAsync(pg => !pg.IsDeleted);
 
@@ -54,9 +60,8 @@ public class ProcessesController : BaseController
         ViewBag.TotalCategories = totalCategories;
         ViewBag.TotalProcessGroups = totalProcessGroups;
 
-        // Get recent processes
-        var recentProcesses = await _context.Processes
-            .Where(p => !p.IsDeleted)
+        // Get recent processes (scoped)
+        var recentProcesses = await scoped
             .Include(p => p.ProcessGroup)
             .Include(p => p.OwningUnit)
             .OrderByDescending(p => p.UpdatedAt)

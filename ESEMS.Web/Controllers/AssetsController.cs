@@ -244,8 +244,13 @@ public class AssetsController : BaseController
     /// </summary>
     public async Task<IActionResult> Dashboard()
     {
+        // SCOPE: dashboard KPIs must respect the user's data scope, same as Index
+        // — otherwise a scoped user sees org-wide asset counts + total value.
+        // No-op for All-scope users.
+        var scope = await _scopingService.GetScopeAsync(User);
         var assets = await _context.Assets
             .Where(a => !a.IsDeleted)
+            .ApplyAssignedUnitScope(scope)
             .Include(a => a.Category)
             .Include(a => a.MaintenanceSchedules)
             .ToListAsync();
