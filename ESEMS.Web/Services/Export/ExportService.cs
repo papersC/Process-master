@@ -4,6 +4,8 @@ using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using ESEMS.Web.Data;
+using ESEMS.Web.Extensions;
+using ESEMS.Web.Services.Common;
 using System.Text;
 
 namespace ESEMS.Web.Services.Export;
@@ -130,9 +132,10 @@ public class ExportService : IExportService
         return WorkbookToBytes(wb);
     }
 
-    public async Task<byte[]> ExportImprovementsToExcelAsync()
+    public async Task<byte[]> ExportImprovementsToExcelAsync(ScopeContext scope)
     {
         var data = await _context.ImprovementInitiatives.Where(i => !i.IsDeleted)
+            .ApplyOwningUnitScope(scope)
             .OrderBy(i => i.Code).ToListAsync();
 
         using var wb = new XLWorkbook();

@@ -1,6 +1,9 @@
+using System.IO;
+using System.Linq;
 using System.Security.Claims;
 using ESEMS.Web;
 using ESEMS.Web.Controllers;
+using ESEMS.Web.Controllers.Api;
 using ESEMS.Web.Models.APQC;
 using ESEMS.Web.Models.Enums;
 using ESEMS.Web.Models.ServiceManagement;
@@ -63,6 +66,10 @@ public class ScopeLeakTests
         c.TempData = new TempDataDictionary(http, new NullTempDataProvider());
     }
 
+    // ControllerBase (API controllers) has no TempData.
+    private static void AttachBase(ControllerBase c, ClaimsPrincipal user)
+        => c.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = user } };
+
     [Fact]
     public async Task ProcessesDashboard_KpiCounts_AreScopeFiltered()
     {
@@ -103,5 +110,23 @@ public class ScopeLeakTests
         Assert.Equal(1, (int)controller.ViewBag.TotalServices);  // was 2
         Assert.Equal(1, (int)controller.ViewBag.TotalIncidents); // was 2
         Assert.Equal(1, (int)controller.ViewBag.TotalProblems);  // was 2
+    }
+
+    [Fact]
+    public async Task ExportIncidentsToExcel_IsScopeFiltered()
+    {
+        using var db = TestDbContextFactory.Create();
+        db.Incidents.Add(new Incident { Id = "ei-a", IncidentNumber = "INC-A", NameEn = "a", NameAr = "أ", AssignedToUnitId = UnitA, Status = IncidentStatus.New });
+        db.Incidents.Add(new Incident { Id = "ei-b", IncidentNumber = "INC-B", NameEn = "b", NameAr = "ب", AssignedToUnitId = UnitB, Status = IncidentStatus.New });
+        await db.SaveChangesAsync();
+
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var controller = new ExportController(db, new ScopingService(db, cache));
+        AttachBase(controller, Principal("OwningUnit", UnitA));
+
+        var file = Assert.IsType<FileContentResult>(await controller.ExportIncidentsToExcel());
+        using var wb = new ClosedXML.Excel.XLWorkbook(new MemoryStream(file.FileContents));
+        var dataRows = wb.Worksheet("Incidents").RowsUsed().Count() - 1; // minus header
+        Assert.Equal(1, dataRows); // only the UnitA incident; the org-wide export had 2
     }
 }

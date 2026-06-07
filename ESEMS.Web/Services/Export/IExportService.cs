@@ -1,3 +1,5 @@
+using ESEMS.Web.Services.Common;
+
 namespace ESEMS.Web.Services.Export;
 
 public interface IExportService
@@ -11,7 +13,7 @@ public interface IExportService
     Task<byte[]> ExportServicesToExcelAsync();
     Task<byte[]> ExportRisksToExcelAsync();
     Task<byte[]> ExportIncidentsToExcelAsync();
-    Task<byte[]> ExportImprovementsToExcelAsync();
+    Task<byte[]> ExportImprovementsToExcelAsync(ScopeContext scope);
     Task<byte[]> ExportToCsvAsync(string entityType);
 
     /// <summary>

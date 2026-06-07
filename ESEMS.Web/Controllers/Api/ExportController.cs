@@ -3,7 +3,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ESEMS.Web.Data;
+using ESEMS.Web.Extensions;
 using ESEMS.Web.Security;
+using ESEMS.Web.Services.Common;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -21,10 +23,12 @@ namespace ESEMS.Web.Controllers.Api;
 public class ExportController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
+    private readonly IScopingService _scopingService;
 
-    public ExportController(ApplicationDbContext context)
+    public ExportController(ApplicationDbContext context, IScopingService scopingService)
     {
         _context = context;
+        _scopingService = scopingService;
         QuestPDF.Settings.License = LicenseType.Community;
     }
 
@@ -33,8 +37,10 @@ public class ExportController : ControllerBase
     [HttpGet("processes/excel")]
     public async Task<IActionResult> ExportProcessesToExcel()
     {
+        var scope = await _scopingService.GetScopeAsync(User);
         var processes = await _context.Processes
             .Where(p => !p.IsDeleted)
+            .ApplyOwningUnitScope(scope)
             .Include(p => p.ProcessGroup)
             .ThenInclude(pg => pg!.Category)
             .OrderBy(p => p.Code)
@@ -88,8 +94,10 @@ public class ExportController : ControllerBase
     [HttpGet("processes/pdf")]
     public async Task<IActionResult> ExportProcessesToPdf()
     {
+        var scope = await _scopingService.GetScopeAsync(User);
         var processes = await _context.Processes
             .Where(p => !p.IsDeleted)
+            .ApplyOwningUnitScope(scope)
             .Include(p => p.ProcessGroup)
             .ThenInclude(pg => pg!.Category)
             .OrderBy(p => p.Code)
@@ -120,8 +128,10 @@ public class ExportController : ControllerBase
     [HttpGet("services/excel")]
     public async Task<IActionResult> ExportServicesToExcel()
     {
+        var scope = await _scopingService.GetScopeAsync(User);
         var services = await _context.Services
             .Where(s => !s.IsDeleted)
+            .ApplyOwningUnitScope(scope)
             .Include(s => s.OwningUnit)
             .OrderBy(s => s.Code)
             .ToListAsync();
@@ -173,8 +183,10 @@ public class ExportController : ControllerBase
     [HttpGet("services/pdf")]
     public async Task<IActionResult> ExportServicesToPdf()
     {
+        var scope = await _scopingService.GetScopeAsync(User);
         var services = await _context.Services
             .Where(s => !s.IsDeleted)
+            .ApplyOwningUnitScope(scope)
             .Include(s => s.OwningUnit)
             .OrderBy(s => s.Code)
             .ToListAsync();
@@ -204,8 +216,10 @@ public class ExportController : ControllerBase
     [HttpGet("risks/excel")]
     public async Task<IActionResult> ExportRisksToExcel()
     {
+        var scope = await _scopingService.GetScopeAsync(User);
         var risks = await _context.EnterpriseRisks
             .Where(r => !r.IsDeleted)
+            .ApplyOrganizationScope(scope)
             .Include(r => r.Category)
             .OrderByDescending(r => r.InherentRiskScore)
             .ToListAsync();
@@ -257,8 +271,10 @@ public class ExportController : ControllerBase
     [HttpGet("risks/pdf")]
     public async Task<IActionResult> ExportRisksToPdf()
     {
+        var scope = await _scopingService.GetScopeAsync(User);
         var risks = await _context.EnterpriseRisks
             .Where(r => !r.IsDeleted)
+            .ApplyOrganizationScope(scope)
             .Include(r => r.Category)
             .OrderByDescending(r => r.InherentRiskScore)
             .ToListAsync();
@@ -288,8 +304,10 @@ public class ExportController : ControllerBase
     [HttpGet("incidents/excel")]
     public async Task<IActionResult> ExportIncidentsToExcel()
     {
+        var scope = await _scopingService.GetScopeAsync(User);
         var incidents = await _context.Incidents
             .Where(i => !i.IsDeleted)
+            .ApplyAssignedUnitScope(scope)
             .Include(i => i.Process)
             .Include(i => i.Service)
             .OrderByDescending(i => i.ReportedAt)
@@ -341,8 +359,10 @@ public class ExportController : ControllerBase
     [HttpGet("improvements/excel")]
     public async Task<IActionResult> ExportImprovementsToExcel()
     {
+        var scope = await _scopingService.GetScopeAsync(User);
         var improvements = await _context.ImprovementInitiatives
             .Where(i => !i.IsDeleted)
+            .ApplyOwningUnitScope(scope)
             .Include(i => i.Process)
             .OrderByDescending(i => i.CreatedAt)
             .ToListAsync();

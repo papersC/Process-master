@@ -790,7 +790,8 @@ public class ImprovementsController : BaseController
     [Authorize(Policy = AppPolicies.Module.Improvement.Export)]
     public async Task<IActionResult> ExportXlsx()
     {
-        var bytes = await _exportSvc.ExportImprovementsToExcelAsync();
+        var scope = await _scopingService.GetScopeAsync(User);
+        var bytes = await _exportSvc.ExportImprovementsToExcelAsync(scope);
         var name = $"Improvements_{DateTime.UtcNow:yyyyMMdd_HHmm}.xlsx";
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", name);
     }
@@ -850,9 +851,11 @@ public class ImprovementsController : BaseController
 
     public async Task<IActionResult> DgepExcellenceExport()
     {
+        var scope = await _scopingService.GetScopeAsync(User);
         var initiatives = await _context.ImprovementInitiatives
             .AsNoTracking()
             .Where(i => !i.IsDeleted && (i.Status == ImprovementStatus.Completed || i.Status == ImprovementStatus.Closed))
+            .ApplyOwningUnitScope(scope)
             .Include(i => i.ImprovementProcesses).ThenInclude(ip => ip.Process)
             .Include(i => i.ImprovementServices).ThenInclude(isv => isv.Service)
             .OrderByDescending(i => i.CompletedDate ?? i.UpdatedAt)
@@ -1695,8 +1698,10 @@ public class ImprovementsController : BaseController
     [Authorize(Policy = AppPolicies.Module.Improvement.View)]
     public async Task<IActionResult> Roadmap()
     {
+        var scope = await _scopingService.GetScopeAsync(User);
         var improvements = await _context.ImprovementInitiatives
             .Where(i => !i.IsDeleted)
+            .ApplyOwningUnitScope(scope)
 	            .Include(i => i.ImprovementProcesses)
 	                .ThenInclude(ip => ip.Process)
 	            .Include(i => i.ImprovementServices)
