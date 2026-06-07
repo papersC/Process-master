@@ -339,11 +339,13 @@ public class IncidentsController : BaseController
 
     private async Task PopulateDropdowns()
     {
-        ViewBag.Services = new SelectList(await _context.Services.Where(s => !s.IsDeleted).ToListAsync(), "Id", "Name");
-        ViewBag.Processes = new SelectList(await _context.Processes.Where(p => !p.IsDeleted).ToListAsync(), "Id", "Name");
-        ViewBag.Assets = new SelectList(await _context.Assets.Where(a => !a.IsDeleted).ToListAsync(), "Id", "Name");
+        // Scope picker contents to what the caller can see (no-op for All-scope).
+        var scope = await _scopingService.GetScopeAsync(User);
+        ViewBag.Services = new SelectList(await _context.Services.Where(s => !s.IsDeleted).ApplyOwningUnitScope(scope).ToListAsync(), "Id", "Name");
+        ViewBag.Processes = new SelectList(await _context.Processes.Where(p => !p.IsDeleted).ApplyOwningUnitScope(scope).ToListAsync(), "Id", "Name");
+        ViewBag.Assets = new SelectList(await _context.Assets.Where(a => !a.IsDeleted).ApplyAssignedUnitScope(scope).ToListAsync(), "Id", "Name");
         ViewBag.OrganizationUnits = new SelectList(await _context.OrganizationUnits.Where(o => !o.IsDeleted).ToListAsync(), "Id", "Name");
-        ViewBag.Problems = new SelectList(await _context.Problems.Where(p => !p.IsDeleted).ToListAsync(), "Id", "ProblemNumber");
+        ViewBag.Problems = new SelectList(await _context.Problems.Where(p => !p.IsDeleted).ApplyAssignedUnitScope(scope).ToListAsync(), "Id", "ProblemNumber");
     }
 
     private async Task<bool> IncidentExists(string id)
