@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using ESEMS.Web.Data;
+using ESEMS.Web.Extensions;
 using ESEMS.Web.Services.AI;
 using ESEMS.Web.Services.AI.Prompts;
 using ESEMS.Web.Services.Bpmn;
@@ -142,9 +143,13 @@ public class AIController : BaseController
             .Select(g => new { ProcessId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.ProcessId, x => x.Count);
 
-        // Get Processes (L3 - Process level) with counts and BPMN presence
+        // Get Processes (L3 - Process level) with counts and BPMN presence.
+        // SCOPE: only the caller's in-scope processes — the analyzer dropdown must
+        // not expose other units' process inventory. No-op for All-scope users.
+        var scope = await _scopingService.GetScopeAsync(User);
         var processesRaw = await _context.Processes
             .Where(p => !p.IsDeleted)
+            .ApplyOwningUnitScope(scope)
             .OrderBy(p => p.Code)
             .Select(p => new
             {
@@ -417,6 +422,10 @@ Guidelines:
             if (process == null)
                 return NotFound();
 
+            // SEC (IDOR): record-level scope — don't generate suggestions for a
+            // process outside the caller's scope.
+            if (!(await _scopingService.GetScopeAsync(User)).CanAccess(process)) return NotFound();
+
             var suggestions = await _aiService.GenerateProcessImprovementSuggestionsAsync(
                 process.Name,
                 process.Description ?? "",
@@ -442,10 +451,15 @@ Guidelines:
         try
         {
             var risk = await _context.ProcessRisks
+                .Include(r => r.Process)
                 .FirstOrDefaultAsync(r => r.Id == riskId);
 
             if (risk == null)
                 return NotFound();
+
+            // SEC (IDOR): scope via the parent process — don't analyze a risk that
+            // belongs to a process outside the caller's scope.
+            if (risk.Process != null && !(await _scopingService.GetScopeAsync(User)).CanAccess(risk.Process)) return NotFound();
 
             var analysis = await _aiService.AnalyzeRiskAndSuggestMitigationAsync(
                 risk.Description ?? "",
@@ -625,6 +639,8 @@ Guidelines:
         {
             var problem = await _context.Problems.FirstOrDefaultAsync(p => p.Id == problemId && !p.IsDeleted);
             if (problem == null) return NotFound();
+            // SEC (IDOR): don't analyze an out-of-scope problem.
+            if (!(await _scopingService.GetScopeAsync(User)).CanAccess(problem)) return NotFound();
             var name = problem.GetLocalizedName(); var desc = problem.GetLocalizedDescription();
             var prompt = $"Perform a Root Cause Analysis (RCA) or 5 Whys on this problem: {name} - {desc}. Suggest permanent fixes and workarounds. Format in clean markdown without fences.{GetLanguageInstruction()}";
             var analysis = await _aiService.ChatAsync(prompt, new List<(string, string)> { ("system", "You are a Problem Management expert for MBRHE.") });
@@ -641,6 +657,8 @@ Guidelines:
         {
             var change = await _context.ChangeRequests.FirstOrDefaultAsync(c => c.Id == changeRequestId && !c.IsDeleted);
             if (change == null) return NotFound();
+            // SEC (IDOR): don't analyze an out-of-scope change request.
+            if (!(await _scopingService.GetScopeAsync(User)).CanAccess(change)) return NotFound();
             var culture = CultureInfo.CurrentUICulture.Name.StartsWith("ar") ? "ar" : "en";
             var cacheKey = $"ai:cr:{changeRequestId}:{change.UpdatedAt.Ticks}:{culture}";
             var (analysis, cached) = await GetOrCreateAnalysisAsync(cacheKey, async () =>
@@ -1024,12 +1042,17 @@ Please optimize this prompt to generate a better BPMN diagram. Make it more deta
             return (answer, links);
 
         // Batched DB resolution — one round-trip per entity type, only when codes were found.
+        // SCOPE: never resolve a code the caller can't see into a clickable link —
+        // that would leak the existence + name of an out-of-scope record. No-op for
+        // All-scope users.
+        var scope = await _scopingService.GetScopeAsync(User);
         var resolved = new Dictionary<string, (string Url, string Label)>(StringComparer.OrdinalIgnoreCase);
 
         if (rskCodes.Count > 0)
         {
             var rows = await _context.EnterpriseRisks
                 .Where(r => rskCodes.Contains(r.RiskNumber) && !r.IsDeleted)
+                .ApplyOrganizationScope(scope)
                 .Select(r => new { r.RiskNumber, r.Id, r.NameEn, r.NameAr }).ToListAsync();
             foreach (var r in rows) resolved[r.RiskNumber] = ($"/EnterpriseRisks/Details/{r.Id}", r.NameEn ?? r.NameAr ?? r.RiskNumber);
         }
@@ -1037,6 +1060,7 @@ Please optimize this prompt to generate a better BPMN diagram. Make it more deta
         {
             var rows = await _context.ChangeRequests
                 .Where(c => crCodes.Contains(c.Code) && !c.IsDeleted)
+                .ApplyOwningUnitScope(scope)
                 .Select(c => new { c.Code, c.Id, c.NameEn, c.NameAr }).ToListAsync();
             foreach (var c in rows) resolved[c.Code] = ($"/ChangeRequests/Details/{c.Id}", c.NameEn ?? c.NameAr ?? c.Code);
         }
@@ -1044,6 +1068,7 @@ Please optimize this prompt to generate a better BPMN diagram. Make it more deta
         {
             var rows = await _context.Services
                 .Where(s => svcCodes.Contains(s.Code) && !s.IsDeleted)
+                .ApplyOwningUnitScope(scope)
                 .Select(s => new { s.Code, s.Id, s.NameEn, s.NameAr }).ToListAsync();
             foreach (var s in rows) resolved[s.Code] = ($"/Services/Details/{s.Id}", s.NameEn ?? s.NameAr ?? s.Code);
         }
@@ -1051,6 +1076,7 @@ Please optimize this prompt to generate a better BPMN diagram. Make it more deta
         {
             var rows = await _context.Assets
                 .Where(a => astCodes.Contains(a.AssetTag) && !a.IsDeleted)
+                .ApplyAssignedUnitScope(scope)
                 .Select(a => new { a.AssetTag, a.Id, a.NameEn, a.NameAr }).ToListAsync();
             foreach (var a in rows) resolved[a.AssetTag] = ($"/Assets/Details/{a.Id}", a.NameEn ?? a.NameAr ?? a.AssetTag);
         }
@@ -1058,6 +1084,7 @@ Please optimize this prompt to generate a better BPMN diagram. Make it more deta
         {
             var rows = await _context.ImprovementInitiatives
                 .Where(i => impCodes.Contains(i.Code) && !i.IsDeleted)
+                .ApplyOwningUnitScope(scope)
                 .Select(i => new { i.Code, i.Id, i.TitleEn, i.TitleAr }).ToListAsync();
             foreach (var i in rows) resolved[i.Code] = ($"/Improvements/Details/{i.Id}", i.TitleEn ?? i.TitleAr ?? i.Code);
         }

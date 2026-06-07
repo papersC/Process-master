@@ -2,11 +2,13 @@ using System.Linq;
 using System.Security.Claims;
 using ESEMS.Web;
 using ESEMS.Web.Controllers;
+using ESEMS.Web.Data;
 using ESEMS.Web.Models.APQC;
 using ESEMS.Web.Models.AssetManagement;
 using ESEMS.Web.Models.Enums;
 using ESEMS.Web.Models.Improvement;
 using ESEMS.Web.Models.RiskManagement;
+using ESEMS.Web.Models.ServiceManagement;
 using ESEMS.Web.Models.Services;
 using ESEMS.Web.Models.WorkloadAnalysis;
 using ESEMS.Web.Services.Common;
@@ -201,6 +203,64 @@ public class IdorScopeGuardTests
 
         var result = await controller.AnalyzeProcess(new ProcessAnalysisRequest { ProcessId = "p-ai-b" });
         Assert.IsType<NotFoundResult>(result);
+    }
+
+    // ── AI IDOR guards added by the scoping audit ─────────────────────────
+    // Each loads a scoped entity by id then analyzes it; an out-of-scope id
+    // must 404 BEFORE the (null) AI service is touched.
+
+    private static AIController NewAi(ApplicationDbContext db, IMemoryCache cache) =>
+        new(aiService: null!, db, NullLogger<AIController>.Instance,
+            bpmnService: null!, analysisService: null!, cache, new ScopingService(db, cache));
+
+    [Fact]
+    public async Task GenerateProcessImprovements_OutOfScope_Returns404()
+    {
+        using var db = TestDbContextFactory.Create();
+        db.Processes.Add(new Process { Id = "gpi-b", Code = "GPI-B", NameEn = "p", NameAr = "ب", OwningUnitId = UnitB });
+        await db.SaveChangesAsync();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var c = NewAi(db, cache);
+        Attach(c, Principal("OwningUnit", UnitA));
+        Assert.IsType<NotFoundResult>(await c.GenerateProcessImprovements("gpi-b"));
+    }
+
+    [Fact]
+    public async Task AnalyzeProblem_OutOfScope_Returns404()
+    {
+        using var db = TestDbContextFactory.Create();
+        db.Problems.Add(new Problem { Id = "prob-b", ProblemNumber = "PRB-B", NameEn = "p", NameAr = "ب", AssignedToUnitId = UnitB, IsDeleted = false });
+        await db.SaveChangesAsync();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var c = NewAi(db, cache);
+        Attach(c, Principal("OwningUnit", UnitA));
+        Assert.IsType<NotFoundResult>(await c.AnalyzeProblem("prob-b"));
+    }
+
+    [Fact]
+    public async Task AnalyzeChangeRequest_OutOfScope_Returns404()
+    {
+        using var db = TestDbContextFactory.Create();
+        db.ChangeRequests.Add(new ChangeRequest { Id = "cr-b", Code = "CR-B", NameEn = "c", NameAr = "ب", OwningUnitId = UnitB, IsDeleted = false });
+        await db.SaveChangesAsync();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var c = NewAi(db, cache);
+        Attach(c, Principal("OwningUnit", UnitA));
+        Assert.IsType<NotFoundResult>(await c.AnalyzeChangeRequest("cr-b"));
+    }
+
+    [Fact]
+    public async Task AnalyzeRisk_OnOutOfScopeProcess_Returns404()
+    {
+        using var db = TestDbContextFactory.Create();
+        // ProcessRisk scopes via its parent process (owned by B → out of scope).
+        db.Processes.Add(new Process { Id = "prp-b", Code = "PRP-B", NameEn = "p", NameAr = "ب", OwningUnitId = UnitB });
+        db.ProcessRisks.Add(new ProcessRisk { Id = "prisk-b", ProcessId = "prp-b", NameEn = "r", NameAr = "ر" });
+        await db.SaveChangesAsync();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var c = NewAi(db, cache);
+        Attach(c, Principal("OwningUnit", UnitA));
+        Assert.IsType<NotFoundResult>(await c.AnalyzeRisk("prisk-b"));
     }
 
     // ── F-008: AssetsController/GetAvailableRisks record scope ─────────────
