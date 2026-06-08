@@ -234,5 +234,57 @@ public static class PreMigrationBootstrap
                 CREATE INDEX [IX_Notifications_UserId] ON [dbo].[Notifications] ([UserId]);
             END
             """, cancellationToken);
+
+        // RoleGroups + UserRoleGroups (Plan X RBAC). These are created by raw
+        // SQL in Program.cs that runs AFTER migrations, but the
+        // DropLegacyRoleTables migration (20260526093839) INSERTs the four
+        // parity role groups DURING MigrateAsync. On a greenfield database that
+        // INSERT hit a table that did not exist yet — startup died with
+        // "Invalid object name 'dbo.RoleGroups'". Create both here, before
+        // MigrateAsync, so the migration's seed + backfill find them. Idempotent
+        // (IF NOT EXISTS) — a no-op on any DB where Program.cs already made them.
+        // RoleGroups carries IsSystemRole + Code inline because the migration's
+        // INSERT sets those columns (Program.cs adds them via a later ALTER).
+        // UserRoleGroups FKs only to RoleGroups (no user-table dependency — see
+        // Program.cs), so it is safe to create this early on a greenfield DB.
+        await db.ExecuteSqlRawAsync("""
+            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'RoleGroups')
+            BEGIN
+                CREATE TABLE [dbo].[RoleGroups] (
+                    [Id] NVARCHAR(450) NOT NULL PRIMARY KEY,
+                    [NameEn] NVARCHAR(200) NOT NULL DEFAULT '',
+                    [NameAr] NVARCHAR(200) NOT NULL DEFAULT '',
+                    [DescriptionEn] NVARCHAR(500) NULL,
+                    [DescriptionAr] NVARCHAR(500) NULL,
+                    [ScopeLevel] NVARCHAR(50) NOT NULL DEFAULT 'All',
+                    [Permissions] NVARCHAR(MAX) NULL,
+                    [Icon] NVARCHAR(100) NOT NULL DEFAULT 'users',
+                    [Color] NVARCHAR(20) NOT NULL DEFAULT '#005B99',
+                    [IsActive] BIT NOT NULL DEFAULT 1,
+                    [MemberCount] INT NOT NULL DEFAULT 0,
+                    [IsSystemRole] BIT NOT NULL DEFAULT 0,
+                    [Code] NVARCHAR(100) NULL,
+                    [CreatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                    [UpdatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+                );
+            END
+            """, cancellationToken);
+
+        await db.ExecuteSqlRawAsync("""
+            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'UserRoleGroups')
+            BEGIN
+                CREATE TABLE [dbo].[UserRoleGroups] (
+                    [Id] NVARCHAR(450) NOT NULL PRIMARY KEY,
+                    [UserId] INT NOT NULL,
+                    [RoleGroupId] NVARCHAR(450) NOT NULL,
+                    [AssignedBy] INT NULL,
+                    [AssignedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                    CONSTRAINT [FK_UserRoleGroups_RoleGroups]
+                        FOREIGN KEY ([RoleGroupId]) REFERENCES [dbo].[RoleGroups] ([Id]) ON DELETE CASCADE
+                );
+                CREATE UNIQUE INDEX [IX_UserRoleGroups_User_Group] ON [dbo].[UserRoleGroups] ([UserId], [RoleGroupId]);
+                CREATE INDEX [IX_UserRoleGroups_UserId] ON [dbo].[UserRoleGroups] ([UserId]);
+            END
+            """, cancellationToken);
     }
 }
