@@ -1098,6 +1098,10 @@
                             <i data-lucide="briefcase" class="h-4 w-4 flex-shrink-0"></i>
                             <span class="nav-label">@(isRtl ? "المسميات الوظيفية" : "Job Positions")</span>
                         </a>
+                        <a asp-controller="Systems" asp-action="Index" class="nav-link flex items-center gap-3 px-4 py-2 text-sm transition-colors @(currentController == "Systems" ? "bg-primary-800 text-white" : "text-primary-200 hover:bg-primary-600 hover:text-white")" style="padding-inline-start: 3rem;">
+                            <i data-lucide="server" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="nav-label">@(isRtl ? "الأنظمة" : "Systems")</span>
+                        </a>
                     </div>
                 </div>
 	                </nav>

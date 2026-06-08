@@ -1,0 +1,92 @@
+@model ESEMS.Web.Models.Services.SystemDefinition
+@{
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+}
+
+<style>
+    .pc-shell { display:flex; flex-direction:column; gap:.7rem; max-width:820px; }
+    .pc-header { display:flex; align-items:center; justify-content:space-between; padding:.25rem 0 .4rem; border-bottom:1px solid #e5e7eb; }
+    .pc-header h1 { margin:0; font-size:var(--fs-base); font-weight:600; color:#111827; display:flex; align-items:center; gap:.5rem; }
+    .pc-card { background:#fff; border:1px solid #e5e7eb; border-radius:.5rem; padding:.9rem 1rem; display:flex; flex-direction:column; gap:.7rem; }
+    .pc-row { display:flex; flex-direction:column; gap:.25rem; }
+    .pc-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:.7rem; }
+    .pc-label { font-size:var(--fs-xs); font-weight:600; color:#374151; }
+    .pc-input, .pc-select { width:100%; padding:.42rem .55rem; border:1px solid #d1d5db; border-radius:.375rem; font-size:var(--fs-sm); }
+    .pc-help { font-size:var(--fs-xs); color:#6b7280; }
+    .pc-actions { display:flex; gap:.5rem; justify-content:flex-end; }
+    .pc-btn { padding:.45rem 1rem; border-radius:.375rem; font-size:var(--fs-sm); font-weight:600; cursor:pointer; border:none; text-decoration:none; }
+    .pc-btn-primary { background:#005B99; color:#fff; }
+    .pc-btn-secondary { background:#fff; color:#374151; border:1px solid #d1d5db; }
+    .pc-err { color:#b91c1c; font-size:var(--fs-xs); }
+</style>
+
+<div class="pc-grid-2">
+    <div class="pc-row">
+        <label asp-for="Code" class="pc-label">@(isRtl ? "الرمز" : "Code")</label>
+        <input asp-for="Code" class="pc-input" readonly />
+        <div class="pc-help">@(isRtl ? "يُولّد تلقائياً." : "Auto-generated.")</div>
+    </div>
+    <div class="pc-row">
+        <label asp-for="DisplayOrder" class="pc-label">@(isRtl ? "الترتيب" : "Display Order")</label>
+        <input asp-for="DisplayOrder" type="number" class="pc-input" />
+    </div>
+</div>
+
+<div class="pc-grid-2">
+    <div class="pc-row">
+        <label asp-for="NameEn" class="pc-label">@(isRtl ? "الاسم (إنجليزي)" : "Name (English)") <span style="color:#b91c1c;">*</span></label>
+        <input asp-for="NameEn" class="pc-input" placeholder="@(isRtl ? "مثال: ERP System" : "e.g. ERP System")" />
+        <span asp-validation-for="NameEn" class="pc-err"></span>
+    </div>
+    <div class="pc-row">
+        <label asp-for="NameAr" class="pc-label">@(isRtl ? "الاسم (عربي)" : "Name (Arabic)") <span style="color:#b91c1c;">*</span></label>
+        <input asp-for="NameAr" dir="rtl" class="pc-input" placeholder="@(isRtl ? "مثل: نظام تخطيط الموارد" : "e.g. نظام تخطيط الموارد")" />
+        <span asp-validation-for="NameAr" class="pc-err"></span>
+    </div>
+</div>
+
+<div class="pc-grid-2">
+    <div class="pc-row">
+        <label asp-for="SystemType" class="pc-label">@(isRtl ? "النوع" : "Type")</label>
+        <input asp-for="SystemType" class="pc-input" placeholder="@(isRtl ? "مثال: ERP، CRM، BPM" : "e.g. ERP, CRM, BPM")" />
+    </div>
+    <div class="pc-row">
+        <label asp-for="Vendor" class="pc-label">@(isRtl ? "المورّد" : "Vendor")</label>
+        <input asp-for="Vendor" class="pc-input" placeholder="@(isRtl ? "مثال: SAP، Oracle" : "e.g. SAP, Oracle")" />
+    </div>
+</div>
+
+<div class="pc-grid-2">
+    <div class="pc-row">
+        <label asp-for="SystemVersion" class="pc-label">@(isRtl ? "الإصدار" : "Version")</label>
+        <input asp-for="SystemVersion" class="pc-input" />
+    </div>
+    <div class="pc-row">
+        <label asp-for="Url" class="pc-label">@(isRtl ? "الرابط" : "URL")</label>
+        <input asp-for="Url" type="url" class="pc-input" placeholder="https://" />
+    </div>
+</div>
+
+<div class="pc-grid-2">
+    <div class="pc-row">
+        <label asp-for="DescriptionEn" class="pc-label">@(isRtl ? "الوصف (إنجليزي)" : "Description (English)")</label>
+        <textarea asp-for="DescriptionEn" class="pc-input" rows="2"></textarea>
+    </div>
+    <div class="pc-row">
+        <label asp-for="DescriptionAr" class="pc-label">@(isRtl ? "الوصف (عربي)" : "Description (Arabic)")</label>
+        <textarea asp-for="DescriptionAr" dir="rtl" class="pc-input" rows="2"></textarea>
+    </div>
+</div>
+
+<div class="pc-row">
+    <label asp-for="SupportContact" class="pc-label">@(isRtl ? "جهة الدعم" : "Support Contact")</label>
+    <input asp-for="SupportContact" class="pc-input" placeholder="@(isRtl ? "بريد إلكتروني أو هاتف" : "email or phone")" />
+</div>
+
+<div class="pc-row">
+    <label class="pc-label">
+        <input asp-for="IsActive" type="checkbox" />
+        @(isRtl ? "نشط (قابل للاختيار في القوائم)" : "Active (selectable in dropdowns)")
+    </label>
+</div>

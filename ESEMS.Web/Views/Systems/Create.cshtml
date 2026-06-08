@@ -1,0 +1,26 @@
+@model ESEMS.Web.Models.Services.SystemDefinition
+@{
+    var culture = System.Globalization.CultureInfo.CurrentCulture.Name;
+    var isRtl = culture.StartsWith("ar");
+    ViewData["Title"] = isRtl ? "نظام جديد" : "New System";
+}
+
+<div class="pc-shell">
+    <div class="pc-header">
+        <h1><i data-lucide="server" class="w-5 h-5" style="color:#005B99;"></i>@(isRtl ? "نظام جديد" : "New System")</h1>
+        <a asp-action="Index" class="pc-btn pc-btn-secondary">@(isRtl ? "إلغاء" : "Cancel")</a>
+    </div>
+
+    <form asp-action="Create" method="post" class="pc-card">
+        @Html.AntiForgeryToken()
+        <partial name="_Form" model="Model" />
+        <div class="pc-actions">
+            <a asp-action="Index" class="pc-btn pc-btn-secondary">@(isRtl ? "إلغاء" : "Cancel")</a>
+            <button type="submit" class="pc-btn pc-btn-primary">@(isRtl ? "حفظ" : "Save")</button>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
