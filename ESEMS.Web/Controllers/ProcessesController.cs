@@ -501,6 +501,13 @@ public class ProcessesController : BaseController
             await CreateBpmnVersionRecord(id, request.BpmnXml, request.ChangeDescription);
 
             process.BpmnDiagram = request.BpmnXml;
+            // Persist the editor's whole-diagram font choice (render-only in
+            // bpmn-js, so it never lands in the XML). Only overwrite when the
+            // client actually sent a value, so an older client can't wipe it.
+            if (request.FontSize is > 0)
+                process.BpmnFontSize = request.FontSize;
+            if (!string.IsNullOrWhiteSpace(request.FontFamily))
+                process.BpmnFontFamily = request.FontFamily;
             process.UpdatedAt = DateTime.UtcNow;
             process.UpdatedById = User.Identity?.Name;
 
@@ -2021,4 +2028,10 @@ public class UpdateBpmnRequest
 {
     public string BpmnXml { get; set; } = string.Empty;
     public string? ChangeDescription { get; set; }
+
+    /// <summary>Whole-diagram label font size (px) chosen in the editor toolbar. Null = leave unchanged.</summary>
+    public int? FontSize { get; set; }
+
+    /// <summary>Whole-diagram label font family chosen in the editor toolbar. Null/blank = leave unchanged.</summary>
+    public string? FontFamily { get; set; }
 }

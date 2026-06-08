@@ -1318,6 +1318,18 @@ if (!app.Environment.IsEnvironment("Testing"))
             ALTER TABLE [dbo].[Processes] ADD [ParentProcessId] NVARCHAR(450) NULL;
             CREATE INDEX [IX_Processes_ParentProcessId] ON [dbo].[Processes] ([ParentProcessId]);
         END
+
+        -- BPMN editor remembers the whole-diagram label font (size + family)
+        -- chosen in the toolbar. bpmn-js applies it as a render-time default
+        -- that never lands in the BPMN XML, so we persist it on the Process.
+        -- MUST be added here — before HierarchicalCodeMigration (below) issues
+        -- the first EF query against Processes — so the EF model (which now
+        -- maps these columns) and the table agree on the first boot after the
+        -- model change. Otherwise startup crashes with 'Invalid column name'.
+        IF COL_LENGTH('dbo.Processes', 'BpmnFontSize') IS NULL
+            ALTER TABLE [dbo].[Processes] ADD [BpmnFontSize] INT NULL;
+        IF COL_LENGTH('dbo.Processes', 'BpmnFontFamily') IS NULL
+            ALTER TABLE [dbo].[Processes] ADD [BpmnFontFamily] NVARCHAR(64) NULL;
     ");
 
     // One-shot data migration. Runs every boot but is idempotent: any row

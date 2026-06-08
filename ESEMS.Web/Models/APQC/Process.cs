@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using ESEMS.Web.Models.Common;
 using ESEMS.Web.Models.Enums;
 using ESEMS.Web.Models.Services;
@@ -77,6 +78,22 @@ public class Process : MeasurableEntity, IOwnedByUnit
     /// BPMN diagram file path
     /// </summary>
     public string? BpmnFilePath { get; set; }
+
+    /// <summary>
+    /// Whole-diagram label font size (px) chosen in the BPMN editor toolbar.
+    /// bpmn-js applies this as a render-time textRenderer default; it is not
+    /// part of the BPMN XML, so we persist it here to survive reload/export.
+    /// Null falls back to the editor default (12px).
+    /// </summary>
+    public int? BpmnFontSize { get; set; }
+
+    /// <summary>
+    /// Whole-diagram label font family chosen in the BPMN editor toolbar
+    /// (e.g. "Tahoma, sans-serif"). Companion to <see cref="BpmnFontSize"/>;
+    /// null falls back to the editor default ("Arial, sans-serif").
+    /// </summary>
+    [MaxLength(64)]
+    public string? BpmnFontFamily { get; set; }
 
     /// <summary>
     /// Linked strategic objective ID

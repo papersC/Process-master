@@ -906,8 +906,12 @@
     // ── Font helpers ──────────────────────────────────────────────────
     async function reinitWithFont() {
         if (!modeler) return;
-        // Save current diagram
-        const xml = await getCurrentXML();
+        // Save current diagram. `let` (not `const`) — it gets reassigned to
+        // the entity-decoded XML below before re-import. With `const` the
+        // reassignment threw "Assignment to constant variable", which (since
+        // the old modeler was already destroyed) aborted every font change
+        // and left the canvas blank.
+        let xml = await getCurrentXML();
         if (!xml) return;
 
         // Destroy old instance

@@ -1842,3 +1842,17 @@ html[dir="rtl"] [data-lucide="arrow-right"] svg,
 html[dir="rtl"] svg[data-lucide="arrow-right"] {
     transform: scaleX(-1);
 }
+
+/* ── BPMN editor: RTL-safe label / text-annotation typing ─────────────
+   The Arabic theme sets a global `direction: rtl`. bpmn-js's inline
+   label editor (the `.djs-direct-editing-content` contenteditable box
+   shown while you type into a shape or text annotation) sets text-align
+   and font inline but never sets `direction`, so the page's rtl base
+   direction leaked into it and fought the box alignment — Arabic and
+   mixed text jumped around and "looked funny" while writing.
+   `unicode-bidi: plaintext` makes the box take its direction from the
+   text actually being typed (Arabic → RTL, Latin → LTR), which matches
+   how bpmn-js measures and renders the final SVG label. */
+.djs-direct-editing-content {
+    unicode-bidi: plaintext;
+}

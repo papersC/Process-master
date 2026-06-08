@@ -1712,6 +1712,25 @@
                 let isEditMode = false;
                 let currentBpmnInstance = null;
 
+                // Whole-diagram label font, persisted per-process server-side
+                // (bpmn-js applies it as a render-time default that never lands
+                // in the BPMN XML). Seeded from the saved values so BOTH the
+                // read-only viewer and the editor render in the chosen font, and
+                // sent back on Save so it round-trips. Declared here — before the
+                // first viewer is built — so buildViewer()/buildModeler() can use
+                // them without a temporal-dead-zone error.
+                let pdFontSize = @(Model.BpmnFontSize ?? 12);
+                let pdFontFamily = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(string.IsNullOrWhiteSpace(Model.BpmnFontFamily) ? "Arial, sans-serif" : Model.BpmnFontFamily));
+
+                // Reflect the persisted font in the toolbar labels (their HTML
+                // markup defaults to 12px / Arial).
+                (function () {
+                    var fsLabel = document.getElementById('pdFontSizeLabel');
+                    if (fsLabel) fsLabel.textContent = pdFontSize + 'px';
+                    var ffLabel = document.getElementById('pdFontFamilyLabel');
+                    if (ffLabel) ffLabel.textContent = (pdFontFamily.split(',')[0] || 'Arial').replace(/['"]/g, '').trim();
+                })();
+
                 // bpmn-js's canvas.zoom('fit-viewport') divides by the SVG
                 // container's width/height. If the container is laid out as
                 // 0×0 at the moment we call it (initial paint not done, tab
@@ -1733,10 +1752,8 @@
                     }
                 }
 
-                // Initialize viewer
-                viewer = new BpmnJS({
-                    container: '#bpmnCanvas'
-                });
+                // Initialize viewer (in the persisted diagram font)
+                viewer = buildViewer();
                 currentBpmnInstance = viewer;
 
                 async function loadDiagram() {
@@ -1762,20 +1779,29 @@
                     }
                 }
 
-                // Track current text styling — used when re-creating the
-                // modeler on Edit toggle / font change so the new instance
-                // renders shapes with the chosen font.
-                let pdFontSize = 12;
-                let pdFontFamily = 'Arial, sans-serif';
-
+                // buildModeler / buildViewer re-instantiate bpmn-js with the
+                // chosen font. textRenderer is a construction-time option (the
+                // documented way to change label defaults), so a font change
+                // means rebuilding the instance. pdFontSize / pdFontFamily are
+                // declared at the top of this IIFE (seeded from the persisted
+                // values), so the viewer and the editor always agree.
                 function buildModeler() {
-                    // textRenderer overrides apply to every shape that doesn't
-                    // declare its own bpmndi:BPMNLabelStyle. Re-instantiating
-                    // is the documented bpmn-js pattern for changing defaults
-                    // (mirrors AI editor's reinitWithFont).
                     return new BpmnJS({
                         container: '#bpmnCanvas',
                         keyboard: { bindTo: document },
+                        textRenderer: {
+                            defaultStyle:  { fontSize: pdFontSize, fontFamily: pdFontFamily },
+                            externalStyle: { fontSize: pdFontSize, fontFamily: pdFontFamily }
+                        }
+                    });
+                }
+
+                function buildViewer() {
+                    // Read-only instance used outside edit mode. Same font as the
+                    // editor so the diagram doesn't snap back to 12px/Arial after
+                    // a save or when leaving edit mode.
+                    return new BpmnJS({
+                        container: '#bpmnCanvas',
                         textRenderer: {
                             defaultStyle:  { fontSize: pdFontSize, fontFamily: pdFontFamily },
                             externalStyle: { fontSize: pdFontSize, fontFamily: pdFontFamily }
@@ -1836,10 +1862,8 @@
                             modeler = null;
                         }
 
-                        // Recreate viewer
-                        viewer = new BpmnJS({
-                            container: '#bpmnCanvas'
-                        });
+                        // Recreate viewer (in the persisted diagram font)
+                        viewer = buildViewer();
                         currentBpmnInstance = viewer;
 
                         // Load original diagram
@@ -1885,7 +1909,7 @@
                                 'Content-Type': 'application/json',
                                 'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
                             },
-                            body: JSON.stringify({ bpmnXml: xml })
+                            body: JSON.stringify({ bpmnXml: xml, fontSize: pdFontSize, fontFamily: pdFontFamily })
                         });
 
                         const result = await response.json();
@@ -1923,8 +1947,13 @@
                             text: '@(isRtl ? "خطأ في حفظ المخطط" : "Error saving diagram")' + ': ' + err.message,
                             confirmButtonText: '@(isRtl ? "حسناً" : "OK")'
                         });
-
-                        // Reset button state
+                    } finally {
+                        // Always restore the button to its idle state. On the
+                        // success path disableEditMode() only *hides* this button,
+                        // so without this reset it stayed disabled with its spinner
+                        // still spinning — and the next "Edit" revealed a stuck,
+                        // spinning, un-clickable Save button (the "cycles forever
+                        // on the second save" bug).
                         saveBtn.disabled = false;
                         btnText.classList.remove('d-none');
                         spinner.classList.add('d-none');
