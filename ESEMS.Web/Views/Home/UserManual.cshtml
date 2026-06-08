@@ -21,13 +21,6 @@
         new { Id = "shortcuts",          Icon = "keyboard",        En = "Keyboard Shortcuts",    Ar = "اختصارات لوحة المفاتيح" }
     };
 
-    // Sections without full content yet — get a "coming soon" placeholder
-    // so master-detail navigation still works for them.
-    var stubSections = new HashSet<string>
-    {
-        "process-management", "asset-risk", "improvement",
-        "incident-problem", "customer-feedback", "ai-features", "shortcuts"
-    };
 }
 
 @*  Master-detail manual. Left = TOC list with search filter; right =
@@ -287,20 +280,191 @@
                 </div>
             </section>
 
-            @* — Coming-soon stubs for the remaining 7 sections — *@
-            @foreach (var s in sections.Where(x => stubSections.Contains(x.Id)))
-            {
-                <section class="um-section" data-section="@s.Id">
-                    <div class="um-sec-head">
-                        <span class="um-sec-icon"><i data-lucide="@s.Icon" aria-hidden="true"></i></span>
-                        <span class="um-sec-title">@(isRtl ? s.Ar : s.En)</span>
+            @* — Section: Process Management — *@
+            <section class="um-section" data-section="process-management">
+                <div class="um-sec-head">
+                    <span class="um-sec-icon"><i data-lucide="workflow" aria-hidden="true"></i></span>
+                    <span class="um-sec-title">@(isRtl ? "إدارة العمليات" : "Process Management")</span>
+                </div>
+                <div class="um-content">
+                    <p>@(isRtl ? "تتيح وحدة العمليات توثيق ونمذجة عمليات المؤسسة وفق معيار BPMN 2.0، وتنظيمها في تسلسل هرمي، وربطها بالخدمات والمخاطر والأنشطة." : "The Processes module lets you document and model your organisation's processes using the BPMN 2.0 standard, organise them into a hierarchy, and link them to services, risks, and activities.")</p>
+
+                    <h5>@(isRtl ? "التسلسل الهرمي للعمليات" : "Process Hierarchy")</h5>
+                    <p>@(isRtl ? "تُنظَّم العمليات في مستويات: مجموعات العمليات، ثم العمليات الرئيسية، ثم العمليات الفرعية. استخدم صفحة التسلسل الهرمي للتنقل بينها." : "Processes are organised in levels: process groups, then main processes, then sub-processes. Use the Process Hierarchy page to navigate between them.")</p>
+
+                    <h5>@(isRtl ? "محرر مخططات BPMN" : "The BPMN Diagram Editor")</h5>
+                    <p>@(isRtl ? "افتح أي عملية، انتقل إلى تبويب BPMN وانقر 'تعديل' لرسم المخطط أو تعديله:" : "Open any process, go to the BPMN tab, and click Edit to draw or modify the diagram:")</p>
+                    <ul>
+                        <li>@(isRtl ? "اسحب العناصر (الأحداث، المهام، البوابات) من اللوحة الجانبية." : "Drag elements (events, tasks, gateways) from the side palette.")</li>
+                        <li>@(isRtl ? "أضف المسابح والمسارات (أفقية أو عمودية) لتمثيل الإدارات." : "Add pools and lanes (horizontal or vertical) to represent departments.")</li>
+                        <li>@(isRtl ? "غيّر الألوان وحجم الخط ونوعه من شريط الأدوات." : "Change colours, font size, and font family from the toolbar.")</li>
+                        <li>@(isRtl ? "انقر 'حفظ' لتخزين المخطط — يُحفظ كل إصدار في سجل الإصدارات." : "Click Save to store the diagram — every save is kept in the version history.")</li>
+                    </ul>
+
+                    <h5>@(isRtl ? "التوليد بالذكاء الاصطناعي" : "AI Generation")</h5>
+                    <p>@(isRtl ? "من صفحة 'مخططات الذكاء الاصطناعي'، أدخل اسم العملية ووصفها ودع الذكاء الاصطناعي يرسم المخطط. يمكنك اختيار التخطيط الأفقي أو العمودي قبل التوليد." : "From the AI Diagrams page, enter a process name and description and let AI draft the diagram. You can choose a horizontal or vertical layout before generating.")</p>
+
+                    <div class="um-tip">
+                        <strong>@(isRtl ? "نصيحة:" : "Tip:")</strong>
+                        @(isRtl ? "استخدم زر 'تحسين الرسم' لإعادة ترتيب الأسهم والعناصر تلقائياً للحصول على مخطط أنظف." : "Use the 'Enhance Drawing' button to auto-tidy arrows and elements for a cleaner diagram.")
                     </div>
-                    <div class="um-stub">
-                        <i data-lucide="file-clock" class="w-10 h-10" aria-hidden="true"></i>
-                        <p>@(isRtl ? "هذا القسم قيد الإعداد. زر الوحدة مباشرة من القائمة الجانبية للاطلاع على المزيد." : "This section is being prepared. Open the module directly from the sidebar menu for the latest features.")</p>
+                    <div class="um-warn">
+                        <strong>@(isRtl ? "ملاحظة:" : "Note:")</strong>
+                        @(isRtl ? "احفظ المخطط بعد كل تعديل. عند إعادة الفتح من العمليات أو من مخططات الذكاء الاصطناعي ستظهر آخر نسخة محفوظة." : "Save after each edit. Re-opening from Processes or from AI Diagrams shows the latest saved version.")
                     </div>
-                </section>
-            }
+                </div>
+            </section>
+
+            @* — Section: Assets & Risks — *@
+            <section class="um-section" data-section="asset-risk">
+                <div class="um-sec-head">
+                    <span class="um-sec-icon"><i data-lucide="shield-alert" aria-hidden="true"></i></span>
+                    <span class="um-sec-title">@(isRtl ? "الأصول والمخاطر" : "Assets & Risks")</span>
+                </div>
+                <div class="um-content">
+                    <h5>@(isRtl ? "إدارة الأصول" : "Asset Management")</h5>
+                    <p>@(isRtl ? "يحتفظ سجل الأصول بجميع الأصول المؤسسية مصنّفةً حسب الفئة، مع تتبّع الموقع والحالة وجداول الصيانة." : "The asset register holds all enterprise assets, classified by category, with location, status, and maintenance schedules tracked.")</p>
+                    <ul>
+                        <li>@(isRtl ? "أنشئ فئات الأصول ونظّم الأصول تحتها." : "Create asset categories and organise assets under them.")</li>
+                        <li>@(isRtl ? "سجّل جداول الصيانة الوقائية وسجلّات الصيانة." : "Record preventive-maintenance schedules and maintenance logs.")</li>
+                        <li>@(isRtl ? "راقب حالة الأصول من لوحة معلومات الأصول." : "Monitor asset status from the Assets dashboard.")</li>
+                    </ul>
+
+                    <h5>@(isRtl ? "إدارة المخاطر (ISO 31000)" : "Risk Management (ISO 31000)")</h5>
+                    <p>@(isRtl ? "قيّم المخاطر وأدِرها على مستوى العملية وعلى مستوى المؤسسة:" : "Assess and manage risks at both the process level and the enterprise level:")</p>
+                    <div class="um-step"><span class="um-step-num">1</span><div class="um-step-text"><strong>@(isRtl ? "حدّد الخطر" : "Identify")</strong><p>@(isRtl ? "سجّل الخطر واربطه بالعملية أو الوحدة المعنية." : "Log the risk and link it to the relevant process or unit.")</p></div></div>
+                    <div class="um-step"><span class="um-step-num">2</span><div class="um-step-text"><strong>@(isRtl ? "قيّم" : "Assess")</strong><p>@(isRtl ? "أدخل درجة الاحتمالية ودرجة الأثر لحساب مستوى الخطر." : "Enter likelihood and impact scores to compute the risk level.")</p></div></div>
+                    <div class="um-step"><span class="um-step-num">3</span><div class="um-step-text"><strong>@(isRtl ? "عالِج" : "Treat")</strong><p>@(isRtl ? "حدّد إجراءات التخفيف والمسؤولين عنها." : "Define mitigation actions and their owners.")</p></div></div>
+                    <div class="um-tip">
+                        <strong>@(isRtl ? "نصيحة:" : "Tip:")</strong>
+                        @(isRtl ? "استخدم خريطة المخاطر الحرارية لعرض المخاطر حسب الاحتمالية والأثر في لمحة." : "Use the risk heat map to view risks by likelihood and impact at a glance.")
+                    </div>
+                </div>
+            </section>
+
+            @* — Section: Continuous Improvement — *@
+            <section class="um-section" data-section="improvement">
+                <div class="um-sec-head">
+                    <span class="um-sec-icon"><i data-lucide="trending-up" aria-hidden="true"></i></span>
+                    <span class="um-sec-title">@(isRtl ? "التحسين المستمر" : "Continuous Improvement")</span>
+                </div>
+                <div class="um-content">
+                    <p>@(isRtl ? "تدير وحدة التحسين مبادرات التطوير من الفكرة حتى التنفيذ، مع سير عمل للاعتماد ومتابعة للتقدّم." : "The Improvement module manages development initiatives from idea to delivery, with an approval workflow and progress tracking.")</p>
+
+                    <h5>@(isRtl ? "إنشاء مبادرة تحسين" : "Creating an improvement")</h5>
+                    <ol>
+                        <li>@(isRtl ? "افتح وحدة التحسين وانقر 'مبادرة جديدة'." : "Open the Improvement module and click 'New initiative'.")</li>
+                        <li>@(isRtl ? "أكمل معالج الإدخال متعدد الخطوات (الوصف، الأثر، التكلفة، الجدول الزمني)." : "Complete the multi-step wizard (description, impact, cost, timeline).")</li>
+                        <li>@(isRtl ? "أرسل المبادرة لاعتمادها عبر سير العمل." : "Submit the initiative for approval through the workflow.")</li>
+                    </ol>
+
+                    <h5>@(isRtl ? "طرق العرض" : "Views")</h5>
+                    <div class="um-features">
+                        <div class="um-feature"><i data-lucide="check-circle" aria-hidden="true"></i><div><strong>@(isRtl ? "لوحة كانبان" : "Kanban Board")</strong><p>@(isRtl ? "اسحب المبادرات بين المراحل" : "Drag initiatives between stages")</p></div></div>
+                        <div class="um-feature"><i data-lucide="check-circle" aria-hidden="true"></i><div><strong>@(isRtl ? "خارطة الطريق" : "Roadmap")</strong><p>@(isRtl ? "عرض زمني للمبادرات" : "Timeline view of initiatives")</p></div></div>
+                    </div>
+                    <div class="um-tip">
+                        <strong>@(isRtl ? "نصيحة:" : "Tip:")</strong>
+                        @(isRtl ? "قد تتطلب بعض المبادرات قراءةً واعتماداً من المعنيين قبل إغلاقها — تابع ذلك من 'قراءاتي المعلّقة'." : "Some initiatives require stakeholder reading/acknowledgement before completion — track these from 'My Pending Readings'.")
+                    </div>
+                </div>
+            </section>
+
+            @* — Section: Incidents & Problems — *@
+            <section class="um-section" data-section="incident-problem">
+                <div class="um-sec-head">
+                    <span class="um-sec-icon"><i data-lucide="alert-circle" aria-hidden="true"></i></span>
+                    <span class="um-sec-title">@(isRtl ? "الحوادث والمشاكل" : "Incidents & Problems")</span>
+                </div>
+                <div class="um-content">
+                    <h5>@(isRtl ? "الحوادث" : "Incidents")</h5>
+                    <p>@(isRtl ? "سجّل الحوادث التشغيلية عند وقوعها واربطها بالعملية أو الخدمة المتأثرة لتتبّع الحل." : "Log operational incidents as they occur and link them to the affected process or service to track resolution.")</p>
+                    <ul>
+                        <li>@(isRtl ? "سجّل تفاصيل الحادث والأثر والأولوية." : "Record incident details, impact, and priority.")</li>
+                        <li>@(isRtl ? "عيّن المسؤول وتابع الحالة حتى الإغلاق." : "Assign an owner and track status to closure.")</li>
+                    </ul>
+                    <h5>@(isRtl ? "المشاكل" : "Problems")</h5>
+                    <p>@(isRtl ? "عندما تتكرر الحوادث أو يكون لها سبب جذري مشترك، سجّلها كـ'مشكلة' لتحليل السبب الجذري ومعالجته بشكل دائم." : "When incidents recur or share a common root cause, log them as a Problem to analyse the root cause and resolve it permanently.")</p>
+                    <div class="um-tip">
+                        <strong>@(isRtl ? "نصيحة:" : "Tip:")</strong>
+                        @(isRtl ? "ربط الحوادث بالعمليات يساعد على تحديد العمليات الأكثر عرضةً للمشاكل وأولوية تحسينها." : "Linking incidents to processes helps identify which processes are most problem-prone and should be prioritised for improvement.")
+                    </div>
+                </div>
+            </section>
+
+            @* — Section: Customer Feedback — *@
+            <section class="um-section" data-section="customer-feedback">
+                <div class="um-sec-head">
+                    <span class="um-sec-icon"><i data-lucide="message-square" aria-hidden="true"></i></span>
+                    <span class="um-sec-title">@(isRtl ? "ملاحظات العملاء" : "Customer Feedback")</span>
+                </div>
+                <div class="um-content">
+                    <p>@(isRtl ? "تجمع هذه الوحدة ملاحظات المتعاملين وتصنّفها وتوجّهها للجهة المعنية للرد عليها وقياس الرضا." : "This module captures customer feedback, classifies it, and routes it to the right unit for response and satisfaction measurement.")</p>
+                    <h5>@(isRtl ? "أنواع الملاحظات" : "Feedback types")</h5>
+                    <ul>
+                        <li><strong>@(isRtl ? "شكوى" : "Complaint")</strong> — @(isRtl ? "مشكلة واجهها المتعامل" : "an issue the customer faced")</li>
+                        <li><strong>@(isRtl ? "اقتراح" : "Suggestion")</strong> — @(isRtl ? "فكرة لتحسين الخدمة" : "an idea to improve a service")</li>
+                        <li><strong>@(isRtl ? "إشادة" : "Compliment")</strong> — @(isRtl ? "ملاحظة إيجابية" : "positive feedback")</li>
+                    </ul>
+                    <h5>@(isRtl ? "دورة المعالجة" : "Handling cycle")</h5>
+                    <ol>
+                        <li>@(isRtl ? "تسجيل الملاحظة وتصنيفها وربطها بالخدمة." : "Log the feedback, classify it, link it to a service.")</li>
+                        <li>@(isRtl ? "توجيهها إلى الوحدة المسؤولة." : "Route it to the responsible unit.")</li>
+                        <li>@(isRtl ? "الرد على المتعامل وتسجيل درجة الرضا." : "Respond to the customer and record the satisfaction rating.")</li>
+                    </ol>
+                    <div class="um-tip">
+                        <strong>@(isRtl ? "نصيحة:" : "Tip:")</strong>
+                        @(isRtl ? "راقب اتجاهات الرضا عبر الزمن لاكتشاف الخدمات التي تحتاج إلى تحسين." : "Track satisfaction trends over time to spot services that need improvement.")
+                    </div>
+                </div>
+            </section>
+
+            @* — Section: AI Assistant — *@
+            <section class="um-section" data-section="ai-features">
+                <div class="um-sec-head">
+                    <span class="um-sec-icon"><i data-lucide="sparkles" aria-hidden="true"></i></span>
+                    <span class="um-sec-title">@(isRtl ? "مساعد الذكاء الاصطناعي" : "AI Assistant")</span>
+                </div>
+                <div class="um-content">
+                    <p>@(isRtl ? "يدمج النظام الذكاء الاصطناعي عبر عدة وحدات لتسريع العمل وتقديم رؤى ذكية." : "The system embeds AI across several modules to speed up work and surface intelligent insights.")</p>
+                    <div class="um-features">
+                        <div class="um-feature"><i data-lucide="check-circle" aria-hidden="true"></i><div><strong>@(isRtl ? "المساعد الذكي" : "AI Chat Assistant")</strong><p>@(isRtl ? "اطرح أسئلة عن بياناتك" : "Ask questions about your data")</p></div></div>
+                        <div class="um-feature"><i data-lucide="check-circle" aria-hidden="true"></i><div><strong>@(isRtl ? "توليد مخططات BPMN" : "BPMN Generation")</strong><p>@(isRtl ? "ارسم العمليات من وصف نصي" : "Draw processes from a text description")</p></div></div>
+                        <div class="um-feature"><i data-lucide="check-circle" aria-hidden="true"></i><div><strong>@(isRtl ? "تحليل العمليات" : "Process Analysis")</strong><p>@(isRtl ? "اكتشف فرص التحسين" : "Find improvement opportunities")</p></div></div>
+                        <div class="um-feature"><i data-lucide="check-circle" aria-hidden="true"></i><div><strong>@(isRtl ? "اقتراح مصفوفة RACI" : "RACI Suggestions")</strong><p>@(isRtl ? "توزيع المسؤوليات تلقائياً" : "Auto-suggest responsibilities")</p></div></div>
+                    </div>
+                    <h5>@(isRtl ? "استخدام المساعد" : "Using the assistant")</h5>
+                    <p>@(isRtl ? "انقر أيقونة المساعد الذكي العائمة في أسفل الشاشة لفتح المحادثة في أي وقت." : "Click the floating AI assistant icon at the bottom of the screen to open the chat at any time.")</p>
+                    <div class="um-tip">
+                        <strong>@(isRtl ? "نصيحة:" : "Tip:")</strong>
+                        @(isRtl ? "في محرر BPMN، استخدم زر 'تحسين الوصف' لتطوير وصف العملية قبل التوليد للحصول على نتائج أفضل." : "In the BPMN editor, use 'Optimize Description' to refine your process description before generating for better results.")
+                    </div>
+                </div>
+            </section>
+
+            @* — Section: Keyboard Shortcuts — *@
+            <section class="um-section" data-section="shortcuts">
+                <div class="um-sec-head">
+                    <span class="um-sec-icon"><i data-lucide="keyboard" aria-hidden="true"></i></span>
+                    <span class="um-sec-title">@(isRtl ? "اختصارات لوحة المفاتيح" : "Keyboard Shortcuts")</span>
+                </div>
+                <div class="um-content">
+                    <h5>@(isRtl ? "عام" : "General")</h5>
+                    <p><span class="um-kbd">Ctrl</span> + <span class="um-kbd">K</span> &nbsp;<span style="color:#6b7280;">@(isRtl ? "— البحث السريع" : "— Quick search")</span></p>
+                    <p><span class="um-kbd">F1</span> &nbsp;<span style="color:#6b7280;">@(isRtl ? "— فتح مركز المساعدة" : "— Open the Help hub")</span></p>
+
+                    <h5>@(isRtl ? "محرر مخططات BPMN" : "BPMN Diagram Editor")</h5>
+                    <p><span class="um-kbd">Ctrl</span> + <span class="um-kbd">S</span> &nbsp;<span style="color:#6b7280;">@(isRtl ? "— تصدير BPMN XML" : "— Export BPMN XML")</span></p>
+                    <p><span class="um-kbd">Ctrl</span> + <span class="um-kbd">E</span> &nbsp;<span style="color:#6b7280;">@(isRtl ? "— تصدير SVG" : "— Export SVG")</span></p>
+                    <p><span class="um-kbd">Ctrl</span> + <span class="um-kbd">P</span> &nbsp;<span style="color:#6b7280;">@(isRtl ? "— إظهار/إخفاء لوحة الخصائص" : "— Toggle properties panel")</span></p>
+                    <p><span class="um-kbd">Ctrl</span> + <span class="um-kbd">M</span> &nbsp;<span style="color:#6b7280;">@(isRtl ? "— إظهار/إخفاء الخريطة المصغّرة" : "— Toggle minimap")</span></p>
+                    <p><span class="um-kbd">F11</span> &nbsp;<span style="color:#6b7280;">@(isRtl ? "— وضع التركيز (ملء الشاشة)" : "— Focus mode (full screen)")</span></p>
+                    <div class="um-tip">
+                        <strong>@(isRtl ? "نصيحة:" : "Tip:")</strong>
+                        @(isRtl ? "في المحرر، اسحب وأفلت العناصر من اللوحة، وانقر نقراً مزدوجاً على أي عنصر لتعديل نصه." : "In the editor, drag-and-drop elements from the palette, and double-click any element to edit its text.")
+                    </div>
+                </div>
+            </section>
 
             @* — Default empty state shown if hash is empty/unknown — *@
             <div id="umEmpty" class="um-stub">
