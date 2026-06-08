@@ -809,7 +809,7 @@ Guidelines:
 					return Json(new { success = false, error = "AI did not return valid BPMN XML.", raw = lastRaw });
 				}
 
-				return Json(new { success = true, bpmnXml = cleaned });
+				return Json(new { success = true, bpmnXml = request.Vertical ? _bpmnService.MakeBpmnVertical(cleaned) : cleaned });
 			}
 
 			return Json(new { success = false, error = "Failed to generate valid BPMN after multiple attempts.", raw = lastRaw });
@@ -1625,6 +1625,13 @@ public class BPMNRequest
     public string? Title { get; set; }
     public string? Description { get; set; }
     public List<string>? Steps { get; set; }
+
+    /// <summary>
+    /// When true, the generated diagram is transposed to a vertical
+    /// (top-to-bottom) flow after the standard horizontal generation + cleanup.
+    /// Surfaced as the "Vertical layout" toggle in the AI BPMN generator.
+    /// </summary>
+    public bool Vertical { get; set; }
 }
 
 /// <summary>

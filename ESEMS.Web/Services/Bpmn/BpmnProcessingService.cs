@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 
 namespace ESEMS.Web.Services.Bpmn;
 
@@ -118,6 +120,128 @@ public class BpmnProcessingService : IBpmnProcessingService
         text = ApplyBpmnColors(text);
 
         return text;
+    }
+
+    /// <summary>
+    /// Transpose a horizontal BPMN diagram into a vertical (top-to-bottom) one.
+    /// Reflects the diagram-interchange geometry across the main diagonal (swap
+    /// x/y on every shape, label and waypoint); pools/lanes additionally swap
+    /// width/height and flip isHorizontal so a wide horizontal pool becomes a
+    /// tall vertical one. A final conditional vertical mirror keeps the start
+    /// event on top even for RTL diagrams (whose horizontal flow runs
+    /// right-to-left and would otherwise transpose to bottom-up). Returns the
+    /// input unchanged on any parse error so generation never breaks.
+    /// </summary>
+    public string MakeBpmnVertical(string xml)
+    {
+        if (string.IsNullOrWhiteSpace(xml)) return xml;
+        try
+        {
+            XNamespace bpmndi = "http://www.omg.org/spec/BPMN/20100524/DI";
+            XNamespace dc = "http://www.omg.org/spec/DD/20100524/DC";
+            XNamespace di = "http://www.omg.org/spec/DD/20100524/DI";
+            XNamespace bpmn = "http://www.omg.org/spec/BPMN/20100524/MODEL";
+
+            var doc = XDocument.Parse(xml);
+
+            // 1) Reflect across the main diagonal: swap x<->y everywhere. Pools
+            //    and lanes (the shapes carrying isHorizontal) also swap
+            //    width<->height and flip the flag; plain shapes keep their size
+            //    so task labels stay readable.
+            foreach (var shape in doc.Descendants(bpmndi + "BPMNShape"))
+            {
+                var isHoriz = shape.Attribute("isHorizontal");
+                var bounds = shape.Element(dc + "Bounds");
+                if (bounds != null) TransposeBounds(bounds, swapSize: isHoriz != null);
+                var lbl = shape.Element(bpmndi + "BPMNLabel")?.Element(dc + "Bounds");
+                if (lbl != null) TransposeBounds(lbl, swapSize: false);
+                if (isHoriz != null)
+                    isHoriz.Value = string.Equals(isHoriz.Value, "true", StringComparison.OrdinalIgnoreCase) ? "false" : "true";
+            }
+            foreach (var edge in doc.Descendants(bpmndi + "BPMNEdge"))
+            {
+                foreach (var wp in edge.Elements(di + "waypoint")) SwapXY(wp);
+                var lbl = edge.Element(bpmndi + "BPMNLabel")?.Element(dc + "Bounds");
+                if (lbl != null) TransposeBounds(lbl, swapSize: false);
+            }
+
+            // 2) Keep the flow reading top-to-bottom. A horizontal RTL diagram
+            //    starts on the right (high x) and so transposes to the bottom.
+            //    If the start event(s) ended up below the end event(s), mirror
+            //    every y across the diagram's vertical extent.
+            var startIds = doc.Descendants(bpmn + "startEvent")
+                .Select(e => e.Attribute("id")?.Value).Where(v => v != null).ToHashSet();
+            var endIds = doc.Descendants(bpmn + "endEvent")
+                .Select(e => e.Attribute("id")?.Value).Where(v => v != null).ToHashSet();
+
+            double minY = double.MaxValue, maxY = double.MinValue;
+            double? startTop = null, endTop = null;
+            foreach (var shape in doc.Descendants(bpmndi + "BPMNShape"))
+            {
+                var b = shape.Element(dc + "Bounds");
+                if (b == null) continue;
+                double y = ParseD(b, "y"), h = ParseD(b, "height");
+                if (y < minY) minY = y;
+                if (y + h > maxY) maxY = y + h;
+                var be = shape.Attribute("bpmnElement")?.Value;
+                if (be != null && startIds.Contains(be)) startTop = startTop is null ? y : Math.Min(startTop.Value, y);
+                if (be != null && endIds.Contains(be)) endTop = endTop is null ? y : Math.Max(endTop.Value, y);
+            }
+
+            if (startTop is double s && endTop is double e && s > e && maxY > minY)
+            {
+                double axis = minY + maxY;
+                foreach (var b in doc.Descendants(dc + "Bounds"))
+                {
+                    if (b.Attribute("y") == null) continue;
+                    double y = ParseD(b, "y"), h = ParseD(b, "height");
+                    SetD(b, "y", axis - (y + h));
+                }
+                foreach (var wp in doc.Descendants(di + "waypoint"))
+                {
+                    if (wp.Attribute("y") == null) continue;
+                    SetD(wp, "y", axis - ParseD(wp, "y"));
+                }
+            }
+
+            var decl = doc.Declaration?.ToString();
+            var body = doc.ToString();
+            return string.IsNullOrEmpty(decl) ? body : decl + "\n" + body;
+        }
+        catch
+        {
+            return xml; // never break generation — fall back to the horizontal diagram
+        }
+    }
+
+    private static void TransposeBounds(XElement bounds, bool swapSize)
+    {
+        double x = ParseD(bounds, "x"), y = ParseD(bounds, "y");
+        SetD(bounds, "x", y);
+        SetD(bounds, "y", x);
+        if (swapSize)
+        {
+            double w = ParseD(bounds, "width"), h = ParseD(bounds, "height");
+            SetD(bounds, "width", h);
+            SetD(bounds, "height", w);
+        }
+    }
+
+    private static void SwapXY(XElement el)
+    {
+        double x = ParseD(el, "x"), y = ParseD(el, "y");
+        SetD(el, "x", y);
+        SetD(el, "y", x);
+    }
+
+    private static double ParseD(XElement el, string attr) =>
+        double.TryParse(el.Attribute(attr)?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0;
+
+    private static void SetD(XElement el, string attr, double val)
+    {
+        var s = val.ToString("0.###", CultureInfo.InvariantCulture);
+        var a = el.Attribute(attr);
+        if (a != null) a.Value = s; else el.SetAttributeValue(attr, s);
     }
 
     // Some LLM outputs declare `xmlns:bpmn="..."` on <definitions> but leave

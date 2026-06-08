@@ -16,4 +16,15 @@ public interface IBpmnProcessingService
     /// twice on the same XML produces the same output.
     /// </summary>
     string EnhanceBpmnLayout(string xml);
+
+    /// <summary>
+    /// Transposes a horizontal (left-to-right / right-to-left) BPMN diagram
+    /// into a vertical (top-to-bottom) flow by reflecting the diagram-
+    /// interchange geometry across the main diagonal: swaps x/y on every shape,
+    /// label and waypoint, swaps width/height + flips isHorizontal on
+    /// pools/lanes, and (for RTL diagrams that would otherwise flow upward)
+    /// mirrors Y so the start event stays on top. Returns the input unchanged
+    /// on any parse error. Backs the AI generator's "Vertical layout" option.
+    /// </summary>
+    string MakeBpmnVertical(string xml);
 }

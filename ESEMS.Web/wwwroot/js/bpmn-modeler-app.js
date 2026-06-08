@@ -521,7 +521,10 @@
                 body: JSON.stringify({
                     title: title,
                     description: description || title,
-                    steps: []
+                    steps: [],
+                    // "Vertical layout" toggle from the AI generator panel — the
+                    // server transposes the generated diagram top-to-bottom.
+                    vertical: !!(document.getElementById('bpmnVertical') && document.getElementById('bpmnVertical').checked)
                 })
             });
 
