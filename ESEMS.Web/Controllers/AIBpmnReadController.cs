@@ -261,15 +261,21 @@ public class AIBpmnReadController : BaseController
             if (string.IsNullOrWhiteSpace(process.BpmnDiagram))
                 return Json(new { success = false, error = "This process has no BPMN diagram." });
 
-            var cleanedXml = _bpmnService.CleanBpmnXml(process.BpmnDiagram);
-
+            // Return the stored diagram VERBATIM — do not run CleanBpmnXml on a
+            // diagram that is already saved. CleanBpmnXml is the AI-output repair
+            // pipeline (re-routes waypoints, re-applies "standard" colours, adds
+            // gateway labels); running it here silently rewrote the user's saved
+            // edits, so "Load from Process" in the AI editor didn't match what the
+            // Process page saved and showed. The Process Details viewer renders
+            // BpmnDiagram raw, so returning it raw keeps both views identical.
+            // (The explicit "Enhance Drawing" action still cleans, on demand.)
             return Json(new
             {
                 success = true,
                 processId = process.Id,
                 processCode = process.Code,
                 processName = process.Name,
-                bpmnXml = cleanedXml
+                bpmnXml = process.BpmnDiagram
             });
         }
         catch (Exception ex)
@@ -352,15 +358,16 @@ public class AIBpmnReadController : BaseController
             if (string.IsNullOrWhiteSpace(task.BpmnDiagram))
                 return Json(new { success = false, error = "This procedure has no BPMN diagram." });
 
-            var cleanedXml = _bpmnService.CleanBpmnXml(task.BpmnDiagram);
-
+            // Return the stored procedure diagram verbatim — see LoadProcessBPMN:
+            // re-cleaning an already-saved diagram overwrites the user's edits and
+            // desyncs the AI viewer from what the Process page shows.
             return Json(new
             {
                 success = true,
                 processTaskId = task.Id,
                 processTaskCode = task.Code,
                 processTaskName = task.Name,
-                bpmnXml = cleanedXml
+                bpmnXml = task.BpmnDiagram
             });
         }
         catch (Exception ex)
