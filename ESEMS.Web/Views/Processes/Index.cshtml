@@ -21,6 +21,22 @@
         })
         .OrderBy(x => x.Label)
         .ToList();
+    // Organization-unit filter options: the distinct owning units present in
+    // this (already scoped) list. Built from the Model — like the group filter
+    // above — so it inherently respects the caller's data scope and never lists
+    // a unit the user can't see. Filtering is by unit Id (data-unit-id below).
+    var unitFilterOptions = Model
+        .Where(p => p.OwningUnit != null)
+        .Select(p => p.OwningUnit!)
+        .GroupBy(u => u.Id)
+        .Select(grp => grp.First())
+        .Select(u => new
+        {
+            u.Id,
+            Label = isRtl ? u.NameAr : u.NameEn
+        })
+        .OrderBy(x => x.Label)
+        .ToList();
 }
 
 @*  Report-style index — compact toolbar, sortable table, no banner.
@@ -89,6 +105,13 @@
                 <option value="@g.Id" selected="@(g.Id == selectedProcessGroupId ? "selected" : null)">@g.Label</option>
             }
         </select>
+        <select id="filterUnit" aria-label="@Shared["Label_OrganizationUnit"]">
+            <option value="">@Shared["Label_OrganizationUnit"]: @Shared["Filter_All"]</option>
+            @foreach (var u in unitFilterOptions)
+            {
+                <option value="@u.Id">@u.Label</option>
+            }
+        </select>
         <select id="filterStatus" aria-label="@Shared["Filter_Status"]">
             <option value="">@Shared["Filter_Status"]: @Shared["Filter_All"]</option>
             <option value="Draft">@Shared["Status_Draft"]</option>
@@ -133,7 +156,7 @@
                     @foreach (var item in Model)
                     {
                         var hasBpmnTasks = processIdsWithBpmn.Contains(item.Id);
-                        <tr data-tags="@(item.Tags ?? "")" data-pg-id="@item.ProcessGroupId">
+                        <tr data-tags="@(item.Tags ?? "")" data-pg-id="@item.ProcessGroupId" data-unit-id="@(item.OwningUnitId?.ToString() ?? "")">
                             <td><code style="font-size: var(--fs-xs);color:#475569;">@item.Code</code></td>
                             <td><span style="font-weight:500;color:#111827;">@(isRtl ? item.NameAr : item.NameEn)</span></td>
                             <td>@(item.ProcessGroup != null ? (isRtl ? item.ProcessGroup.NameAr : item.ProcessGroup.NameEn) : "—")</td>
@@ -202,6 +225,7 @@
         function clearFilters() {
             document.getElementById('searchInput').value = '';
             document.getElementById('filterProcessGroup').value = '';
+            document.getElementById('filterUnit').value = '';
             document.getElementById('filterStatus').value = '';
             document.getElementById('filterType').value = '';
             document.getElementById('filterBpmn').value = '';
@@ -212,6 +236,7 @@
         function applyFilters() {
             const search = document.getElementById('searchInput').value.toLowerCase();
             const pgFilter = document.getElementById('filterProcessGroup')?.value || '';
+            const unitFilter = document.getElementById('filterUnit')?.value || '';
             const status = document.getElementById('filterStatus').value;
             const type = document.getElementById('filterType').value;
             const bpmnFilter = document.getElementById('filterBpmn').value;
@@ -227,6 +252,7 @@
                 let visible = true;
                 if (search && !text.includes(search)) visible = false;
                 if (pgFilter && row.getAttribute('data-pg-id') !== pgFilter) visible = false;
+                if (unitFilter && row.getAttribute('data-unit-id') !== unitFilter) visible = false;
                 if (status && !text.includes(status.toLowerCase())) visible = false;
                 if (type && !text.toLowerCase().includes(type.toLowerCase())) visible = false;
                 if (bpmnFilter && hasBpmn !== bpmnFilter) visible = false;
@@ -314,7 +340,7 @@
             make('»', totalPages,           { disabled: ltCurrentPage === totalPages });
         }
 
-        ['searchInput','filterStatus','filterType','filterBpmn','filterProcessGroup','filterTag'].forEach(id => {
+        ['searchInput','filterStatus','filterType','filterBpmn','filterProcessGroup','filterUnit','filterTag'].forEach(id => {
             document.getElementById(id)?.addEventListener('input', applyFilters);
             document.getElementById(id)?.addEventListener('change', applyFilters);
         });
