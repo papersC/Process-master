@@ -106,6 +106,136 @@ public sealed class HierarchicalCodeService
     }
 
     /// <summary>
+    /// Re-stamps a Process's hierarchical <see cref="Process.Code"/> (and
+    /// <see cref="Process.SortKey"/>) to the next free "{PG.Code}.{Z}" under its
+    /// <em>current</em> <see cref="Process.ProcessGroupId"/>, then cascades the
+    /// rename down the whole derived-code subtree: child Activities
+    /// ("{procCode}.NN") and their Tasks ("{procCode}.NN.M"). The cascade is a
+    /// pure prefix swap ("{oldCode}." → "{newCode}."), so any depth is handled
+    /// uniformly; descendant codes that don't start with the old process code
+    /// (hand-edited / non-conforming) are left untouched.
+    ///
+    /// Call this <b>after</b> re-parenting a process to a different ProcessGroup
+    /// (set <see cref="Process.ProcessGroupId"/> first); without it the visible
+    /// ID keeps pointing at the old group. The caller owns SaveChanges so the
+    /// rename commits atomically with the rest of the edit. The process must
+    /// already be loaded/tracked; descendant rows are loaded into the tracker
+    /// here so their mutations are persisted by the same SaveChanges.
+    /// </summary>
+    public async Task RecodeProcessUnderGroupAsync(Process process, CancellationToken ct = default)
+    {
+        var oldCode = process.Code;
+        var newCode = await NextProcessCodeAsync(process.ProcessGroupId, ct);
+
+        process.Code = newCode;
+        process.SortKey = SortKeyFor(newCode);
+
+        // Nothing derived to fix if the process had no code yet or the code is
+        // unchanged (e.g. the group's prefix happened to match).
+        if (string.IsNullOrEmpty(oldCode) || oldCode == newCode)
+            return;
+
+        var oldPrefix = oldCode + ".";
+
+        // Cascade to the whole subtree. Tasks hang off activities (ActivityId),
+        // so load the process's activities first, then their tasks.
+        var activities = await _db.Activities
+            .Where(a => a.ProcessId == process.Id)
+            .ToListAsync(ct);
+
+        var activityIds = activities.Select(a => a.Id).ToList();
+        var tasks = activityIds.Count == 0
+            ? new List<ProcessTask>()
+            : await _db.ProcessTasks
+                .Where(t => activityIds.Contains(t.ActivityId))
+                .ToListAsync(ct);
+
+        // Swap the "{oldCode}." prefix for "{newCode}." on every descendant
+        // whose code is genuinely derived from the process code. The trailing
+        // dot in the match guards against false hits (e.g. sibling "1.1.30"
+        // must not match prefix of "1.1.3").
+        foreach (var act in activities)
+            if (act.Code.StartsWith(oldPrefix, StringComparison.Ordinal))
+                act.Code = newCode + act.Code.Substring(oldCode.Length);
+
+        foreach (var task in tasks)
+            if (task.Code.StartsWith(oldPrefix, StringComparison.Ordinal))
+                task.Code = newCode + task.Code.Substring(oldCode.Length);
+    }
+
+    /// <summary>
+    /// Re-stamps a ProcessGroup's hierarchical <see cref="ProcessGroup.Code"/>
+    /// (and <see cref="ProcessGroup.SortKey"/>) to the next free "{Cat.Code}.{Y}"
+    /// under its <em>current</em> <see cref="ProcessGroup.CategoryId"/>, then
+    /// cascades the rename down its whole subtree: child Processes
+    /// ("{groupCode}.Z" — SortKey recomputed too), their Activities and their
+    /// Tasks.
+    ///
+    /// Unlike <see cref="RecodeProcessUnderGroupAsync"/> (which reallocates the
+    /// moved process's own trailing segment), here the descendants <b>keep their
+    /// own segments</b> — only the moved node changes number, so the cascade is a
+    /// single prefix swap "{oldGroupCode}." → "{newGroupCode}." applied uniformly
+    /// at every depth. Codes that don't start with the old group code
+    /// (hand-edited / non-conforming) are left untouched.
+    ///
+    /// Call this <b>after</b> re-parenting a group to a different Category
+    /// (set <see cref="ProcessGroup.CategoryId"/> first). The caller owns
+    /// SaveChanges so the rename commits atomically; descendant rows are loaded
+    /// into the tracker here so their mutations persist with the same save.
+    /// </summary>
+    public async Task RecodeProcessGroupUnderCategoryAsync(ProcessGroup processGroup, CancellationToken ct = default)
+    {
+        var oldCode = processGroup.Code;
+        var newCode = await NextProcessGroupCodeAsync(processGroup.CategoryId, ct);
+
+        processGroup.Code = newCode;
+        processGroup.SortKey = SortKeyFor(newCode);
+
+        if (string.IsNullOrEmpty(oldCode) || oldCode == newCode)
+            return;
+
+        var oldPrefix = oldCode + ".";
+
+        // Load the subtree breadth-first: processes in this group, then their
+        // activities, then those activities' tasks.
+        var processes = await _db.Processes
+            .Where(p => p.ProcessGroupId == processGroup.Id)
+            .ToListAsync(ct);
+        var processIds = processes.Select(p => p.Id).ToList();
+
+        var activities = processIds.Count == 0
+            ? new List<Activity>()
+            : await _db.Activities
+                .Where(a => processIds.Contains(a.ProcessId))
+                .ToListAsync(ct);
+        var activityIds = activities.Select(a => a.Id).ToList();
+
+        var tasks = activityIds.Count == 0
+            ? new List<ProcessTask>()
+            : await _db.ProcessTasks
+                .Where(t => activityIds.Contains(t.ActivityId))
+                .ToListAsync(ct);
+
+        // Prefix-swap across the whole subtree (trailing dot guards against
+        // false hits, e.g. sibling group "1.30" vs "1.3"). Processes also get a
+        // fresh SortKey since their Code changed.
+        foreach (var p in processes)
+            if (p.Code.StartsWith(oldPrefix, StringComparison.Ordinal))
+            {
+                p.Code = newCode + p.Code.Substring(oldCode.Length);
+                p.SortKey = SortKeyFor(p.Code);
+            }
+
+        foreach (var act in activities)
+            if (act.Code.StartsWith(oldPrefix, StringComparison.Ordinal))
+                act.Code = newCode + act.Code.Substring(oldCode.Length);
+
+        foreach (var task in tasks)
+            if (task.Code.StartsWith(oldPrefix, StringComparison.Ordinal))
+                task.Code = newCode + task.Code.Substring(oldCode.Length);
+    }
+
+    /// <summary>
     /// Zero-pads each numeric segment to 4 digits so lexicographic ORDER BY
     /// SortKey matches numeric order. e.g. "1.10.2" → "0001.0010.0002".
     /// </summary>

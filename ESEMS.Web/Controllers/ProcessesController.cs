@@ -97,7 +97,8 @@ public class ProcessesController : BaseController
             .ThenBy(p => p.DisplayOrder)
             .ToListAsync();
 
-        ViewBag.ProcessGroups = await _context.ProcessGroups.Where(pg => !pg.IsDeleted).ToListAsync();
+        // The Index view builds its process-group filter from the (scoped) Model
+        // rows it already has, so no separate group list is needed here.
         ViewBag.SelectedProcessGroupId = processGroupId;
         ViewBag.SelectedStatus = status;
 
@@ -1094,6 +1095,13 @@ public class ProcessesController : BaseController
             // users; for scoped users it stays as persisted (no scope-escape).
             if (scope.IsUnscoped && process.OwningUnitId != null)
                 existing.OwningUnitId = process.OwningUnitId;
+
+            // Re-parenting the process to a different ProcessGroup invalidates its
+            // hierarchical Code ("{PG.Code}.{Z}") — capture the move BEFORE we
+            // overwrite the group so we can re-stamp the Code/SortKey (and child
+            // activity codes) under the new parent below. A same-group edit leaves
+            // the system-managed Code untouched.
+            var groupChanged = existing.ProcessGroupId != process.ProcessGroupId;
             existing.ProcessGroupId       = process.ProcessGroupId;
             existing.NameEn               = process.NameEn;
             existing.NameAr               = process.NameAr;
@@ -1111,6 +1119,14 @@ public class ProcessesController : BaseController
             existing.UpdatedAt            = DateTime.UtcNow;
             existing.UpdatedById          = User.Identity?.Name;
             existing.Version++;
+
+            // Process moved to a new ProcessGroup — re-stamp its hierarchical
+            // Code/SortKey (and cascade the rename down to child Activity/Task
+            // codes) so the visible ID reflects the new parent instead of the
+            // old group. Persisted by the single SaveChanges below, so the
+            // rename is atomic with the rest of the edit.
+            if (groupChanged)
+                await _codeSvc.RecodeProcessUnderGroupAsync(existing);
 
             // Update Document Linking: wipe and replace (simplest correct
             // behaviour — the posted JSON is the new full state).
@@ -1919,8 +1935,21 @@ public class ProcessesController : BaseController
         var isArabic = System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("ar");
 
         var processGroups = await _context.ProcessGroups.Where(pg => !pg.IsDeleted).Include(pg => pg.Category).OrderBy(pg => pg.SortKey ?? pg.Code).ToListAsync();
+        // Group names are NOT unique across the catalog — the same group name can
+        // legitimately exist under several Categories (e.g. "Enhance & Govern
+        // Processes" lives under 3 different categories). Qualify each option with
+        // its parent Category so the user can tell otherwise-identical groups apart.
         ViewBag.ProcessGroups = new SelectList(
-            processGroups.Select(pg => new { pg.Id, DisplayName = isArabic ? pg.NameAr : pg.NameEn }),
+            processGroups.Select(pg =>
+            {
+                var name = isArabic ? pg.NameAr : pg.NameEn;
+                var catName = isArabic ? pg.Category?.NameAr : pg.Category?.NameEn;
+                return new
+                {
+                    pg.Id,
+                    DisplayName = string.IsNullOrWhiteSpace(catName) ? name : $"{name} ({catName})"
+                };
+            }),
             "Id", "DisplayName");
 
         var orgUnits = await _context.OrganizationUnits.Where(u => !u.IsDeleted && u.IsActive).OrderBy(u => u.Level).ThenBy(u => u.NameEn).ToListAsync();

@@ -185,6 +185,12 @@ public class ProcessGroupsController : BaseController
             if (existing == null)
                 return NotFound();
 
+            // Re-parenting to a different Category invalidates this group's
+            // hierarchical Code ("{Cat.Code}.{Y}") and every descendant code —
+            // capture the move BEFORE overwriting CategoryId so we can re-stamp
+            // the subtree below. A same-category edit leaves Code untouched.
+            var categoryChanged = existing.CategoryId != processGroup.CategoryId;
+
             existing.NameEn = processGroup.NameEn;
             existing.NameAr = processGroup.NameAr;
             existing.DescriptionEn = processGroup.DescriptionEn;
@@ -195,6 +201,13 @@ public class ProcessGroupsController : BaseController
             existing.UpdatedAt = DateTime.UtcNow;
             existing.UpdatedById = User.Identity?.Name;
             existing.Version++;
+
+            // Group moved to a new Category — re-stamp its Code/SortKey and
+            // cascade the rename down to child Process/Activity/Task codes so the
+            // whole subtree reflects the new parent. Runs before the single
+            // SaveChanges so the rename commits atomically.
+            if (categoryChanged)
+                await _codeSvc.RecodeProcessGroupUnderCategoryAsync(existing);
 
             await _context.SaveChangesAsync();
 

@@ -192,6 +192,10 @@ public class AIController : BaseController
                 pg.Code,
                 pg.NameEn,
                 pg.NameAr,
+                // Group names repeat across Categories — carry the parent
+                // Category so the picker can disambiguate (LEFT JOIN → null-safe).
+                CategoryNameEn = pg.Category!.NameEn,
+                CategoryNameAr = pg.Category!.NameAr,
                 ProcessCount = pg.Processes!.Count(p => !p.IsDeleted)
             })
             .ToListAsync();
@@ -205,6 +209,8 @@ public class AIController : BaseController
                 g.Code,
                 g.NameEn,
                 g.NameAr,
+                g.CategoryNameEn,
+                g.CategoryNameAr,
                 g.ProcessCount,
                 ActivityCount = groupProcesses.Sum(p => p.ActivityCount),
                 RiskCount = groupProcesses.Sum(p => p.RiskCount),

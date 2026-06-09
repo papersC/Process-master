@@ -298,7 +298,10 @@
         processGroups.forEach(pg => {
             const option = document.createElement('option');
             option.value = pg.Id;
-            option.textContent = `${pg.Code} - ${isRtl ? pg.NameAr : pg.NameEn}`;
+            // Group names repeat across categories — qualify with the parent
+            // category so otherwise-identical groups are distinguishable.
+            const cat = isRtl ? pg.CategoryNameAr : pg.CategoryNameEn;
+            option.textContent = `${pg.Code} - ${isRtl ? pg.NameAr : pg.NameEn}` + (cat ? ` (${cat})` : '');
             processGroupSelect.appendChild(option);
         });
         processes.forEach(p => {

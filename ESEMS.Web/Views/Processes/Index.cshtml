@@ -3,6 +3,24 @@
     ViewData["Title"] = Shared["Title_Processes"].Value;
     var isRtl = CultureInfo.CurrentUICulture.Name.StartsWith("ar");
     var processIdsWithBpmn = ViewBag.ProcessIdsWithBpmn as HashSet<string> ?? new HashSet<string>();
+    var selectedProcessGroupId = ViewBag.SelectedProcessGroupId as string;
+    // Process-group filter options: the distinct groups present in this (already
+    // scoped) list, each qualified with its parent Category. Group names repeat
+    // across categories, so the category is what tells them apart. Filtering is
+    // by group Id (below), not by name, so duplicate names never collide.
+    var groupFilterOptions = Model
+        .Where(p => p.ProcessGroup != null)
+        .Select(p => p.ProcessGroup!)
+        .GroupBy(pg => pg.Id)
+        .Select(grp => grp.First())
+        .Select(pg => new
+        {
+            pg.Id,
+            Label = (isRtl ? pg.NameAr : pg.NameEn)
+                    + (pg.Category != null ? $" ({(isRtl ? pg.Category.NameAr : pg.Category.NameEn)})" : "")
+        })
+        .OrderBy(x => x.Label)
+        .ToList();
 }
 
 @*  Report-style index — compact toolbar, sortable table, no banner.
@@ -64,7 +82,13 @@
             <i data-lucide="search" class="w-4 h-4" aria-hidden="true"></i>
             <input type="text" id="searchInput" placeholder="@Shared["Filter_SearchProcesses"]" aria-label="@Shared["Filter_SearchProcesses"]" />
         </div>
-        <select id="filterProcessGroup" aria-label="@Shared["Filter_ProcessGroup"]"><option value="">@Shared["Filter_ProcessGroup"]: @Shared["Filter_All"]</option></select>
+        <select id="filterProcessGroup" aria-label="@Shared["Filter_ProcessGroup"]">
+            <option value="">@Shared["Filter_ProcessGroup"]: @Shared["Filter_All"]</option>
+            @foreach (var g in groupFilterOptions)
+            {
+                <option value="@g.Id" selected="@(g.Id == selectedProcessGroupId ? "selected" : null)">@g.Label</option>
+            }
+        </select>
         <select id="filterStatus" aria-label="@Shared["Filter_Status"]">
             <option value="">@Shared["Filter_Status"]: @Shared["Filter_All"]</option>
             <option value="Draft">@Shared["Status_Draft"]</option>
@@ -109,7 +133,7 @@
                     @foreach (var item in Model)
                     {
                         var hasBpmnTasks = processIdsWithBpmn.Contains(item.Id);
-                        <tr data-tags="@(item.Tags ?? "")">
+                        <tr data-tags="@(item.Tags ?? "")" data-pg-id="@item.ProcessGroupId">
                             <td><code style="font-size: var(--fs-xs);color:#475569;">@item.Code</code></td>
                             <td><span style="font-weight:500;color:#111827;">@(isRtl ? item.NameAr : item.NameEn)</span></td>
                             <td>@(item.ProcessGroup != null ? (isRtl ? item.ProcessGroup.NameAr : item.ProcessGroup.NameEn) : "—")</td>
@@ -187,6 +211,7 @@
 
         function applyFilters() {
             const search = document.getElementById('searchInput').value.toLowerCase();
+            const pgFilter = document.getElementById('filterProcessGroup')?.value || '';
             const status = document.getElementById('filterStatus').value;
             const type = document.getElementById('filterType').value;
             const bpmnFilter = document.getElementById('filterBpmn').value;
@@ -201,6 +226,7 @@
                 const hasBpmn = row.querySelector('td[data-has-bpmn]')?.getAttribute('data-has-bpmn');
                 let visible = true;
                 if (search && !text.includes(search)) visible = false;
+                if (pgFilter && row.getAttribute('data-pg-id') !== pgFilter) visible = false;
                 if (status && !text.includes(status.toLowerCase())) visible = false;
                 if (type && !text.toLowerCase().includes(type.toLowerCase())) visible = false;
                 if (bpmnFilter && hasBpmn !== bpmnFilter) visible = false;
