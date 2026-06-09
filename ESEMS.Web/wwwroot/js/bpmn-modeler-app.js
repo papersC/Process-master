@@ -183,10 +183,13 @@
                 setTimeout(() => setStatus(S('readyEdit', 'Ready - Drag elements from the palette or click existing elements to edit')), 2000);
             });
 
-            // Re-apply RTL header transforms after shape re-renders
+            // Re-apply RTL transforms after shape/label re-renders
             if (isRtlMode()) {
-                eventBus.on(['shape.added', 'shape.changed'], function() {
-                    setTimeout(applyRtlToPoolsAndLanes, 50);
+                eventBus.on(['shape.added', 'shape.changed', 'element.changed'], function() {
+                    setTimeout(function() {
+                        applyRtlToPoolsAndLanes();
+                        applyRtlToTextAnnotations();
+                    }, 50);
                 });
             }
 
@@ -470,6 +473,48 @@
         });
     }
 
+    // ── RTL support: mirror text annotations to the right ──────────────
+    // bpmn-js draws the annotation bracket on the LEFT edge and starts the text
+    // there (text-anchor:start, tspan x≈7). Under the Arabic page's RTL
+    // direction the text's start sits at the left bracket and the Arabic flows
+    // leftward OUT of the box, clipping — the "garbled"/misaligned annotation
+    // seen in Arabic diagrams. Mirror it: move the bracket to the right edge and
+    // right-align the text so it reads correctly inside the box. Idempotent
+    // (always recomputed from the element's own width/height), so it is safe to
+    // re-run on every re-render. Shared by the live canvas and the SVG export.
+    function rtlFixAnnotationVisual(vis, w, h) {
+        if (!vis || isNaN(w) || isNaN(h)) return;
+        var path = vis.querySelector('path');
+        // Right-side bracket: spine just outside the right edge, ticks pointing in.
+        if (path) path.setAttribute('d', 'm ' + w + ',0 l 10,0 l 0,' + h + ' l -10,0');
+        var text = vis.querySelector('text');
+        if (!text) return;
+        // RTL reading starts at the right (the bracket). Under direction:rtl,
+        // text-anchor:start anchors the text's START — its RIGHT edge — so we
+        // pin it just inside the right edge and let it flow leftward from the
+        // bracket. (text-anchor:end anchors the LEFT edge instead, which makes
+        // the text overshoot rightward past the bracket — the mis-aligned
+        // starting point.)
+        text.setAttribute('text-anchor', 'start');
+        text.setAttribute('direction', 'rtl');
+        var tspans = text.querySelectorAll('tspan');
+        for (var i = 0; i < tspans.length; i++) {
+            tspans[i].setAttribute('x', (w - 5).toFixed(1));
+        }
+    }
+
+    function applyRtlToTextAnnotations() {
+        if (!isRtlMode() || !modeler) return;
+        var registry = modeler.get('elementRegistry');
+        registry.filter(function(e) { return e.type === 'bpmn:TextAnnotation'; })
+            .forEach(function(ann) {
+                var gfx;
+                try { gfx = registry.getGraphics(ann.id); } catch (e) { return; }
+                if (!gfx) return;
+                rtlFixAnnotationVisual(gfx.querySelector('.djs-visual'), ann.width, ann.height);
+            });
+    }
+
     // Import BPMN XML into modeler
     async function importBPMN(xml) {
         try {
@@ -483,6 +528,7 @@
                 setTimeout(function() {
                     applyRtlToPoolsAndLanes();
                     applyRtlToArrows();
+                    applyRtlToTextAnnotations();
                 }, 100);
             }
 
@@ -624,6 +670,18 @@
         doc.querySelectorAll('[data-element-id]').forEach(function(el) {
             var vis = el.querySelector('.djs-visual');
             if (!vis) return;
+
+            // Text annotations have no <rect>, so the pool/lane logic below
+            // skips them — mirror them here (bracket→right, text right-aligned),
+            // reading their bounds from the live registry.
+            var annId = el.getAttribute('data-element-id') || '';
+            var regAnn = null;
+            try { regAnn = modeler.get('elementRegistry').get(annId); } catch (e) {}
+            if (regAnn && regAnn.type === 'bpmn:TextAnnotation') {
+                rtlFixAnnotationVisual(vis, regAnn.width, regAnn.height);
+                return;
+            }
+
             var rect = vis.querySelector('rect');
             var text = vis.querySelector('text');
             if (!rect || !text) return;
